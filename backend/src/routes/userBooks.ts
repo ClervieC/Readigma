@@ -39,16 +39,32 @@ router.put('/books/:bookId', authMiddleware, async (req: AuthRequest, res: Respo
     const { rating, comment, status } = req.body;
     if (rating !== undefined) {
       const rounded = Math.round(rating * 4) / 4;
-      if (rounded < 0 || rounded > 5)
-        return res.status(400).json({ error: 'Note entre 0 et 5' });
+      if (rounded < 0 || rounded > 5) return res.status(400).json({ error: 'Note entre 0 et 5' });
     }
+    const finishedAt = status === 'done' ? new Date() : null;
+    const startedAt = status === 'reading' ? new Date() : null;
+    
     const result = await pool.query(
-      `UPDATE user_books SET rating=$1, comment=$2, status=$3
-       WHERE user_id=$4 AND book_id=$5 RETURNING *`,
+      `UPDATE user_books SET 
+        rating=$1, comment=$2, status=$3::varchar,
+        finished_at = CASE WHEN $3::varchar = 'done' THEN NOW() ELSE finished_at END,
+        started_at = CASE WHEN $3::varchar = 'reading' AND started_at IS NULL THEN NOW() ELSE started_at END
+      WHERE user_id=$4 AND book_id=$5 RETURNING *`,
       [rating, comment, status, req.user!.id, req.params.bookId]
     );
+
+    // Ajouter au feed si fini
+    if (status === 'done') {
+      await pool.query(
+        `INSERT INTO activity_feed (user_id, book_id, activity_type, metadata)
+         VALUES ($1, $2, 'finished', $3)`,
+        [req.user!.id, req.params.bookId, JSON.stringify({ rating, comment })]
+      );
+    }
+
     res.json(result.rows[0]);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Erreur mise à jour' });
   }
 });

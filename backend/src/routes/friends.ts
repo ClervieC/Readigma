@@ -49,4 +49,39 @@ router.put('/request/:id/accept', authMiddleware, async (req: AuthRequest, res: 
   }
 });
 
+router.get('/search', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { q } = req.query;
+    if (!q) return res.status(400).json({ error: 'Paramètre q requis' });
+    const result = await pool.query(
+      `SELECT u.id, u.username, u.avatar_url,
+              COUNT(ub.id) as books_count
+       FROM users u
+       LEFT JOIN user_books ub ON ub.user_id = u.id AND ub.status = 'done'
+       WHERE u.username ILIKE $1 AND u.id != $2
+       GROUP BY u.id, u.username, u.avatar_url
+       LIMIT 10`,
+      [`%${q}%`, req.user!.id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur recherche' });
+  }
+});
+
+router.get('/pending', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await pool.query(
+      `SELECT f.id, u.username, u.avatar_url
+       FROM friendships f
+       JOIN users u ON u.id = f.requester_id
+       WHERE f.receiver_id = $1 AND f.status = 'pending'`,
+      [req.user!.id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur demandes' });
+  }
+});
+
 export default router;
