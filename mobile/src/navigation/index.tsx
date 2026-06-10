@@ -21,6 +21,7 @@ import NotificationsScreen from '../screens/NotificationsScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
+import HelpScreen from '../screens/HelpScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -144,6 +145,7 @@ function MainStack() {
       <Stack.Screen name="SuggestBook" component={SuggestBookScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} />
+      <Stack.Screen name="Help" component={HelpScreen} />
     </Stack.Navigator>
   );
 }

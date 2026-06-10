@@ -78,6 +78,7 @@ export default function ProfileScreen({ navigation }: any) {
             { icon: '👥', label: 'Mes amis lecteurs', onPress: () => navigation.getParent()?.navigate('Friends') },
             { icon: '🔔', label: 'Notifications', onPress: () => navigation.getParent()?.navigate('Notifications') },
             { icon: '💡', label: 'Suggérer un livre', onPress: () => navigation.getParent()?.navigate('SuggestBook') },
+            { icon: '❓', label: 'Aide & Contact', onPress: () => navigation.getParent()?.navigate('Help') },
           ].map((item, i) => (
             <TouchableOpacity key={i} style={styles.settingItem} onPress={item.onPress}>
               <Text style={styles.settingIcon}>{item.icon}</Text>

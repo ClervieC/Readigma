@@ -97,7 +97,7 @@ export default function FriendsScreen({ navigation }: any) {
               <TouchableOpacity
                 key={i}
                 style={styles.userItem}
-                onPress={() => navigation.getParent()?.navigate('UserProfile', { userId: user.id, username: user.username })}
+                onPress={() => navigation.navigate('UserProfile', { userId: user.id, username: user.username })}
                 activeOpacity={0.75}
               >
                 <View style={styles.userAvatar}>
@@ -141,7 +141,7 @@ export default function FriendsScreen({ navigation }: any) {
               <TouchableOpacity
                 key={i}
                 style={styles.userItem}
-                onPress={() => navigation.getParent()?.navigate('UserProfile', { userId: friend.id, username: friend.username })}
+                onPress={() => navigation.navigate('UserProfile', { userId: friend.id, username: friend.username })}
                 activeOpacity={0.75}
               >
                 <View style={styles.userAvatar}>

@@ -178,6 +178,7 @@ export default function FeedScreen({ navigation }: any) {
             key={i}
             item={item}
             onUserPress={(userId, username) => navigation.getParent()?.navigate('UserProfile', { userId, username })}
+            onBookPress={(book) => navigation.getParent()?.navigate('BookDetail', { book })}
           />
         ))}
 
@@ -240,6 +241,7 @@ const styles = StyleSheet.create({
   bookInfo: { flex: 1 },
   bookTitle: { fontSize: 13, fontWeight: '600', color: colors.white },
   bookAuthor: { fontSize: 11, color: colors.gray, marginTop: 2 },
+  bookArrow: { fontSize: 18, color: colors.gray, marginLeft: 4 },
   reactionBox: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: 'rgba(108,92,231,0.1)',
