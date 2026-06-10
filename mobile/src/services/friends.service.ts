@@ -6,4 +6,6 @@ export const friendsService = {
   getFriends: () => api.get('/friends'),
   getPendingRequests: () => api.get('/friends/pending'),
   acceptRequest: (id: string) => api.put(`/friends/request/${id}/accept`),
+  getUserProfile: (userId: string) => api.get(`/friends/${userId}/profile`),
+  declineRequest: (id: string) => api.delete(`/friends/request/${id}`),
 };

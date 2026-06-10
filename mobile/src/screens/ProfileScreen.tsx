@@ -1,20 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, SafeAreaView
+  StyleSheet, SafeAreaView, Image
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { colors, radius } from '../theme';
 import { authService } from '../services/auth.service';
 import { booksService } from '../services/books.service';
+import { useAuth } from '../contexts/auth.context';
 
 export default function ProfileScreen({ navigation }: any) {
+  const { logout } = useAuth();
   const [user, setUser] = useState<any>(null);
   const [allBooks, setAllBooks] = useState<any[]>([]);
 
-  useEffect(() => {
-    authService.getUser().then(setUser);
-    booksService.getMyBooks().then(res => setAllBooks(res.data)).catch(() => {});
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      authService.getUser().then(setUser);
+      booksService.getMyBooks().then(res => setAllBooks(res.data)).catch(() => {});
+    }, [])
+  );
 
   const counts: any = { done: 0, to_read: 0, reading: 0, dnf: 0 };
   allBooks.forEach(b => { if (counts[b.status] !== undefined) counts[b.status]++; });
@@ -24,14 +29,6 @@ export default function ProfileScreen({ navigation }: any) {
     if (!rated.length) return '—';
     const avg = rated.reduce((sum, b) => sum + parseFloat(b.rating), 0) / rated.length;
     return avg.toFixed(1) + '★';
-  };
-
-  const logout = async () => {
-    await authService.logout();
-    navigation.getParent()?.reset({
-      index: 0,
-      routes: [{ name: 'Login' }],
-    });
   };
 
   return (
@@ -45,9 +42,16 @@ export default function ProfileScreen({ navigation }: any) {
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{user?.username?.slice(0, 2).toUpperCase()}</Text>
-          </View>
+          <TouchableOpacity onPress={() => navigation.getParent()?.navigate('EditProfile')}>
+            {user?.avatar_url ? (
+              <Image source={{ uri: user.avatar_url }} style={styles.avatarImg} />
+            ) : (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{user?.username?.slice(0, 2).toUpperCase()}</Text>
+              </View>
+            )}
+            <Text style={styles.editAvatarHint}>Modifier</Text>
+          </TouchableOpacity>
           <Text style={styles.name}>{user?.username}</Text>
           <Text style={styles.handle}>@{user?.username?.toLowerCase()}</Text>
         </View>
@@ -69,6 +73,7 @@ export default function ProfileScreen({ navigation }: any) {
         <Text style={styles.sectionLabel}>Paramètres</Text>
         <View style={styles.settingsList}>
           {[
+            { icon: '✏️', label: 'Modifier le profil', onPress: () => navigation.getParent()?.navigate('EditProfile') },
             { icon: '🎯', label: 'Reading Goal', onPress: () => navigation.getParent()?.navigate('Goal') },
             { icon: '👥', label: 'Mes amis lecteurs', onPress: () => navigation.getParent()?.navigate('Friends') },
             { icon: '🔔', label: 'Notifications', onPress: () => navigation.getParent()?.navigate('Notifications') },
@@ -115,6 +120,8 @@ const styles = StyleSheet.create({
   avatarText: { fontSize: 26, fontWeight: '700', color: 'white' },
   name: { fontSize: 18, fontWeight: '700', color: colors.white },
   handle: { fontSize: 12, color: colors.gray, marginTop: 3 },
+  avatarImg: { width: 72, height: 72, borderRadius: 36, marginBottom: 10 },
+  editAvatarHint: { fontSize: 10, color: colors.lavender, textAlign: 'center', marginBottom: 6 },
   statsGrid: { flexDirection: 'row', gap: 8, marginBottom: 24 },
   statBox: {
     flex: 1, backgroundColor: colors.card,

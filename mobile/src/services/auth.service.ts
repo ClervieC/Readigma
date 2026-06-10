@@ -36,5 +36,17 @@ export const authService = {
   async isLoggedIn() {
     const token = await AsyncStorage.getItem('readigma_token');
     return !!token;
-  }
+  },
+
+  async updateProfile(data: { username?: string; email?: string; password?: string; avatar_url?: string }) {
+    const res = await api.put('/auth/profile', data);
+    const current = await AsyncStorage.getItem('readigma_user');
+    const merged = { ...(current ? JSON.parse(current) : {}), ...res.data };
+    await AsyncStorage.setItem('readigma_user', JSON.stringify(merged));
+    return res.data;
+  },
+
+  async savePushToken(token: string) {
+    return api.put('/auth/push-token', { token });
+  },
 };

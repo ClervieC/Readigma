@@ -25,6 +25,7 @@ app.use(cors({
 app.use(express.json());
 
 app.use('/api/auth', authRoutes);
+app.use('/api/me', authRoutes);
 app.use('/api/books', bookRoutes);
 app.use('/api/me', userBookRoutes);
 app.use('/api/me', randomizerRoutes);
@@ -36,6 +37,10 @@ app.use('/api/feed', feedRoutes);
 app.use('/api/users', friendRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', app: 'Readigma' }));
+
+// Ensure push_token column exists (runs once on startup, safe to repeat)
+import pool from './config/database';
+pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS push_token TEXT`).catch(() => {});
 
 app.listen(PORT, () => console.log(`🚀 Readigma backend running on port ${PORT}`));
 

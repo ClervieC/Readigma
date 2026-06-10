@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { Text } from 'react-native';
-import { colors } from '../theme';
-import { authService } from '../services/auth.service';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { colors, radius, shadows } from '../theme';
+import { useAuth } from '../contexts/auth.context';
 
 import DiscoverScreen from '../screens/DiscoverScreen';
 import LibraryScreen from '../screens/LibraryScreen';
@@ -18,56 +18,116 @@ import FeedScreen from '../screens/FeedScreen';
 import FriendsScreen from '../screens/FriendsScreen';
 import SuggestBookScreen from '../screens/SuggestBookScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
+import EditProfileScreen from '../screens/EditProfileScreen';
+import OnboardingScreen from '../screens/OnboardingScreen';
+import UserProfileScreen from '../screens/UserProfileScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
-function TabIcon({ name, color }: { name: string; color: string }) {
-  const icons: any = {
-    Discover: '🎲',
-    Feed: '📰',
-    Bibliothèque: '📚',
-    Chercher: '🔍',
-    Profil: '👤',
-  };
-  return <Text style={{ fontSize: 22 }}>{icons[name]}</Text>;
+const TABS = [
+  { name: 'Discover', label: 'Découvrir', icon: '✦' },
+  { name: 'Feed',     label: 'Fil',       icon: '◈' },
+  { name: 'Biblio',   label: 'Biblio',    icon: '⊞' },
+  { name: 'Chercher', label: 'Chercher',  icon: '◎' },
+  { name: 'Profil',   label: 'Profil',    icon: '◉' },
+];
+
+function CustomTabBar({ state, navigation }: any) {
+  return (
+    <View style={tabStyles.wrapper}>
+      <View style={tabStyles.bar}>
+        {state.routes.map((route: any, index: number) => {
+          const tab = TABS.find(t => t.name === route.name) ?? TABS[index];
+          const focused = state.index === index;
+
+          return (
+            <TouchableOpacity
+              key={route.key}
+              style={tabStyles.item}
+              onPress={() => navigation.navigate(route.name)}
+              activeOpacity={0.7}
+            >
+              <View style={[tabStyles.iconWrap, focused && tabStyles.iconWrapActive]}>
+                <Text style={[tabStyles.icon, focused && tabStyles.iconActive]}>
+                  {tab.icon}
+                </Text>
+              </View>
+              <Text style={[tabStyles.label, focused && tabStyles.labelActive]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
 }
+
+const tabStyles = StyleSheet.create({
+  wrapper: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 12,
+    paddingBottom: 28,
+    backgroundColor: 'transparent',
+  },
+  bar: {
+    flexDirection: 'row',
+    backgroundColor: colors.card,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.divider,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    ...shadows.card,
+  },
+  item: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  iconWrap: {
+    width: 38,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconWrapActive: {
+    backgroundColor: colors.purpleGlow,
+  },
+  icon: {
+    fontSize: 18,
+    color: colors.gray,
+  },
+  iconActive: {
+    color: colors.lavender,
+  },
+  label: {
+    fontSize: 9,
+    color: colors.gray,
+    fontWeight: '500',
+    letterSpacing: 0.3,
+  },
+  labelActive: {
+    color: colors.lavender,
+    fontWeight: '700',
+  },
+});
 
 function MainTabs() {
   return (
     <Tab.Navigator
-      screenOptions={({ route }) => ({
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: colors.card,
-          borderTopColor: colors.divider,
-          borderTopWidth: 1,
-          paddingBottom: 24,
-          paddingTop: 8,
-          height: 70,
-        },
-        tabBarActiveTintColor: colors.purple,
-        tabBarInactiveTintColor: colors.gray,
-        tabBarLabelStyle: { fontSize: 9, fontWeight: '500' },
-        tabBarIcon: ({ color }) => <TabIcon name={route.name} color={color} />,
-      })}
+      tabBar={(props) => <CustomTabBar {...props} />}
+      screenOptions={{ headerShown: false }}
     >
       <Tab.Screen name="Discover" component={DiscoverScreen} />
       <Tab.Screen name="Feed" component={FeedScreen} />
-      <Tab.Screen name="Bibliothèque" component={LibraryScreen} />
-      <Tab.Screen 
-        name="Chercher" 
-        component={SearchScreen}
-        listeners={({ navigation, route }) => ({
-          tabPress: (e) => {
-            const isFocused = navigation.isFocused();
-            if (isFocused) {
-              e.preventDefault();
-              navigation.navigate('Chercher');
-            }
-          },
-        })}
-      />      
+      <Tab.Screen name="Biblio" component={LibraryScreen} />
+      <Tab.Screen name="Chercher" component={SearchScreen} />
       <Tab.Screen name="Profil" component={ProfileScreen} />
     </Tab.Navigator>
   );
@@ -82,21 +142,14 @@ function MainStack() {
       <Stack.Screen name="Friends" component={FriendsScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="SuggestBook" component={SuggestBookScreen} />
+      <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+      <Stack.Screen name="UserProfile" component={UserProfileScreen} />
     </Stack.Navigator>
   );
 }
 
 export default function Navigation() {
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
-
-  const checkAuth = async () => {
-    const loggedIn = await authService.isLoggedIn();
-    setIsLoggedIn(loggedIn);
-  };
-
-  useEffect(() => {
-    checkAuth();
-  }, []);
+  const { isLoggedIn, needsOnboarding, login, completeOnboarding } = useAuth();
 
   if (isLoggedIn === null) return null;
 
@@ -104,14 +157,20 @@ export default function Navigation() {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {isLoggedIn ? (
-          <Stack.Screen name="Main" component={MainStack} />
+          needsOnboarding ? (
+            <Stack.Screen name="Onboarding">
+              {(props) => <OnboardingScreen {...props} onDone={completeOnboarding} />}
+            </Stack.Screen>
+          ) : (
+            <Stack.Screen name="Main" component={MainStack} />
+          )
         ) : (
           <>
             <Stack.Screen name="Login">
-              {(props) => <LoginScreen {...props} onLogin={() => setIsLoggedIn(true)} />}
+              {(props) => <LoginScreen {...props} onLogin={login} />}
             </Stack.Screen>
             <Stack.Screen name="Register">
-              {(props) => <RegisterScreen {...props} onLogin={() => setIsLoggedIn(true)} />}
+              {(props) => <RegisterScreen {...props} onLogin={login} />}
             </Stack.Screen>
           </>
         )}

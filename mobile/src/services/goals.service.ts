@@ -6,4 +6,7 @@ export const goalsService = {
 
   getGoal: (year?: number) =>
     api.get(`/goals/${year || new Date().getFullYear()}`),
+
+  getMonthly: (year?: number) =>
+    api.get(`/goals/${year || new Date().getFullYear()}/monthly`),
 };

@@ -18,7 +18,7 @@ function timeAgo(dateStr: string) {
   return `Il y a ${days}j`;
 }
 
-function ActivityCard({ item }: { item: any }) {
+function ActivityCard({ item, onUserPress, onBookPress }: { item: any; onUserPress: (userId: string, username: string) => void; onBookPress: (item: any) => void }) {
   const getActivityText = () => {
     switch (item.activity_type) {
       case 'reaction':
@@ -38,20 +38,32 @@ function ActivityCard({ item }: { item: any }) {
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
-        <View style={styles.avatar}>
+        <TouchableOpacity style={styles.avatar} onPress={() => onUserPress(item.user_id, item.username)}>
           <Text style={styles.avatarText}>
             {item.username?.slice(0, 2).toUpperCase()}
           </Text>
-        </View>
-        <View style={styles.cardMeta}>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.cardMeta} onPress={() => onUserPress(item.user_id, item.username)}>
           <Text style={styles.username}>{item.username}</Text>
           <Text style={styles.activityText}>{getActivityText()}</Text>
-        </View>
+        </TouchableOpacity>
         <Text style={styles.timeAgo}>{timeAgo(item.created_at)}</Text>
       </View>
 
       {item.book_title && (
-        <View style={styles.bookRow}>
+        <TouchableOpacity
+          style={styles.bookRow}
+          activeOpacity={0.75}
+          onPress={() => onBookPress({
+            book_id: item.book_id,
+            title: item.book_title,
+            author: item.book_author,
+            cover_url: item.cover_url,
+            genres: item.genres,
+            description: item.description,
+            published_year: item.published_year,
+          })}
+        >
           <View style={styles.bookCover}>
             {item.cover_url ? (
               <Image source={{ uri: item.cover_url }} style={styles.coverImg} />
@@ -63,7 +75,8 @@ function ActivityCard({ item }: { item: any }) {
             <Text style={styles.bookTitle} numberOfLines={1}>{item.book_title}</Text>
             <Text style={styles.bookAuthor} numberOfLines={1}>{item.book_author}</Text>
           </View>
-        </View>
+          <Text style={styles.bookArrow}>›</Text>
+        </TouchableOpacity>
       )}
 
       {item.activity_type === 'finished' && (
@@ -105,7 +118,7 @@ function ActivityCard({ item }: { item: any }) {
   );
 }
 
-export default function FeedScreen() {
+export default function FeedScreen({ navigation }: any) {
   const [feed, setFeed] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -161,7 +174,11 @@ export default function FeedScreen() {
         )}
 
         {feed.map((item, i) => (
-          <ActivityCard key={i} item={item} />
+          <ActivityCard
+            key={i}
+            item={item}
+            onUserPress={(userId, username) => navigation.getParent()?.navigate('UserProfile', { userId, username })}
+          />
         ))}
 
         <View style={{ height: 20 }} />

@@ -94,7 +94,12 @@ export default function FriendsScreen({ navigation }: any) {
               />
             </View>
             {results.map((user, i) => (
-              <View key={i} style={styles.userItem}>
+              <TouchableOpacity
+                key={i}
+                style={styles.userItem}
+                onPress={() => navigation.getParent()?.navigate('UserProfile', { userId: user.id, username: user.username })}
+                activeOpacity={0.75}
+              >
                 <View style={styles.userAvatar}>
                   <Text style={styles.userAvatarText}>
                     {user.username?.slice(0, 2).toUpperCase()}
@@ -113,7 +118,7 @@ export default function FriendsScreen({ navigation }: any) {
                     {sentRequests.has(user.id) ? '✓ Envoyé' : '+ Suivre'}
                   </Text>
                 </TouchableOpacity>
-              </View>
+              </TouchableOpacity>
             ))}
             {results.length === 0 && query && (
               <Text style={styles.emptyText}>Aucun lecteur trouvé</Text>
@@ -133,7 +138,12 @@ export default function FriendsScreen({ navigation }: any) {
                 </TouchableOpacity>
               </View>
             ) : friends.map((friend, i) => (
-              <View key={i} style={styles.userItem}>
+              <TouchableOpacity
+                key={i}
+                style={styles.userItem}
+                onPress={() => navigation.getParent()?.navigate('UserProfile', { userId: friend.id, username: friend.username })}
+                activeOpacity={0.75}
+              >
                 <View style={styles.userAvatar}>
                   <Text style={styles.userAvatarText}>
                     {friend.username?.slice(0, 2).toUpperCase()}
@@ -143,7 +153,8 @@ export default function FriendsScreen({ navigation }: any) {
                   <Text style={styles.userName}>@{friend.username}</Text>
                   <Text style={styles.userBooks}>{friend.books_count} livres lus</Text>
                 </View>
-              </View>
+                <Text style={{ color: colors.gray, fontSize: 18 }}>›</Text>
+              </TouchableOpacity>
             ))}
           </>
         )}

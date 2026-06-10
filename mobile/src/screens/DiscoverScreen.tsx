@@ -7,6 +7,7 @@ import {
 import { colors, radius } from '../theme';
 import { booksService } from '../services/books.service';
 import { authService } from '../services/auth.service';
+import { friendsService } from '../services/friends.service';
 
 const FILTERS = [
   { label: 'Tout', value: 'all' },
@@ -24,6 +25,7 @@ export default function DiscoverScreen({ navigation }: any) {
   const [recentBooks, setRecentBooks] = useState<any[]>([]);
   const [error, setError] = useState('');
   const [user, setUser] = useState<any>(null);
+  const [pendingCount, setPendingCount] = useState(0);
   const spinAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -35,8 +37,21 @@ export default function DiscoverScreen({ navigation }: any) {
       booksService.getMyBooks('to_read').then(res => {
         setRecentBooks(res.data.slice(0, 6));
       }).catch(() => {});
+      friendsService.getPendingRequests().then(res => {
+        setPendingCount(res.data.length);
+      }).catch(() => {});
     }, [])
   );
+
+  const addToReading = async () => {
+    if (!currentBook) return;
+    try {
+      await booksService.addBook(currentBook.id, 'reading');
+      setCurrentBook(null);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Erreur lors de l\'ajout');
+    }
+  };
 
   const spin = () => {
     if (spinning) return;
@@ -81,6 +96,11 @@ export default function DiscoverScreen({ navigation }: any) {
         </View>
         <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.getParent()?.navigate('Notifications')}>
           <Text style={{ fontSize: 18 }}>🔔</Text>
+          {pendingCount > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{pendingCount > 9 ? '9+' : pendingCount}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -112,7 +132,11 @@ export default function DiscoverScreen({ navigation }: any) {
               </Text>
             </View>
           ) : (
-            <View style={styles.bookResult}>
+            <TouchableOpacity
+              style={styles.bookResult}
+              onPress={() => navigation.getParent()?.navigate('BookDetail', { book: { ...currentBook, book_id: currentBook.id } })}
+              activeOpacity={0.75}
+            >
               <View style={styles.bookCoverBig}>
                 <Text style={{ fontSize: 40 }}>📚</Text>
               </View>
@@ -122,20 +146,23 @@ export default function DiscoverScreen({ navigation }: any) {
                 <View style={styles.genreBadge}>
                   <Text style={styles.genreText}>{currentBook.genres?.[0] || 'Fiction'}</Text>
                 </View>
+                <Text style={styles.tapHint}>Appuie pour voir le détail →</Text>
               </View>
-            </View>
+            </TouchableOpacity>
           )}
         </View>
 
-        <TouchableOpacity style={styles.spinBtn} onPress={spin} disabled={spinning}>
-          <Text style={styles.spinBtnText}>
-            {spinning ? '🎲 En cours...' : '🎲 Choisir pour moi !'}
-          </Text>
-        </TouchableOpacity>
+        {!currentBook && (
+          <TouchableOpacity style={styles.spinBtn} onPress={spin} disabled={spinning}>
+            <Text style={styles.spinBtnText}>
+              {spinning ? '🎲 En cours...' : '🎲 Choisir pour moi !'}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {currentBook && (
           <View style={styles.actionsRow}>
-            <TouchableOpacity style={[styles.actBtn, styles.actBtnTeal]}>
+            <TouchableOpacity style={[styles.actBtn, styles.actBtnTeal]} onPress={addToReading}>
               <Text style={styles.actBtnTealText}>📖 Je lis ça !</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.actBtn} onPress={spin}>
@@ -155,13 +182,18 @@ export default function DiscoverScreen({ navigation }: any) {
           {recentBooks.length === 0 ? (
             <Text style={styles.emptyHint}>Ajoute des livres à ta pile !</Text>
           ) : recentBooks.map((book, i) => (
-            <View key={i} style={styles.miniCard}>
+            <TouchableOpacity
+              key={i}
+              style={styles.miniCard}
+              onPress={() => navigation.getParent()?.navigate('BookDetail', { book })}
+              activeOpacity={0.75}
+            >
               <View style={styles.miniCover}>
                 <Text style={{ fontSize: 26 }}>📚</Text>
               </View>
               <Text style={styles.miniTitle} numberOfLines={2}>{book.title}</Text>
               <Text style={styles.miniAuthor}>{book.author?.split(' ').slice(-1)[0]}</Text>
-            </View>
+            </TouchableOpacity>
           ))}
         </ScrollView>
 
@@ -266,4 +298,13 @@ const styles = StyleSheet.create({
   miniTitle: { fontSize: 11, fontWeight: '500', color: colors.white, textAlign: 'center' },
   miniAuthor: { fontSize: 10, color: colors.gray },
   emptyHint: { fontSize: 12, color: colors.gray, paddingVertical: 20 },
+  tapHint: { fontSize: 10, color: colors.gray, marginTop: 6, fontStyle: 'italic' },
+  badge: {
+    position: 'absolute', top: -4, right: -4,
+    minWidth: 16, height: 16, borderRadius: 8,
+    backgroundColor: colors.error,
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  badgeText: { fontSize: 9, color: 'white', fontWeight: '700' },
 });

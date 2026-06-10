@@ -7,10 +7,12 @@ const router = Router();
 router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const result = await pool.query(
-      `SELECT 
+      `SELECT
         af.id, af.activity_type, af.created_at, af.metadata,
+        af.user_id, af.book_id,
         u.username, u.avatar_url,
         b.title as book_title, b.cover_url, b.author as book_author,
+        b.genres, b.description, b.published_year,
         rr.emoji, rr.note, rr.progress_percent as reaction_percent
        FROM activity_feed af
        JOIN users u ON u.id = af.user_id

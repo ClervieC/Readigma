@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, SafeAreaView,
-  TouchableOpacity, TextInput, Alert
+  TouchableOpacity, TextInput, Alert, ScrollView
 } from 'react-native';
 import { colors, radius } from '../theme';
 import { goalsService } from '../services/goals.service';
+
+const MONTHS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
 
 export default function GoalScreen({ navigation }: any) {
   const [goal, setGoal] = useState<any>(null);
   const [booksRead, setBooksRead] = useState(0);
   const [target, setTarget] = useState('');
+  const [monthly, setMonthly] = useState<{ month: number; count: number }[]>([]);
   const [loading, setLoading] = useState(false);
   const year = new Date().getFullYear();
+  const currentMonth = new Date().getMonth() + 1;
 
   useEffect(() => { loadGoal(); }, []);
 
@@ -21,6 +25,7 @@ export default function GoalScreen({ navigation }: any) {
       setBooksRead(res.data.books_read);
       if (res.data.goal) setTarget(res.data.goal.target_books.toString());
     }).catch(() => {});
+    goalsService.getMonthly().then(res => setMonthly(res.data)).catch(() => {});
   };
 
   const saveGoal = () => {
@@ -38,6 +43,12 @@ export default function GoalScreen({ navigation }: any) {
   };
 
   const progress = goal ? Math.min((booksRead / goal.target_books) * 100, 100) : 0;
+  const maxMonthly = Math.max(...monthly.map(m => m.count), 1);
+
+  // Pace: how many books per month to hit the goal
+  const monthsLeft = 12 - currentMonth + 1;
+  const booksLeft = goal ? Math.max(goal.target_books - booksRead, 0) : 0;
+  const pace = monthsLeft > 0 ? (booksLeft / monthsLeft).toFixed(1) : '0';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -49,7 +60,8 @@ export default function GoalScreen({ navigation }: any) {
         <View style={{ width: 60 }} />
       </View>
 
-      <View style={styles.content}>
+      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+        {/* Main goal card */}
         <View style={styles.goalCard}>
           <Text style={styles.goalEmoji}>🎯</Text>
           <Text style={styles.goalTitle}>Mon objectif {year}</Text>
@@ -68,8 +80,27 @@ export default function GoalScreen({ navigation }: any) {
               </View>
               <Text style={styles.progressText}>{Math.round(progress)}% accompli</Text>
 
-              {progress >= 100 && (
-                <Text style={styles.congrats}>🎉 Objectif atteint ! Bravo !</Text>
+              {progress >= 100 ? (
+                <View style={styles.congratsBadge}>
+                  <Text style={styles.congratsText}>🎉 Objectif atteint ! Bravo !</Text>
+                </View>
+              ) : (
+                <View style={styles.paceRow}>
+                  <View style={styles.paceStat}>
+                    <Text style={styles.paceNum}>{booksLeft}</Text>
+                    <Text style={styles.paceLabel}>livres restants</Text>
+                  </View>
+                  <View style={styles.paceDivider} />
+                  <View style={styles.paceStat}>
+                    <Text style={styles.paceNum}>{pace}</Text>
+                    <Text style={styles.paceLabel}>livres/mois</Text>
+                  </View>
+                  <View style={styles.paceDivider} />
+                  <View style={styles.paceStat}>
+                    <Text style={styles.paceNum}>{monthsLeft}</Text>
+                    <Text style={styles.paceLabel}>mois restants</Text>
+                  </View>
+                </View>
               )}
             </>
           ) : (
@@ -77,8 +108,37 @@ export default function GoalScreen({ navigation }: any) {
           )}
         </View>
 
-        <View style={styles.setGoalCard}>
-          <Text style={styles.setGoalTitle}>
+        {/* Monthly chart */}
+        {monthly.some(m => m.count > 0) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>📊 Mois par mois</Text>
+            <View style={styles.chart}>
+              {monthly.map((m) => {
+                const barH = maxMonthly > 0 ? (m.count / maxMonthly) * 80 : 0;
+                const isCurrent = m.month === currentMonth;
+                return (
+                  <View key={m.month} style={styles.barCol}>
+                    <Text style={styles.barCount}>{m.count > 0 ? m.count : ''}</Text>
+                    <View style={styles.barTrack}>
+                      <View style={[
+                        styles.barFill,
+                        { height: Math.max(barH, m.count > 0 ? 4 : 0) },
+                        isCurrent && styles.barFillCurrent,
+                      ]} />
+                    </View>
+                    <Text style={[styles.barLabel, isCurrent && styles.barLabelCurrent]}>
+                      {MONTHS[m.month - 1]}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
+        {/* Set goal */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>
             {goal ? 'Modifier mon objectif' : 'Définir mon objectif'}
           </Text>
           <View style={styles.inputRow}>
@@ -97,10 +157,12 @@ export default function GoalScreen({ navigation }: any) {
             {[12, 24, 36, 52].map(n => (
               <TouchableOpacity
                 key={n}
-                style={styles.suggestionChip}
+                style={[styles.suggestionChip, target === n.toString() && styles.suggestionChipActive]}
                 onPress={() => setTarget(n.toString())}
               >
-                <Text style={styles.suggestionText}>{n}</Text>
+                <Text style={[styles.suggestionText, target === n.toString() && styles.suggestionTextActive]}>
+                  {n}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -109,7 +171,9 @@ export default function GoalScreen({ navigation }: any) {
             <Text style={styles.saveBtnText}>{loading ? 'Sauvegarde...' : '🎯 Sauvegarder'}</Text>
           </TouchableOpacity>
         </View>
-      </View>
+
+        <View style={{ height: 30 }} />
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -123,55 +187,74 @@ const styles = StyleSheet.create({
   },
   backBtn: { fontSize: 14, color: colors.lavender, fontWeight: '500' },
   headerTitle: { fontSize: 16, fontWeight: '700', color: colors.white },
-  content: { flex: 1, padding: 16 },
+  scroll: { flex: 1, paddingHorizontal: 16 },
   goalCard: {
-    backgroundColor: colors.card,
-    borderRadius: radius.lg, padding: 24,
-    alignItems: 'center', marginBottom: 16,
+    backgroundColor: colors.card, borderRadius: radius.lg,
+    padding: 24, alignItems: 'center', marginTop: 16, marginBottom: 14,
     borderWidth: 1, borderColor: colors.divider,
   },
-  goalEmoji: { fontSize: 48, marginBottom: 8 },
-  goalTitle: { fontSize: 16, fontWeight: '700', color: colors.white, marginBottom: 16 },
+  goalEmoji: { fontSize: 44, marginBottom: 8 },
+  goalTitle: { fontSize: 15, fontWeight: '700', color: colors.white, marginBottom: 16 },
   goalNumbers: { marginBottom: 12 },
-  goalCurrent: { fontSize: 36, fontWeight: '700', color: colors.teal },
+  goalCurrent: { fontSize: 38, fontWeight: '800', color: colors.cyan },
   goalSeparator: { fontSize: 24, color: colors.gray },
-  goalTarget: { fontSize: 36, fontWeight: '700', color: colors.lavender },
+  goalTarget: { fontSize: 38, fontWeight: '800', color: colors.lavender },
   goalLabel: { fontSize: 16, color: colors.gray },
   progressBar: {
-    width: '100%', height: 10,
-    backgroundColor: colors.card2,
-    borderRadius: 5, overflow: 'hidden', marginBottom: 8,
+    width: '100%', height: 8, backgroundColor: colors.card2,
+    borderRadius: 4, overflow: 'hidden', marginBottom: 6,
   },
-  progressFill: { height: '100%', backgroundColor: colors.teal, borderRadius: 5 },
-  progressText: { fontSize: 13, color: colors.teal },
-  congrats: { fontSize: 16, color: colors.purple, marginTop: 12, fontWeight: '700' },
+  progressFill: { height: '100%', backgroundColor: colors.cyan, borderRadius: 4 },
+  progressText: { fontSize: 12, color: colors.cyan, marginBottom: 16 },
+  congratsBadge: {
+    backgroundColor: 'rgba(124,58,237,0.15)', borderRadius: radius.md,
+    paddingHorizontal: 16, paddingVertical: 8,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  congratsText: { fontSize: 15, color: colors.lavender, fontWeight: '700' },
+  paceRow: { flexDirection: 'row', alignItems: 'center', gap: 0, marginTop: 8 },
+  paceStat: { flex: 1, alignItems: 'center', gap: 3 },
+  paceNum: { fontSize: 20, fontWeight: '800', color: colors.white },
+  paceLabel: { fontSize: 10, color: colors.gray, textAlign: 'center' },
+  paceDivider: { width: 1, height: 30, backgroundColor: colors.divider },
   noGoal: { fontSize: 14, color: colors.gray, textAlign: 'center' },
-  setGoalCard: {
-    backgroundColor: colors.card,
-    borderRadius: radius.lg, padding: 20,
+  section: {
+    backgroundColor: colors.card, borderRadius: radius.lg,
+    padding: 16, marginBottom: 14,
     borderWidth: 1, borderColor: colors.divider,
   },
-  setGoalTitle: { fontSize: 15, fontWeight: '700', color: colors.white, marginBottom: 16 },
+  sectionTitle: { fontSize: 14, fontWeight: '700', color: colors.white, marginBottom: 16 },
+  chart: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, height: 110 },
+  barCol: { flex: 1, alignItems: 'center', gap: 4 },
+  barCount: { fontSize: 9, color: colors.muted, height: 12, textAlign: 'center' },
+  barTrack: { height: 80, justifyContent: 'flex-end', width: '100%', alignItems: 'center' },
+  barFill: {
+    width: '70%', backgroundColor: colors.purple,
+    borderRadius: 3, minHeight: 0,
+  },
+  barFillCurrent: { backgroundColor: colors.cyan },
+  barLabel: { fontSize: 8, color: colors.gray, textAlign: 'center' },
+  barLabelCurrent: { color: colors.cyan, fontWeight: '700' },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
   input: {
-    width: 80,
-    backgroundColor: colors.card2,
+    width: 80, backgroundColor: colors.card2,
     borderRadius: radius.sm, padding: 12,
     color: colors.white, fontSize: 24, fontWeight: '700',
-    borderWidth: 1, borderColor: colors.divider,
-    textAlign: 'center',
+    borderWidth: 1, borderColor: colors.divider, textAlign: 'center',
   },
   inputSuffix: { fontSize: 14, color: colors.gray },
   suggestions: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   suggestionChip: {
     paddingHorizontal: 16, paddingVertical: 8,
-    backgroundColor: colors.card2,
-    borderRadius: 20, borderWidth: 1, borderColor: colors.divider,
+    backgroundColor: colors.card2, borderRadius: 20,
+    borderWidth: 1, borderColor: colors.divider,
   },
+  suggestionChipActive: { backgroundColor: colors.purpleGlow, borderColor: colors.border },
   suggestionText: { color: colors.lavender, fontSize: 13, fontWeight: '500' },
+  suggestionTextActive: { color: colors.white, fontWeight: '700' },
   saveBtn: {
-    backgroundColor: colors.purple,
-    borderRadius: radius.md, padding: 14, alignItems: 'center',
+    backgroundColor: colors.purple, borderRadius: radius.md,
+    padding: 14, alignItems: 'center',
   },
   saveBtnText: { color: 'white', fontSize: 14, fontWeight: '700' },
 });

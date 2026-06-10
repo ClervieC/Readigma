@@ -86,7 +86,7 @@ export default function LibraryScreen({ navigation }: any) {
             <Text style={styles.emptyText}>Aucun livre ici</Text>
           </View>
         ) : filteredBooks.map((book, i) => (
-          <TouchableOpacity key={i} style={styles.bookItem} onPress={() => navigation.navigate('BookDetail', { book })}>
+          <TouchableOpacity key={i} style={styles.bookItem} onPress={() => navigation.getParent()?.navigate('BookDetail', { book })}>
             <View style={styles.bookCover}>
               <Text style={{ fontSize: 24 }}>📚</Text>
             </View>
@@ -105,7 +105,9 @@ export default function LibraryScreen({ navigation }: any) {
               {book.rating ? (
                 <Text style={styles.rating}>⭐ {book.rating}</Text>
               ) : null}
-              <Text style={styles.moreBtn}>•••</Text>
+              <TouchableOpacity onPress={(e) => { e.stopPropagation(); setSelectedBook(book); }}>
+                <Text style={styles.moreBtn}>•••</Text>
+              </TouchableOpacity>
             </View>
           </TouchableOpacity>
         ))}

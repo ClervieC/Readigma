@@ -1,11 +1,12 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
-  SafeAreaView, TouchableOpacity
+  SafeAreaView, TouchableOpacity, Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { colors, radius } from '../theme';
 import { feedService } from '../services/feed.service';
+import { friendsService } from '../services/friends.service';
 
 function timeAgo(dateStr: string) {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -19,19 +20,21 @@ function timeAgo(dateStr: string) {
 }
 
 export default function NotificationsScreen({ navigation }: any) {
-  const [notifications, setNotifications] = useState<any[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [feedNotifs, setFeedNotifs] = useState<any[]>([]);
 
   useFocusEffect(
     useCallback(() => {
-      feedService.getFeed().then(res => {
-        // Filtrer les activités des amis comme notifications
-        const notifs = res.data.map((item: any) => ({
+      friendsService.getPendingRequests()
+        .then(res => setPendingRequests(res.data))
+        .catch(() => {});
+      feedService.getFeed()
+        .then(res => setFeedNotifs(res.data.map((item: any) => ({
           ...item,
           message: getNotifMessage(item),
           icon: getNotifIcon(item),
-        }));
-        setNotifications(notifs);
-      }).catch(() => {});
+        }))))
+        .catch(() => {});
     }, [])
   );
 
@@ -53,6 +56,21 @@ export default function NotificationsScreen({ navigation }: any) {
     }
   };
 
+  const acceptRequest = (req: any) => {
+    friendsService.acceptRequest(req.id).then(() => {
+      setPendingRequests(prev => prev.filter(r => r.id !== req.id));
+      Alert.alert('🎉', `Tu es maintenant ami avec @${req.username} !`);
+    }).catch(() => Alert.alert('Erreur', 'Impossible d\'accepter'));
+  };
+
+  const declineRequest = (req: any) => {
+    friendsService.declineRequest(req.id).then(() => {
+      setPendingRequests(prev => prev.filter(r => r.id !== req.id));
+    }).catch(() => Alert.alert('Erreur', 'Impossible de refuser'));
+  };
+
+  const hasContent = pendingRequests.length > 0 || feedNotifs.length > 0;
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -64,23 +82,59 @@ export default function NotificationsScreen({ navigation }: any) {
       </View>
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-        {notifications.length === 0 ? (
+        {!hasContent && (
           <View style={styles.emptyState}>
             <Text style={styles.emptyEmoji}>🔔</Text>
             <Text style={styles.emptyTitle}>Aucune notification</Text>
-            <Text style={styles.emptyText}>Les activités de tes amis apparaîtront ici !</Text>
+            <Text style={styles.emptyText}>Les demandes d'amis et activités de tes amis apparaîtront ici !</Text>
           </View>
-        ) : notifications.map((notif, i) => (
-          <View key={i} style={styles.notifItem}>
-            <View style={styles.notifIcon}>
-              <Text style={{ fontSize: 22 }}>{notif.icon}</Text>
-            </View>
-            <View style={styles.notifContent}>
-              <Text style={styles.notifMessage}>{notif.message}</Text>
-              <Text style={styles.notifTime}>{timeAgo(notif.created_at)}</Text>
-            </View>
-          </View>
-        ))}
+        )}
+
+        {pendingRequests.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>Demandes d'amis</Text>
+            {pendingRequests.map((req, i) => (
+              <View key={i} style={[styles.notifItem, styles.friendRequestItem]}>
+                <View style={[styles.notifIcon, styles.friendRequestIcon]}>
+                  <Text style={{ fontSize: 20 }}>👥</Text>
+                </View>
+                <View style={styles.notifContent}>
+                  <Text style={styles.notifMessage}>
+                    <Text style={styles.notifBold}>@{req.username}</Text>
+                    {' '}veut être ton ami lecteur
+                  </Text>
+                  <Text style={styles.notifTime}>{timeAgo(req.created_at)}</Text>
+                </View>
+                <View style={styles.requestBtns}>
+                  <TouchableOpacity style={styles.declineBtn} onPress={() => declineRequest(req)}>
+                    <Text style={styles.declineBtnText}>✕</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.acceptBtn} onPress={() => acceptRequest(req)}>
+                    <Text style={styles.acceptBtnText}>Accepter</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </>
+        )}
+
+        {feedNotifs.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>Activité des amis</Text>
+            {feedNotifs.map((notif, i) => (
+              <View key={i} style={styles.notifItem}>
+                <View style={styles.notifIcon}>
+                  <Text style={{ fontSize: 22 }}>{notif.icon}</Text>
+                </View>
+                <View style={styles.notifContent}>
+                  <Text style={styles.notifMessage}>{notif.message}</Text>
+                  <Text style={styles.notifTime}>{timeAgo(notif.created_at)}</Text>
+                </View>
+              </View>
+            ))}
+          </>
+        )}
+
         <View style={{ height: 20 }} />
       </ScrollView>
     </SafeAreaView>
@@ -97,6 +151,11 @@ const styles = StyleSheet.create({
   backBtn: { fontSize: 14, color: colors.lavender, fontWeight: '500' },
   headerTitle: { fontSize: 16, fontWeight: '700', color: colors.white },
   scroll: { flex: 1, paddingHorizontal: 16 },
+  sectionTitle: {
+    fontSize: 11, fontWeight: '700', color: colors.muted,
+    letterSpacing: 0.8, textTransform: 'uppercase',
+    marginTop: 20, marginBottom: 8,
+  },
   emptyState: { alignItems: 'center', paddingTop: 80, gap: 12 },
   emptyEmoji: { fontSize: 56 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: colors.white },
@@ -104,15 +163,37 @@ const styles = StyleSheet.create({
   notifItem: {
     flexDirection: 'row', gap: 12, alignItems: 'center',
     padding: 14, backgroundColor: colors.card,
-    borderRadius: radius.md, marginTop: 10,
+    borderRadius: radius.md, marginBottom: 8,
     borderWidth: 1, borderColor: colors.divider,
+  },
+  friendRequestItem: {
+    borderColor: colors.border,
+    backgroundColor: colors.purpleGlow,
   },
   notifIcon: {
     width: 44, height: 44, borderRadius: 22,
-    backgroundColor: 'rgba(108,92,231,0.15)',
+    backgroundColor: 'rgba(124,58,237,0.12)',
     alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
+  },
+  friendRequestIcon: {
+    backgroundColor: 'rgba(124,58,237,0.2)',
   },
   notifContent: { flex: 1 },
   notifMessage: { fontSize: 13, color: colors.white, lineHeight: 18 },
+  notifBold: { fontWeight: '700', color: colors.lavender },
   notifTime: { fontSize: 11, color: colors.gray, marginTop: 3 },
+  acceptBtn: {
+    paddingHorizontal: 14, paddingVertical: 8,
+    backgroundColor: colors.cyan,
+    borderRadius: 20, flexShrink: 0,
+  },
+  acceptBtnText: { color: colors.bg, fontSize: 12, fontWeight: '700' },
+  requestBtns: { flexDirection: 'row', gap: 6, alignItems: 'center', flexShrink: 0 },
+  declineBtn: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: colors.card2, borderWidth: 1, borderColor: colors.divider,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  declineBtnText: { color: colors.gray, fontSize: 13, fontWeight: '700' },
 });

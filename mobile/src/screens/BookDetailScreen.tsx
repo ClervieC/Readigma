@@ -97,7 +97,7 @@ export default function BookDetailScreen({ route, navigation }: any) {
 
   const changeStatus = (status: string) => {
     if (status === 'done') { setShowFinishModal(true); return; }
-    booksService.updateBook(book.book_id, { status }).then(() => {
+    booksService.addBook(book.book_id, status).then(() => {
       Alert.alert('✅', status === 'reading' ? 'Bonne lecture ! 📖' : 'Statut mis à jour !');
       navigation.goBack();
     }).catch(() => Alert.alert('Erreur', 'Impossible de mettre à jour'));
@@ -105,11 +105,9 @@ export default function BookDetailScreen({ route, navigation }: any) {
 
     const finishBook = () => {
     console.log('Finishing book:', book.book_id, 'rating:', rating, 'comment:', comment);
-    booksService.updateBook(book.book_id, {
-        status: 'done',
-        rating: rating || undefined,
-        comment: comment || undefined,
-    }).then((res) => {
+    booksService.addBook(book.book_id, 'done').then(() =>
+      booksService.updateBook(book.book_id, { status: 'done', rating: rating || undefined, comment: comment || undefined })
+    ).then((res) => {
         console.log('Book finished:', res.data);
         setShowFinishModal(false);
         Alert.alert('🎉', 'Félicitations ! Tu as terminé ce livre !');

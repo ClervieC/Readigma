@@ -128,7 +128,8 @@ export default function SearchScreen() {
 
   const showSuccess = (msg: string) => {
     setSuccessMsg(msg);
-    setTimeout(() => setSuccessMsg(''), 3000);
+    const t = setTimeout(() => setSuccessMsg(''), 3000);
+    return () => clearTimeout(t);
   };
 
   return (
