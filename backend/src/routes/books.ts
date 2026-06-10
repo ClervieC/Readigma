@@ -5,25 +5,79 @@ import { authMiddleware, adminMiddleware, AuthRequest } from '../middleware/auth
 
 const router = Router();
 
+async function searchHardcover(query: string): Promise<any[]> {
+  if (!process.env.HARDCOVER_API_KEY) return [];
+  const gql = `query Search($q: String!) { search(query: $q, query_type: "Book", per_page: 10) { results } }`;
+  try {
+    const response = await axios.post(
+      'https://api.hardcover.app/v1/graphql',
+      { query: gql, variables: { q: query } },
+      {
+        headers: {
+          Authorization: (process.env.HARDCOVER_API_KEY || '').startsWith('Bearer ')
+            ? process.env.HARDCOVER_API_KEY!
+            : `Bearer ${process.env.HARDCOVER_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 6000,
+      }
+    );
+    const raw = response.data?.data?.search?.results;
+    if (!raw) return [];
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const hits: any[] = parsed?.hits || parsed?.results || [];
+    return hits.map((hit: any) => ({
+      google_books_id: `hardcover_${hit.objectID || hit.id}`,
+      title: hit.title || '',
+      author: hit.author || hit.contributions?.[0]?.author?.name || 'Auteur inconnu',
+      cover_url: hit.image?.url || hit.cover?.url || null,
+      description: hit.description || null,
+      published_year: hit.release_year || null,
+      genres: Array.isArray(hit.tags?.Genre)
+        ? hit.tags.Genre.map((g: any) => g.tag ?? g)
+        : [],
+      source: 'hardcover',
+    }));
+  } catch {
+    return [];
+  }
+}
+
 router.get('/search', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const { q } = req.query;
     if (!q) return res.status(400).json({ error: 'Paramètre q requis' });
-    const response = await axios.get('https://www.googleapis.com/books/v1/volumes', {
-      params: { q, maxResults: 10, key: process.env.GOOGLE_BOOKS_API_KEY }
-    });
-    const books = (response.data.items || []).map((item: any) => ({
-      google_books_id: item.id,
-      title: item.volumeInfo.title,
-      author: item.volumeInfo.authors?.join(', ') || 'Auteur inconnu',
-      cover_url: item.volumeInfo.imageLinks?.thumbnail || null,
-      description: item.volumeInfo.description || null,
-      published_year: parseInt(item.volumeInfo.publishedDate) || null,
-      genres: item.volumeInfo.categories || [],
-    }));
-    res.json(books);
+
+    const [googleRes, hardcoverBooks] = await Promise.allSettled([
+      axios.get('https://www.googleapis.com/books/v1/volumes', {
+        params: { q, maxResults: 10, key: process.env.GOOGLE_BOOKS_API_KEY }
+      }),
+      searchHardcover(q as string),
+    ]);
+
+    const googleBooks = googleRes.status === 'fulfilled'
+      ? (googleRes.value.data.items || []).map((item: any) => ({
+          google_books_id: item.id,
+          title: item.volumeInfo.title || '',
+          author: item.volumeInfo.authors?.join(', ') || 'Auteur inconnu',
+          cover_url: item.volumeInfo.imageLinks?.thumbnail?.replace('http://', 'https://') || null,
+          description: item.volumeInfo.description || null,
+          published_year: parseInt(item.volumeInfo.publishedDate) || null,
+          genres: item.volumeInfo.categories || [],
+          source: 'google',
+        }))
+      : [];
+
+    const hcBooks = hardcoverBooks.status === 'fulfilled' ? hardcoverBooks.value : [];
+
+    // Merge: Google first, then Hardcover results not already covered by title
+    const seenTitles = new Set(googleBooks.map((b: any) => b.title.toLowerCase().trim()));
+    const uniqueHC = hcBooks.filter((b: any) => !seenTitles.has(b.title.toLowerCase().trim()));
+    const merged = [...googleBooks, ...uniqueHC].slice(0, 20);
+
+    res.json(merged);
   } catch (err) {
-    res.status(500).json({ error: 'Erreur recherche Google Books' });
+    res.status(500).json({ error: 'Erreur recherche livres' });
   }
 });
 

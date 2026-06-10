@@ -1,8 +1,8 @@
-import React from 'react';
+import { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { colors, radius, shadows } from '../theme';
 import { useAuth } from '../contexts/auth.context';
 
@@ -150,10 +150,52 @@ function MainStack() {
   );
 }
 
-export default function Navigation() {
-  const { isLoggedIn, needsOnboarding, login, completeOnboarding } = useAuth();
+function WakeUpScreen() {
+  const [showSlowMsg, setShowSlowMsg] = useState(false);
+  const [showVerySlowMsg, setVerySlowMsg] = useState(false);
 
-  if (isLoggedIn === null) return null;
+  useEffect(() => {
+    const t1 = setTimeout(() => setShowSlowMsg(true), 4000);
+    const t2 = setTimeout(() => setVerySlowMsg(true), 18000);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, []);
+
+  return (
+    <View style={wakeStyles.container}>
+      <Text style={wakeStyles.logo}>📚</Text>
+      <Text style={wakeStyles.appName}>Readigma</Text>
+      <ActivityIndicator color={colors.purple} size="large" style={{ marginTop: 32 }} />
+      {showSlowMsg && (
+        <Text style={wakeStyles.msg}>
+          {showVerySlowMsg
+            ? 'Ça prend plus longtemps que d\'habitude...\nMerci de patienter ☕'
+            : 'Le serveur se réveille...\nEncore quelques secondes ☕'}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+const wakeStyles = StyleSheet.create({
+  container: {
+    flex: 1, backgroundColor: colors.bg,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  logo: { fontSize: 64 },
+  appName: {
+    fontSize: 28, fontWeight: '800', color: colors.white,
+    letterSpacing: 1, marginTop: 12,
+  },
+  msg: {
+    marginTop: 20, fontSize: 14, color: colors.gray,
+    textAlign: 'center', lineHeight: 22,
+  },
+});
+
+export default function Navigation() {
+  const { isLoggedIn, needsOnboarding, serverReady, login, completeOnboarding } = useAuth();
+
+  if (!serverReady || isLoggedIn === null) return <WakeUpScreen />;
 
   return (
     <NavigationContainer>

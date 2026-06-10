@@ -20,15 +20,18 @@ const BookItem = ({ book, onPress, addedBooks }: { book: any; onPress: (book: an
       <Text style={styles.resultTitle} numberOfLines={2}>{book.title}</Text>
       <Text style={styles.resultAuthor}>{book.author}</Text>
       {book.published_year ? <Text style={styles.resultYear}>{book.published_year}</Text> : null}
-      {book.genres?.length ? (
-        <View style={styles.tags}>
-          {book.genres.slice(0, 2).map((g: string, j: number) => (
-            <View key={j} style={styles.tag}>
-              <Text style={styles.tagText}>{g}</Text>
-            </View>
-          ))}
-        </View>
-      ) : null}
+      <View style={styles.tags}>
+        {book.source === 'hardcover' && (
+          <View style={[styles.tag, styles.tagHC]}>
+            <Text style={[styles.tagText, { color: colors.cyan }]}>Hardcover</Text>
+          </View>
+        )}
+        {book.genres?.slice(0, 2).map((g: string, j: number) => (
+          <View key={j} style={styles.tag}>
+            <Text style={styles.tagText}>{g}</Text>
+          </View>
+        ))}
+      </View>
     </View>
     <View style={[styles.addBtn, addedBooks.has(book.google_books_id) && styles.addBtnDone]}>
       <Text style={{ fontSize: 18, color: addedBooks.has(book.google_books_id) ? colors.bg : colors.lavender }}>
@@ -318,6 +321,7 @@ const styles = StyleSheet.create({
   resultYear: { fontSize: 10, color: colors.gray, marginTop: 2 },
   tags: { flexDirection: 'row', gap: 4, marginTop: 5, flexWrap: 'wrap' },
   tag: { backgroundColor: 'rgba(162,155,254,0.1)', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8 },
+  tagHC: { backgroundColor: 'rgba(34,211,238,0.1)', borderWidth: 1, borderColor: 'rgba(34,211,238,0.3)' },
   tagText: { fontSize: 9, color: colors.lavender },
   addBtn: {
     width: 36, height: 36, borderRadius: 18,

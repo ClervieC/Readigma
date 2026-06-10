@@ -4,6 +4,7 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import { authService } from '../services/auth.service';
+import api from '../services/api';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -41,6 +42,7 @@ async function registerForPushNotifications(): Promise<string | null> {
 type AuthContextType = {
   isLoggedIn: boolean | null;
   needsOnboarding: boolean;
+  serverReady: boolean;
   login: () => Promise<void>;
   completeOnboarding: () => void;
   logout: () => Promise<void>;
@@ -51,8 +53,14 @@ const AuthContext = createContext<AuthContextType>(null!);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [serverReady, setServerReady] = useState(false);
 
   useEffect(() => {
+    // Ping health endpoint — this wakes Render's free tier if it was asleep
+    api.get('/health', { timeout: 60000 })
+      .catch(() => {})
+      .finally(() => setServerReady(true));
+
     authService.isLoggedIn().then(async (loggedIn) => {
       setIsLoggedIn(loggedIn);
       if (loggedIn) {
@@ -84,7 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ isLoggedIn, needsOnboarding, login, completeOnboarding, logout }}>
+    <AuthContext.Provider value={{ isLoggedIn, needsOnboarding, serverReady, login, completeOnboarding, logout }}>
       {children}
     </AuthContext.Provider>
   );
