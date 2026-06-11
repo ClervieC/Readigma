@@ -32,10 +32,22 @@ Required `.env` variables:
 ```bash
 cd mobile
 npm install
-npx expo start          # opens Expo Dev Tools
 ```
 
-Then scan the QR code with Expo Go, or press `i` for iOS simulator / `a` for Android emulator.
+The project uses `expo-dev-client`, so **Expo Go won't work**. You need to build and install a native development build first (one-time, requires Xcode for iOS / Android Studio for Android):
+
+```bash
+npx expo run:ios        # builds and installs on iOS simulator
+npx expo run:android    # builds and installs on Android emulator
+```
+
+After the first build, just use:
+
+```bash
+npx expo start          # then press i (iOS) or a (Android)
+```
+
+> If you want to skip the native build and use Expo Go instead, run `npx expo start --go`. You'll lose any native-only features but it works instantly.
 
 The app connects to the backend via the `API_URL` set in `mobile/src/services/api.ts`. Change it to your local IP if running on a physical device (e.g. `http://192.168.x.x:3000`).
 
