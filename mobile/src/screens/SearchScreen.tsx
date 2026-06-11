@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, TextInput, ScrollView, TouchableOpacity,
   StyleSheet, SafeAreaView, Image, ActivityIndicator, Modal
 } from 'react-native';
-import { colors, radius } from '../theme';
+import { radius, ColorPalette } from '../theme';
+import { useTheme } from '../contexts/theme.context';
 import { booksService } from '../services/books.service';
 
-const BookItem = ({ book, onPress, addedBooks }: { book: any; onPress: (book: any) => void; addedBooks: Set<string> }) => (
+const BookItem = ({ book, onPress, addedBooks, colors, styles }: { book: any; onPress: (book: any) => void; addedBooks: Set<string>; colors: ColorPalette; styles: any }) => (
   <TouchableOpacity style={styles.resultItem} onPress={() => onPress(book)}>
     <View style={styles.resultCover}>
       {book.cover_url ? (
@@ -41,7 +42,7 @@ const BookItem = ({ book, onPress, addedBooks }: { book: any; onPress: (book: an
   </TouchableOpacity>
 );
 
-const HorizontalBooks = ({ books, onPress, addedBooks }: { books: any[]; onPress: (book: any) => void; addedBooks: Set<string> }) => (
+const HorizontalBooks = ({ books, onPress, addedBooks, colors, styles }: { books: any[]; onPress: (book: any) => void; addedBooks: Set<string>; colors: ColorPalette; styles: any }) => (
   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.hScroll}>
     {books.map((book, i) => (
       <TouchableOpacity key={i} style={styles.hCard} onPress={() => onPress(book)}>
@@ -63,6 +64,8 @@ const HorizontalBooks = ({ books, onPress, addedBooks }: { books: any[]; onPress
 );
 
 export default function SearchScreen() {
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -167,7 +170,7 @@ export default function SearchScreen() {
           <>
             <Text style={styles.resultsCount}>{results.length} résultats pour "{query}"</Text>
             {results.map((book, i) => (
-              <BookItem key={i} book={book} onPress={openDetail} addedBooks={addedBooks} />
+              <BookItem key={i} book={book} onPress={openDetail} addedBooks={addedBooks} colors={colors} styles={styles} />
             ))}
           </>
         )}
@@ -191,7 +194,7 @@ export default function SearchScreen() {
                       <Text style={styles.sectionLabel}>📚 Populaires sur Readigma</Text>
                     </View>
                     {popular.slice(0, 4).map((book, i) => (
-                      <BookItem key={i} book={book} onPress={openDetail} addedBooks={addedBooks} />
+                      <BookItem key={i} book={book} onPress={openDetail} addedBooks={addedBooks} colors={colors} styles={styles} />
                     ))}
                   </>
                 )}
@@ -200,7 +203,7 @@ export default function SearchScreen() {
                     <View style={styles.sectionHeader}>
                       <Text style={styles.sectionLabel}>{section.label}</Text>
                     </View>
-                    <HorizontalBooks books={section.books} onPress={openDetail} addedBooks={addedBooks} />
+                    <HorizontalBooks books={section.books} onPress={openDetail} addedBooks={addedBooks} colors={colors} styles={styles} />
                   </View>
                 ))}
               </>
@@ -291,7 +294,7 @@ export default function SearchScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   header: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 },
   title: { fontSize: 20, fontWeight: '700', color: colors.white },

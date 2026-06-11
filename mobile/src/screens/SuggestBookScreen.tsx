@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
-import {
-  View, Text, StyleSheet, SafeAreaView,
-  TouchableOpacity, TextInput, Alert, ScrollView
-} from 'react-native';
-import { colors, radius } from '../theme';
+import { useState } from 'react';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, TextInput, Alert, ScrollView } from 'react-native';
+import { radius, ColorPalette } from '../theme';
+import { useTheme } from '../contexts/theme.context';
 import api from '../services/api';
 
 export default function SuggestBookScreen({ navigation }: any) {
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
   const [message, setMessage] = useState('');
@@ -17,49 +17,31 @@ export default function SuggestBookScreen({ navigation }: any) {
     setLoading(true);
     api.post('/suggestions', { title, author, message }).then(() => {
       setLoading(false);
-      Alert.alert('🎉', 'Suggestion envoyée ! L\'admin la reviewera bientôt.', [
-        { text: 'OK', onPress: () => navigation.goBack() }
-      ]);
-    }).catch(() => {
-      setLoading(false);
-      Alert.alert('Erreur', 'Impossible d\'envoyer la suggestion');
-    });
+      Alert.alert('🎉', 'Suggestion envoyée ! L\'admin la reviewera bientôt.', [{ text: 'OK', onPress: () => navigation.goBack() }]);
+    }).catch(() => { setLoading(false); Alert.alert('Erreur', 'Impossible d\'envoyer la suggestion'); });
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backBtn}>← Retour</Text>
-        </TouchableOpacity>
+        <TouchableOpacity onPress={() => navigation.goBack()}><Text style={styles.backBtn}>← Retour</Text></TouchableOpacity>
         <Text style={styles.headerTitle}>Suggérer un livre</Text>
         <View style={{ width: 60 }} />
       </View>
-
       <ScrollView style={styles.scroll}>
         <View style={styles.hero}>
           <Text style={styles.heroEmoji}>💡</Text>
           <Text style={styles.heroTitle}>Tu connais un livre incroyable ?</Text>
           <Text style={styles.heroSub}>Propose-le à l'admin pour qu'il soit ajouté à Readigma !</Text>
         </View>
-
         <View style={styles.form}>
           <Text style={styles.label}>Titre du livre *</Text>
-          <TextInput style={styles.input} value={title} onChangeText={setTitle}
-            placeholder="Ex: The Name of the Wind" placeholderTextColor={colors.gray} />
-
+          <TextInput style={styles.input} value={title} onChangeText={setTitle} placeholder="Ex: The Name of the Wind" placeholderTextColor={colors.gray} />
           <Text style={styles.label}>Auteur</Text>
-          <TextInput style={styles.input} value={author} onChangeText={setAuthor}
-            placeholder="Ex: Patrick Rothfuss" placeholderTextColor={colors.gray} />
-
+          <TextInput style={styles.input} value={author} onChangeText={setAuthor} placeholder="Ex: Patrick Rothfuss" placeholderTextColor={colors.gray} />
           <Text style={styles.label}>Pourquoi ce livre ?</Text>
-          <TextInput
-            style={[styles.input, { height: 100, textAlignVertical: 'top' }]}
-            value={message} onChangeText={setMessage}
-            placeholder="Dis-nous pourquoi ce livre mérite d'être sur Readigma..."
-            placeholderTextColor={colors.gray} multiline maxLength={300}
-          />
-
+          <TextInput style={[styles.input, { height: 100, textAlignVertical: 'top' }]} value={message} onChangeText={setMessage}
+            placeholder="Dis-nous pourquoi ce livre mérite d'être sur Readigma..." placeholderTextColor={colors.gray} multiline maxLength={300} />
           <TouchableOpacity style={styles.submitBtn} onPress={submit} disabled={loading}>
             <Text style={styles.submitBtnText}>{loading ? 'Envoi...' : '💡 Envoyer la suggestion'}</Text>
           </TouchableOpacity>
@@ -69,13 +51,9 @@ export default function SuggestBookScreen({ navigation }: any) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: colors.divider,
-  },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.divider },
   backBtn: { fontSize: 14, color: colors.lavender, fontWeight: '500' },
   headerTitle: { fontSize: 16, fontWeight: '700', color: colors.white },
   scroll: { flex: 1, paddingHorizontal: 16 },
@@ -85,14 +63,7 @@ const styles = StyleSheet.create({
   heroSub: { fontSize: 13, color: colors.gray, textAlign: 'center', paddingHorizontal: 20 },
   form: { gap: 4 },
   label: { fontSize: 12, color: colors.gray, marginBottom: 6, fontWeight: '500' },
-  input: {
-    backgroundColor: colors.card, borderRadius: radius.sm,
-    padding: 14, color: colors.white, fontSize: 15,
-    borderWidth: 1, borderColor: colors.divider, marginBottom: 16,
-  },
-  submitBtn: {
-    backgroundColor: colors.purple, borderRadius: radius.md,
-    padding: 16, alignItems: 'center', marginTop: 8,
-  },
+  input: { backgroundColor: colors.card, borderRadius: radius.sm, padding: 14, color: colors.white, fontSize: 15, borderWidth: 1, borderColor: colors.divider, marginBottom: 16 },
+  submitBtn: { backgroundColor: colors.purple, borderRadius: radius.md, padding: 16, alignItems: 'center', marginTop: 8 },
   submitBtnText: { color: 'white', fontSize: 15, fontWeight: '700' },
 });

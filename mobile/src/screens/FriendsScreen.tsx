@@ -1,13 +1,16 @@
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, SafeAreaView, TextInput, Alert
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { colors, radius } from '../theme';
+import { radius, ColorPalette } from '../theme';
+import { useTheme } from '../contexts/theme.context';
 import { friendsService } from '../services/friends.service';
 
 export default function FriendsScreen({ navigation }: any) {
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [friends, setFriends] = useState<any[]>([]);
@@ -15,25 +18,11 @@ export default function FriendsScreen({ navigation }: any) {
   const [sentRequests, setSentRequests] = useState<Set<string>>(new Set());
   const [tab, setTab] = useState<'search' | 'friends' | 'pending'>('friends');
 
-  useFocusEffect(
-    useCallback(() => {
-      loadFriends();
-      loadPending();
-    }, [])
-  );
+  useFocusEffect(useCallback(() => { loadFriends(); loadPending(); }, []));
 
-  const loadFriends = () => {
-    friendsService.getFriends().then(res => setFriends(res.data)).catch(() => {});
-  };
-
-  const loadPending = () => {
-    friendsService.getPendingRequests().then(res => setPending(res.data)).catch(() => {});
-  };
-
-  const search = () => {
-    if (!query.trim()) return;
-    friendsService.searchUsers(query).then(res => setResults(res.data)).catch(() => {});
-  };
+  const loadFriends = () => { friendsService.getFriends().then(res => setFriends(res.data)).catch(() => {}); };
+  const loadPending = () => { friendsService.getPendingRequests().then(res => setPending(res.data)).catch(() => {}); };
+  const search = () => { if (!query.trim()) return; friendsService.searchUsers(query).then(res => setResults(res.data)).catch(() => {}); };
 
   const sendRequest = (userId: string, username: string) => {
     friendsService.sendRequest(userId).then(() => {
@@ -43,10 +32,7 @@ export default function FriendsScreen({ navigation }: any) {
   };
 
   const acceptRequest = (id: string) => {
-    friendsService.acceptRequest(id).then(() => {
-      loadFriends();
-      loadPending();
-    }).catch(() => Alert.alert('Erreur', 'Impossible d\'accepter'));
+    friendsService.acceptRequest(id).then(() => { loadFriends(); loadPending(); }).catch(() => Alert.alert('Erreur', 'Impossible d\'accepter'));
   };
 
   return (
@@ -65,14 +51,8 @@ export default function FriendsScreen({ navigation }: any) {
           { label: 'Chercher', value: 'search' },
           { label: `Demandes${pending.length ? ` (${pending.length})` : ''}`, value: 'pending' },
         ].map(t => (
-          <TouchableOpacity
-            key={t.value}
-            style={[styles.tab, tab === t.value && styles.tabActive]}
-            onPress={() => setTab(t.value as any)}
-          >
-            <Text style={[styles.tabText, tab === t.value && styles.tabTextActive]}>
-              {t.label}
-            </Text>
+          <TouchableOpacity key={t.value} style={[styles.tab, tab === t.value && styles.tabActive]} onPress={() => setTab(t.value as any)}>
+            <Text style={[styles.tabText, tab === t.value && styles.tabTextActive]}>{t.label}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -82,47 +62,27 @@ export default function FriendsScreen({ navigation }: any) {
           <>
             <View style={styles.searchBar}>
               <Text style={{ fontSize: 18, color: colors.gray }}>🔍</Text>
-              <TextInput
-                style={styles.searchInput}
-                value={query}
-                onChangeText={setQuery}
-                placeholder="Chercher un lecteur..."
-                placeholderTextColor={colors.gray}
-                returnKeyType="search"
-                onSubmitEditing={search}
-                autoCapitalize="none"
-              />
+              <TextInput style={styles.searchInput} value={query} onChangeText={setQuery}
+                placeholder="Chercher un lecteur..." placeholderTextColor={colors.gray}
+                returnKeyType="search" onSubmitEditing={search} autoCapitalize="none" />
             </View>
             {results.map((user, i) => (
-              <TouchableOpacity
-                key={i}
-                style={styles.userItem}
-                onPress={() => navigation.navigate('UserProfile', { userId: user.id, username: user.username })}
-                activeOpacity={0.75}
-              >
+              <TouchableOpacity key={i} style={styles.userItem}
+                onPress={() => navigation.navigate('UserProfile', { userId: user.id, username: user.username })} activeOpacity={0.75}>
                 <View style={styles.userAvatar}>
-                  <Text style={styles.userAvatarText}>
-                    {user.username?.slice(0, 2).toUpperCase()}
-                  </Text>
+                  <Text style={styles.userAvatarText}>{user.username?.slice(0, 2).toUpperCase()}</Text>
                 </View>
                 <View style={styles.userInfo}>
                   <Text style={styles.userName}>@{user.username}</Text>
                   <Text style={styles.userBooks}>{user.books_count} livres lus</Text>
                 </View>
-                <TouchableOpacity
-                  style={[styles.addBtn, sentRequests.has(user.id) && styles.addBtnSent]}
-                  onPress={() => sendRequest(user.id, user.username)}
-                  disabled={sentRequests.has(user.id)}
-                >
-                  <Text style={styles.addBtnText}>
-                    {sentRequests.has(user.id) ? '✓ Envoyé' : '+ Suivre'}
-                  </Text>
+                <TouchableOpacity style={[styles.addBtn, sentRequests.has(user.id) && styles.addBtnSent]}
+                  onPress={() => sendRequest(user.id, user.username)} disabled={sentRequests.has(user.id)}>
+                  <Text style={styles.addBtnText}>{sentRequests.has(user.id) ? '✓ Envoyé' : '+ Suivre'}</Text>
                 </TouchableOpacity>
               </TouchableOpacity>
             ))}
-            {results.length === 0 && query && (
-              <Text style={styles.emptyText}>Aucun lecteur trouvé</Text>
-            )}
+            {results.length === 0 && query && <Text style={styles.emptyText}>Aucun lecteur trouvé</Text>}
           </>
         )}
 
@@ -138,16 +98,10 @@ export default function FriendsScreen({ navigation }: any) {
                 </TouchableOpacity>
               </View>
             ) : friends.map((friend, i) => (
-              <TouchableOpacity
-                key={i}
-                style={styles.userItem}
-                onPress={() => navigation.navigate('UserProfile', { userId: friend.id, username: friend.username })}
-                activeOpacity={0.75}
-              >
+              <TouchableOpacity key={i} style={styles.userItem}
+                onPress={() => navigation.navigate('UserProfile', { userId: friend.id, username: friend.username })} activeOpacity={0.75}>
                 <View style={styles.userAvatar}>
-                  <Text style={styles.userAvatarText}>
-                    {friend.username?.slice(0, 2).toUpperCase()}
-                  </Text>
+                  <Text style={styles.userAvatarText}>{friend.username?.slice(0, 2).toUpperCase()}</Text>
                 </View>
                 <View style={styles.userInfo}>
                   <Text style={styles.userName}>@{friend.username}</Text>
@@ -166,9 +120,7 @@ export default function FriendsScreen({ navigation }: any) {
             ) : pending.map((req, i) => (
               <View key={i} style={styles.userItem}>
                 <View style={styles.userAvatar}>
-                  <Text style={styles.userAvatarText}>
-                    {req.username?.slice(0, 2).toUpperCase()}
-                  </Text>
+                  <Text style={styles.userAvatarText}>{req.username?.slice(0, 2).toUpperCase()}</Text>
                 </View>
                 <View style={styles.userInfo}>
                   <Text style={styles.userName}>@{req.username}</Text>
@@ -181,71 +133,40 @@ export default function FriendsScreen({ navigation }: any) {
             ))}
           </>
         )}
-
         <View style={{ height: 20 }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: colors.divider,
-  },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.divider },
   backBtn: { fontSize: 14, color: colors.lavender, fontWeight: '500' },
   headerTitle: { fontSize: 16, fontWeight: '700', color: colors.white },
-  tabs: {
-    flexDirection: 'row', backgroundColor: colors.card,
-    borderRadius: radius.md, padding: 4, margin: 16,
-  },
+  tabs: { flexDirection: 'row', backgroundColor: colors.card, borderRadius: radius.md, padding: 4, margin: 16 },
   tab: { flex: 1, padding: 8, borderRadius: 12, alignItems: 'center' },
   tabActive: { backgroundColor: colors.purple },
   tabText: { fontSize: 11, color: colors.gray, fontWeight: '500' },
   tabTextActive: { color: 'white' },
   scroll: { flex: 1, paddingHorizontal: 16 },
-  searchBar: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: colors.card, borderRadius: radius.md,
-    padding: 12, marginBottom: 16,
-    borderWidth: 1, borderColor: colors.divider,
-  },
+  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.card, borderRadius: radius.md, padding: 12, marginBottom: 16, borderWidth: 1, borderColor: colors.divider },
   searchInput: { flex: 1, color: colors.white, fontSize: 15 },
-  userItem: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    padding: 12, backgroundColor: colors.card,
-    borderRadius: radius.md, marginBottom: 8,
-    borderWidth: 1, borderColor: colors.divider,
-  },
-  userAvatar: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: 'rgba(108,92,231,0.2)',
-    alignItems: 'center', justifyContent: 'center',
-  },
+  userItem: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, backgroundColor: colors.card, borderRadius: radius.md, marginBottom: 8, borderWidth: 1, borderColor: colors.divider },
+  userAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(108,92,231,0.2)', alignItems: 'center', justifyContent: 'center' },
   userAvatarText: { fontSize: 16, fontWeight: '700', color: colors.lavender },
   userInfo: { flex: 1 },
   userName: { fontSize: 14, fontWeight: '600', color: colors.white },
   userBooks: { fontSize: 11, color: colors.gray, marginTop: 2 },
-  addBtn: {
-    paddingHorizontal: 14, paddingVertical: 7,
-    backgroundColor: colors.purple, borderRadius: 20,
-  },
+  addBtn: { paddingHorizontal: 14, paddingVertical: 7, backgroundColor: colors.purple, borderRadius: 20 },
   addBtnSent: { backgroundColor: 'rgba(108,92,231,0.2)', borderWidth: 1, borderColor: colors.purple },
   addBtnText: { color: 'white', fontSize: 12, fontWeight: '600' },
-  acceptBtn: {
-    paddingHorizontal: 14, paddingVertical: 7,
-    backgroundColor: colors.teal, borderRadius: 20,
-  },
+  acceptBtn: { paddingHorizontal: 14, paddingVertical: 7, backgroundColor: colors.teal, borderRadius: 20 },
   acceptBtnText: { color: colors.bg, fontSize: 12, fontWeight: '600' },
   emptyState: { alignItems: 'center', paddingTop: 60, gap: 12 },
   emptyEmoji: { fontSize: 48 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: colors.white },
   emptyText: { color: colors.gray, fontSize: 13, textAlign: 'center', paddingTop: 20 },
-  searchBtn: {
-    backgroundColor: colors.purple, paddingHorizontal: 20,
-    paddingVertical: 10, borderRadius: 20, marginTop: 8,
-  },
+  searchBtn: { backgroundColor: colors.purple, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, marginTop: 8 },
   searchBtnText: { color: 'white', fontSize: 13, fontWeight: '600' },
 });

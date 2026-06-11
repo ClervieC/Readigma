@@ -3,7 +3,8 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
-import { colors, radius, shadows } from '../theme';
+import { radius, shadows, ColorPalette } from '../theme';
+import { useTheme } from '../contexts/theme.context';
 import { useAuth } from '../contexts/auth.context';
 
 import DiscoverScreen from '../screens/DiscoverScreen';
@@ -35,9 +36,12 @@ const TABS = [
 ];
 
 function CustomTabBar({ state, navigation }: any) {
+  const { colors } = useTheme();
+  const styles = makeTabStyles(colors);
+
   return (
-    <View style={tabStyles.wrapper}>
-      <View style={tabStyles.bar}>
+    <View style={styles.wrapper}>
+      <View style={styles.bar}>
         {state.routes.map((route: any, index: number) => {
           const tab = TABS.find(t => t.name === route.name) ?? TABS[index];
           const focused = state.index === index;
@@ -45,16 +49,16 @@ function CustomTabBar({ state, navigation }: any) {
           return (
             <TouchableOpacity
               key={route.key}
-              style={tabStyles.item}
+              style={styles.item}
               onPress={() => navigation.navigate(route.name)}
               activeOpacity={0.7}
             >
-              <View style={[tabStyles.iconWrap, focused && tabStyles.iconWrapActive]}>
-                <Text style={[tabStyles.icon, focused && tabStyles.iconActive]}>
+              <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
+                <Text style={[styles.icon, focused && styles.iconActive]}>
                   {tab.icon}
                 </Text>
               </View>
-              <Text style={[tabStyles.label, focused && tabStyles.labelActive]}>
+              <Text style={[styles.label, focused && styles.labelActive]}>
                 {tab.label}
               </Text>
             </TouchableOpacity>
@@ -65,7 +69,7 @@ function CustomTabBar({ state, navigation }: any) {
   );
 }
 
-const tabStyles = StyleSheet.create({
+const makeTabStyles = (colors: ColorPalette) => StyleSheet.create({
   wrapper: {
     position: 'absolute',
     bottom: 0,
@@ -151,6 +155,8 @@ function MainStack() {
 }
 
 function WakeUpScreen() {
+  const { colors } = useTheme();
+  const styles = makeWakeStyles(colors);
   const [showSlowMsg, setShowSlowMsg] = useState(false);
   const [showVerySlowMsg, setVerySlowMsg] = useState(false);
 
@@ -161,12 +167,12 @@ function WakeUpScreen() {
   }, []);
 
   return (
-    <View style={wakeStyles.container}>
-      <Text style={wakeStyles.logo}>📚</Text>
-      <Text style={wakeStyles.appName}>Readigma</Text>
+    <View style={styles.container}>
+      <Text style={styles.logo}>📚</Text>
+      <Text style={styles.appName}>Readigma</Text>
       <ActivityIndicator color={colors.purple} size="large" style={{ marginTop: 32 }} />
       {showSlowMsg && (
-        <Text style={wakeStyles.msg}>
+        <Text style={styles.msg}>
           {showVerySlowMsg
             ? 'Ça prend plus longtemps que d\'habitude...\nMerci de patienter ☕'
             : 'Le serveur se réveille...\nEncore quelques secondes ☕'}
@@ -176,7 +182,7 @@ function WakeUpScreen() {
   );
 }
 
-const wakeStyles = StyleSheet.create({
+const makeWakeStyles = (colors: ColorPalette) => StyleSheet.create({
   container: {
     flex: 1, backgroundColor: colors.bg,
     alignItems: 'center', justifyContent: 'center',

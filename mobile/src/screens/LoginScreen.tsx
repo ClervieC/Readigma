@@ -3,10 +3,13 @@ import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Alert
 } from 'react-native';
-import { colors, radius } from '../theme';
+import { radius, ColorPalette } from '../theme';
+import { useTheme } from '../contexts/theme.context';
 import { authService } from '../services/auth.service';
 
 export default function LoginScreen({ navigation, onLogin }: any) {
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -72,7 +75,7 @@ export default function LoginScreen({ navigation, onLogin }: any) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   scroll: { flexGrow: 1, justifyContent: 'center', padding: 20 },
   top: { alignItems: 'center', marginBottom: 32 },

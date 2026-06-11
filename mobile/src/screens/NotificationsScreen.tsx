@@ -1,10 +1,8 @@
-import React, { useState, useCallback } from 'react';
-import {
-  View, Text, ScrollView, StyleSheet,
-  SafeAreaView, TouchableOpacity, Alert,
-} from 'react-native';
+import { useState, useCallback } from 'react';
+import { View, Text, ScrollView, StyleSheet, SafeAreaView, TouchableOpacity, Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { colors, radius } from '../theme';
+import { radius, ColorPalette } from '../theme';
+import { useTheme } from '../contexts/theme.context';
 import { feedService } from '../services/feed.service';
 import { friendsService } from '../services/friends.service';
 
@@ -20,23 +18,17 @@ function timeAgo(dateStr: string) {
 }
 
 export default function NotificationsScreen({ navigation }: any) {
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [feedNotifs, setFeedNotifs] = useState<any[]>([]);
 
-  useFocusEffect(
-    useCallback(() => {
-      friendsService.getPendingRequests()
-        .then(res => setPendingRequests(res.data))
-        .catch(() => {});
-      feedService.getFeed()
-        .then(res => setFeedNotifs(res.data.map((item: any) => ({
-          ...item,
-          message: getNotifMessage(item),
-          icon: getNotifIcon(item),
-        }))))
-        .catch(() => {});
-    }, [])
-  );
+  useFocusEffect(useCallback(() => {
+    friendsService.getPendingRequests().then(res => setPendingRequests(res.data)).catch(() => {});
+    feedService.getFeed().then(res => setFeedNotifs(res.data.map((item: any) => ({
+      ...item, message: getNotifMessage(item), icon: getNotifIcon(item),
+    })))).catch(() => {});
+  }, []));
 
   const getNotifMessage = (item: any) => {
     switch (item.activity_type) {
@@ -80,7 +72,6 @@ export default function NotificationsScreen({ navigation }: any) {
         <Text style={styles.headerTitle}>Notifications</Text>
         <View style={{ width: 60 }} />
       </View>
-
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         {!hasContent && (
           <View style={styles.emptyState}>
@@ -89,7 +80,6 @@ export default function NotificationsScreen({ navigation }: any) {
             <Text style={styles.emptyText}>Les demandes d'amis et activités de tes amis apparaîtront ici !</Text>
           </View>
         )}
-
         {pendingRequests.length > 0 && (
           <>
             <Text style={styles.sectionTitle}>Demandes d'amis</Text>
@@ -99,10 +89,7 @@ export default function NotificationsScreen({ navigation }: any) {
                   <Text style={{ fontSize: 20 }}>👥</Text>
                 </View>
                 <View style={styles.notifContent}>
-                  <Text style={styles.notifMessage}>
-                    <Text style={styles.notifBold}>@{req.username}</Text>
-                    {' '}veut être ton ami lecteur
-                  </Text>
+                  <Text style={styles.notifMessage}><Text style={styles.notifBold}>@{req.username}</Text>{' '}veut être ton ami lecteur</Text>
                   <Text style={styles.notifTime}>{timeAgo(req.created_at)}</Text>
                 </View>
                 <View style={styles.requestBtns}>
@@ -117,15 +104,12 @@ export default function NotificationsScreen({ navigation }: any) {
             ))}
           </>
         )}
-
         {feedNotifs.length > 0 && (
           <>
             <Text style={styles.sectionTitle}>Activité des amis</Text>
             {feedNotifs.map((notif, i) => (
               <View key={i} style={styles.notifItem}>
-                <View style={styles.notifIcon}>
-                  <Text style={{ fontSize: 22 }}>{notif.icon}</Text>
-                </View>
+                <View style={styles.notifIcon}><Text style={{ fontSize: 22 }}>{notif.icon}</Text></View>
                 <View style={styles.notifContent}>
                   <Text style={styles.notifMessage}>{notif.message}</Text>
                   <Text style={styles.notifTime}>{timeAgo(notif.created_at)}</Text>
@@ -134,66 +118,34 @@ export default function NotificationsScreen({ navigation }: any) {
             ))}
           </>
         )}
-
         <View style={{ height: 20 }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: colors.divider,
-  },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.divider },
   backBtn: { fontSize: 14, color: colors.lavender, fontWeight: '500' },
   headerTitle: { fontSize: 16, fontWeight: '700', color: colors.white },
   scroll: { flex: 1, paddingHorizontal: 16 },
-  sectionTitle: {
-    fontSize: 11, fontWeight: '700', color: colors.muted,
-    letterSpacing: 0.8, textTransform: 'uppercase',
-    marginTop: 20, marginBottom: 8,
-  },
+  sectionTitle: { fontSize: 11, fontWeight: '700', color: colors.muted, letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 20, marginBottom: 8 },
   emptyState: { alignItems: 'center', paddingTop: 80, gap: 12 },
   emptyEmoji: { fontSize: 56 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: colors.white },
   emptyText: { fontSize: 13, color: colors.gray, textAlign: 'center', paddingHorizontal: 40 },
-  notifItem: {
-    flexDirection: 'row', gap: 12, alignItems: 'center',
-    padding: 14, backgroundColor: colors.card,
-    borderRadius: radius.md, marginBottom: 8,
-    borderWidth: 1, borderColor: colors.divider,
-  },
-  friendRequestItem: {
-    borderColor: colors.border,
-    backgroundColor: colors.purpleGlow,
-  },
-  notifIcon: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: 'rgba(124,58,237,0.12)',
-    alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0,
-  },
-  friendRequestIcon: {
-    backgroundColor: 'rgba(124,58,237,0.2)',
-  },
+  notifItem: { flexDirection: 'row', gap: 12, alignItems: 'center', padding: 14, backgroundColor: colors.card, borderRadius: radius.md, marginBottom: 8, borderWidth: 1, borderColor: colors.divider },
+  friendRequestItem: { borderColor: colors.border, backgroundColor: colors.purpleGlow },
+  notifIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(124,58,237,0.12)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  friendRequestIcon: { backgroundColor: 'rgba(124,58,237,0.2)' },
   notifContent: { flex: 1 },
   notifMessage: { fontSize: 13, color: colors.white, lineHeight: 18 },
   notifBold: { fontWeight: '700', color: colors.lavender },
   notifTime: { fontSize: 11, color: colors.gray, marginTop: 3 },
-  acceptBtn: {
-    paddingHorizontal: 14, paddingVertical: 8,
-    backgroundColor: colors.cyan,
-    borderRadius: 20, flexShrink: 0,
-  },
+  acceptBtn: { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: colors.cyan, borderRadius: 20, flexShrink: 0 },
   acceptBtnText: { color: colors.bg, fontSize: 12, fontWeight: '700' },
   requestBtns: { flexDirection: 'row', gap: 6, alignItems: 'center', flexShrink: 0 },
-  declineBtn: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: colors.card2, borderWidth: 1, borderColor: colors.divider,
-    alignItems: 'center', justifyContent: 'center',
-  },
+  declineBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.card2, borderWidth: 1, borderColor: colors.divider, alignItems: 'center', justifyContent: 'center' },
   declineBtnText: { color: colors.gray, fontSize: 13, fontWeight: '700' },
 });
