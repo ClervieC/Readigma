@@ -20,6 +20,11 @@
           "NSAllowsArbitraryLoads": true
         }
       }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "cb538cb5-2707-420d-9cf5-ee6e1c255508"
+      }
     }
   }
 }
