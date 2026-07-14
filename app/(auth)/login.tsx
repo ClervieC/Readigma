@@ -1,0 +1,118 @@
+import { useState } from 'react';
+import {
+  View, Text, TextInput, TouchableOpacity,
+  StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Alert
+} from 'react-native';
+import { Link } from 'expo-router';
+import { radius, fonts, ColorPalette } from '../../theme';
+import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
+
+export default function LoginScreen() {
+  const { colors } = useTheme();
+  const { signIn } = useAuth();
+  const styles = makeStyles(colors);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const login = async () => {
+    if (!email || !password) { Alert.alert('Erreur', 'Tous les champs sont requis'); return; }
+    setLoading(true);
+    try {
+      await signIn(email, password);
+    } catch (err: any) {
+      Alert.alert('Erreur', err.message || 'Erreur de connexion');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <View style={styles.top}>
+          <Text style={styles.logo}>📖 READIGMA</Text>
+          <Text style={styles.tagline}>Stop searching. Start discovering.</Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.title}>Bon retour !</Text>
+          <Text style={styles.subtitle}>Connecte-toi pour retrouver ta pile</Text>
+
+          <Text style={styles.label}>Email</Text>
+          <TextInput
+            style={styles.input}
+            value={email}
+            onChangeText={setEmail}
+            placeholder="ton@email.com"
+            placeholderTextColor={colors.gray}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+
+          <Text style={styles.label}>Mot de passe</Text>
+          <TextInput
+            style={styles.input}
+            value={password}
+            onChangeText={setPassword}
+            placeholder="••••••••"
+            placeholderTextColor={colors.gray}
+            secureTextEntry
+          />
+
+          <TouchableOpacity style={styles.btn} onPress={login} disabled={loading}>
+            <Text style={styles.btnText}>{loading ? 'Connexion...' : 'Se connecter'}</Text>
+          </TouchableOpacity>
+
+          <Link href="/(auth)/register" asChild>
+            <TouchableOpacity>
+              <Text style={styles.switchText}>
+                Pas encore de compte ? <Text style={styles.switchLink}>S'inscrire</Text>
+              </Text>
+            </TouchableOpacity>
+          </Link>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+const makeStyles = (colors: ColorPalette) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
+  scroll: { flexGrow: 1, justifyContent: 'center', padding: 20 },
+  top: { alignItems: 'center', marginBottom: 32 },
+  logo: { fontSize: 26, fontFamily: fonts.headingBold, color: colors.purple, letterSpacing: 0.5 },
+  tagline: { fontSize: 13, color: colors.gray, marginTop: 4 },
+  card: {
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: colors.divider,
+  },
+  title: { fontSize: 22, fontWeight: '700', color: colors.white, marginBottom: 4 },
+  subtitle: { fontSize: 13, color: colors.gray, marginBottom: 24 },
+  label: { fontSize: 12, color: colors.gray, marginBottom: 6, fontWeight: '500' },
+  input: {
+    backgroundColor: colors.card2,
+    borderRadius: radius.sm,
+    padding: 14,
+    color: colors.white,
+    fontSize: 15,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.divider,
+  },
+  btn: {
+    backgroundColor: colors.purple,
+    borderRadius: radius.md,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  btnText: { color: 'white', fontSize: 15, fontWeight: '700' },
+  switchText: { textAlign: 'center', fontSize: 13, color: colors.gray },
+  switchLink: { color: colors.lavender, fontWeight: '500' },
+});
