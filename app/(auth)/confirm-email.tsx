@@ -47,6 +47,9 @@ export default function ConfirmEmailScreen() {
         <Text style={styles.subtitle}>
           On a envoyé un lien de confirmation{params.email ? ` à ${params.email}` : ''}. Ouvre-le pour activer ton compte.
         </Text>
+        <Text style={styles.note}>
+          L'email vient de Supabase Auth (notre système d'authentification) — regarde aussi dans tes spams s'il n'apparaît pas.
+        </Text>
 
         <Button label="J'ai confirmé, me connecter" onPress={() => router.replace('/(auth)/login')} style={{ marginTop: 28, alignSelf: 'stretch' }} />
         <Text style={styles.resend} onPress={resending ? undefined : resend}>
@@ -62,5 +65,6 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   card: { alignItems: 'center', maxWidth: 340 },
   title: { fontSize: 22, fontFamily: fonts.headingBold, color: colors.white, marginTop: 20, textAlign: 'center' },
   subtitle: { fontSize: 14, color: colors.gray, textAlign: 'center', marginTop: 10, lineHeight: 20 },
+  note: { fontSize: 12, color: colors.gray, textAlign: 'center', marginTop: 14, lineHeight: 18, opacity: 0.8 },
   resend: { fontSize: 13, color: colors.lavender, fontWeight: '600', marginTop: 18 },
 });
