@@ -109,7 +109,8 @@
       "Bash(sips -g hasAlpha /Users/clervie/Desktop/Projects/Readigma/assets/icon.png)",
       "Bash(sleep 3; tail -40 /tmp/expo-web8.log)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8099/)",
-      "Bash(NODE_PATH=/Users/clervie/Desktop/Projects/Epify/node_modules node check_all.js)"
+      "Bash(NODE_PATH=/Users/clervie/Desktop/Projects/Epify/node_modules node check_all.js)",
+      "Bash(NODE_PATH=/Users/clervie/Desktop/Projects/Epify/node_modules node check_discover2.js)"
     ],
     "additionalDirectories": [
       "/Users/clervie/Desktop/Projects/Readigma/mobile/assets"

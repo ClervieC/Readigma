@@ -109,6 +109,29 @@ export default function RootLayout() {
     document.head.appendChild(style);
   }, []);
 
+  // The default Expo web template's viewport tag allows pinch/double-tap
+  // zoom, which does two things: lets the page render at a slightly zoomed-
+  // in initial scale instead of filling the screen edge to edge, and forces
+  // mobile Safari/Chrome to add their ~300ms tap delay on every touch target
+  // (they wait to see whether a second tap is coming, to tell a real tap
+  // apart from a double-tap-to-zoom gesture) — which is what made a single
+  // tap on a tab bar item feel like it needed a second tap to register.
+  // Disabling zoom removes both symptoms at once; touch-action backs it up.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    let meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.setAttribute('name', 'viewport');
+      document.head.appendChild(meta);
+    }
+    meta.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
+
+    const style = document.createElement('style');
+    style.textContent = `html, body { touch-action: manipulation; }`;
+    document.head.appendChild(style);
+  }, []);
+
   // web.output is "single" (a plain client-rendered SPA — "static"/"server"
   // output crashes this app's Supabase/AsyncStorage init under Node SSR), so
   // app/+html.tsx's build-time head customization never runs; these tags
