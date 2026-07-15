@@ -109,6 +109,39 @@ export default function RootLayout() {
     document.head.appendChild(style);
   }, []);
 
+  // web.output is "single" (a plain client-rendered SPA — "static"/"server"
+  // output crashes this app's Supabase/AsyncStorage init under Node SSR), so
+  // app/+html.tsx's build-time head customization never runs; these tags
+  // only exist if injected after the JS loads, here. By the time someone
+  // opens Safari's share sheet to "Add to Home Screen" the page has already
+  // rendered, so the apple-touch-icon link below is present in the DOM and
+  // gets picked up correctly despite being added at runtime, not build time.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const tags: HTMLElement[] = [];
+    const addLink = (rel: string, href: string) => {
+      const link = document.createElement('link');
+      link.rel = rel;
+      link.href = href;
+      document.head.appendChild(link);
+      tags.push(link);
+    };
+    const addMeta = (name: string, content: string) => {
+      const meta = document.createElement('meta');
+      meta.name = name;
+      meta.content = content;
+      document.head.appendChild(meta);
+      tags.push(meta);
+    };
+    addLink('apple-touch-icon', '/apple-touch-icon.png');
+    addLink('manifest', '/manifest.json');
+    addMeta('theme-color', '#6B3F73');
+    addMeta('apple-mobile-web-app-capable', 'yes');
+    addMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
+    addMeta('apple-mobile-web-app-title', 'Readigma');
+    return () => tags.forEach(t => t.remove());
+  }, []);
+
   if (!fontsLoaded) return null;
 
   return (

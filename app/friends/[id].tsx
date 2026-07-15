@@ -7,6 +7,8 @@ import { fonts, ColorPalette } from '../../theme';
 import { useTheme } from '../../context/ThemeContext';
 import * as friends from '../../lib/friends';
 import Pill from '../../components/Pill';
+import ProgressBar from '../../components/ProgressBar';
+import { formatDuration } from '../../lib/timer';
 
 export default function UserProfileScreen() {
   const { colors } = useTheme();
@@ -44,7 +46,10 @@ export default function UserProfileScreen() {
     );
   }
 
-  const { user, stats, currentlyReading } = data;
+  const { user, stats, currentlyReading, goal, formatStats, readingSeconds, reviews } = data;
+  const formatTotal = formatStats.physical_count + formatStats.ereader_count;
+  const physicalPct = formatTotal > 0 ? Math.round((formatStats.physical_count / formatTotal) * 100) : 0;
+  const goalPct = goal ? Math.min((goal.booksRead / goal.target) * 100, 100) : 0;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -80,6 +85,37 @@ export default function UserProfileScreen() {
           ))}
         </View>
 
+        {goal && (
+          <View style={styles.card}>
+            <View style={styles.cardHeaderRow}>
+              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Objectif de lecture</Text>
+              <Text style={styles.cardHeaderValue}>{goal.booksRead} / {goal.target} livres</Text>
+            </View>
+            <ProgressBar percent={goalPct} color={colors.cyan} trackColor={colors.card2} />
+          </View>
+        )}
+
+        {readingSeconds > 0 && (
+          <View style={styles.timeRow}>
+            <Text style={styles.timeLabel}>Temps de lecture total</Text>
+            <Text style={styles.timeValue}>{formatDuration(readingSeconds)}</Text>
+          </View>
+        )}
+
+        {formatTotal > 0 && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Format de lecture</Text>
+            <View style={styles.formatRow}>
+              <Text style={styles.formatLabel}>{physicalPct}% physique</Text>
+              <View style={styles.formatBar}>
+                <View style={[styles.formatFillA, { width: `${physicalPct}%` as any }]} />
+                <View style={[styles.formatFillB, { width: `${100 - physicalPct}%` as any }]} />
+              </View>
+              <Text style={styles.formatLabel}>{100 - physicalPct}% liseuse</Text>
+            </View>
+          </View>
+        )}
+
         <Text style={styles.sectionTitle}>En ce moment</Text>
         {currentlyReading.length > 0 ? (
           currentlyReading.map((book: any, i: number) => (
@@ -105,6 +141,29 @@ export default function UserProfileScreen() {
         ) : (
           <Text style={styles.emptyText}>@{user.username} ne lit rien en ce moment</Text>
         )}
+
+        {reviews.length > 0 && (
+          <>
+            <Text style={[styles.sectionTitle, { marginTop: 10 }]}>Livres lus</Text>
+            <Text style={styles.readHint}>Appuie sur un livre pour l'ajouter (ou non) à ta pile à lire.</Text>
+            {reviews.map((r: any, i: number) => (
+              <TouchableOpacity key={i} style={[styles.reviewCard, i < reviews.length - 1 && styles.bookCardDivider]}
+                activeOpacity={0.75} onPress={() => router.push(`/book/${r.id}`)}>
+                <View style={styles.bookCover}>
+                  {r.cover_url ? <Image source={{ uri: r.cover_url }} style={styles.bookCoverImg} /> : <Feather name="book" size={20} color={colors.purple} />}
+                </View>
+                <View style={styles.bookInfo}>
+                  <Text style={styles.bookTitle} numberOfLines={2}>{r.title}</Text>
+                  <Text style={styles.bookAuthor}>{r.author}</Text>
+                  {r.rating ? <Text style={styles.reviewRating}>{Number(r.rating).toFixed(2)} ★</Text> : null}
+                  {r.comment ? <Text style={styles.reviewComment}>"{r.comment}"</Text> : null}
+                </View>
+                <Feather name="chevron-right" size={16} color={colors.gray} />
+              </TouchableOpacity>
+            ))}
+          </>
+        )}
+
         <View style={{ height: 30 }} />
       </ScrollView>
     </SafeAreaView>
@@ -141,4 +200,19 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   progressFill: { height: '100%', backgroundColor: colors.cyan, borderRadius: 2 },
   progressText: { fontSize: 11, color: colors.cyan, fontWeight: '600', width: 32 },
   emptyText: { fontSize: 13, color: colors.gray },
+  card: { marginBottom: 24 },
+  cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  cardHeaderValue: { fontSize: 12, color: colors.gray },
+  timeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  timeLabel: { fontSize: 13, color: colors.gray },
+  timeValue: { fontSize: 15, fontFamily: fonts.headingBold, color: colors.purple },
+  formatRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  formatLabel: { fontSize: 11, color: colors.gray },
+  formatBar: { flex: 1, height: 5, borderRadius: 3, overflow: 'hidden', flexDirection: 'row', backgroundColor: colors.card2 },
+  formatFillA: { backgroundColor: colors.purple },
+  formatFillB: { backgroundColor: colors.teal },
+  reviewCard: { flexDirection: 'row', gap: 12, alignItems: 'flex-start', paddingBottom: 16, marginBottom: 16 },
+  reviewRating: { fontSize: 12, color: colors.teal, fontWeight: '700', marginTop: 2 },
+  reviewComment: { fontSize: 12, color: colors.gray, fontStyle: 'italic', marginTop: 4, lineHeight: 17 },
+  readHint: { fontSize: 11, color: colors.gray, marginTop: -6, marginBottom: 14 },
 });

@@ -99,7 +99,17 @@
       "Bash(NODE_PATH=/Users/clervie/Desktop/Projects/Epify/node_modules node /private/tmp/claude-501/-Users-clervie-Desktop-Projects-Readigma/6cc15d03-62b9-4052-aabe-7c8c36a53579/scratchpad/check_profile.js)",
       "Bash(pkill -f \"expo start --web\")",
       "Bash(lsof -ti:8099)",
-      "Bash(xargs kill -9)"
+      "Bash(xargs kill -9)",
+      "Bash(echo \"exit:$?\")",
+      "Bash(sips --version)",
+      "Bash(sips -z 180 180 /Users/clervie/Desktop/Projects/Readigma/assets/icon.png --out /Users/clervie/Desktop/Projects/Readigma/public/apple-touch-icon.png)",
+      "Bash(sips -z 192 192 /Users/clervie/Desktop/Projects/Readigma/assets/icon.png --out /Users/clervie/Desktop/Projects/Readigma/public/icon-192.png)",
+      "Bash(sips -z 512 512 /Users/clervie/Desktop/Projects/Readigma/assets/icon.png --out /Users/clervie/Desktop/Projects/Readigma/public/icon-512.png)",
+      "Bash(sips -z 32 32 /Users/clervie/Desktop/Projects/Readigma/assets/favicon.png --out /Users/clervie/Desktop/Projects/Readigma/public/favicon.png)",
+      "Bash(sips -g hasAlpha /Users/clervie/Desktop/Projects/Readigma/assets/icon.png)",
+      "Bash(sleep 3; tail -40 /tmp/expo-web8.log)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8099/)",
+      "Bash(NODE_PATH=/Users/clervie/Desktop/Projects/Epify/node_modules node check_all.js)"
     ],
     "additionalDirectories": [
       "/Users/clervie/Desktop/Projects/Readigma/mobile/assets"

@@ -72,5 +72,9 @@ export async function getUserProfile(userId: string) {
       avg_rating: row.avg_rating,
     },
     currentlyReading: row.currently_reading ?? [],
+    goal: row.goal_target ? { target: row.goal_target, booksRead: row.goal_books_read ?? 0 } : null,
+    formatStats: { physical_count: row.physical_count ?? 0, ereader_count: row.ereader_count ?? 0 },
+    readingSeconds: row.reading_seconds ?? 0,
+    reviews: row.reviews ?? [],
   };
 }

@@ -1,5 +1,6 @@
 import { supabase, getCurrentUserId } from './supabase';
 import { API_BASE } from './apiUrl';
+import { BookFormFields, EMPTY_BOOK_FORM } from '../components/BookForm';
 
 // Fire-and-forget, same pattern as lib/friends.ts's notify() — a missing/
 // stale push token shouldn't block the moderation action itself.
@@ -20,16 +21,39 @@ export type AdminMessage = {
   username?: string;
 };
 
+// Mirrors BookFormFields exactly (see book_suggestions in db/schema.sql) — a
+// suggestion carries everything needed to add the book to the catalog
+// directly, so the admin reviews and confirms rather than re-typing it.
 export type BookSuggestion = {
   id: string;
   user_id: string;
   title: string;
   author: string | null;
   message: string | null;
+  cover_url: string | null;
+  description: string | null;
+  genres: string[];
+  published_year: number | null;
+  series: string | null;
+  series_index: number | null;
   status: 'pending' | 'approved' | 'rejected';
   created_at: string;
   username?: string;
 };
+
+export function suggestionToForm(s: BookSuggestion): BookFormFields {
+  return {
+    ...EMPTY_BOOK_FORM,
+    title: s.title,
+    author: s.author ?? '',
+    cover_url: s.cover_url ?? '',
+    description: s.description ?? '',
+    genres: (s.genres ?? []).join(', '),
+    published_year: s.published_year != null ? String(s.published_year) : '',
+    series: s.series ?? '',
+    series_index: s.series_index != null ? String(s.series_index) : '',
+  };
+}
 
 // Used by app/help.tsx's contact form — replaces the old mailto: link with a
 // real inbox an admin account can read (see admin_messages RLS in schema.sql).
@@ -40,10 +64,11 @@ export async function sendAdminMessage(message: string) {
   if (error) throw new Error(error.message);
 }
 
-// The rest of this module is admin-only — RLS on both tables restricts
-// select/update to profiles.role = 'admin', so these simply fail with a
-// permission error for anyone else; app/admin.tsx also gates the route
-// itself on profile.role client-side so a non-admin never sees the screen.
+// The rest of this module is admin-only — RLS restricts the writes (profiles
+// update, book_suggestions update) to profiles.role = 'admin', so these
+// simply fail with a permission error for anyone else; app/admin.tsx also
+// gates the route itself on profile.role client-side so a non-admin never
+// sees the screen.
 export async function getMessages(): Promise<AdminMessage[]> {
   const { data, error } = await supabase
     .from('admin_messages')
@@ -67,7 +92,7 @@ export async function getSuggestions(): Promise<BookSuggestion[]> {
   return (data ?? []).map((r: any) => ({ ...r, username: r.profile?.username }));
 }
 
-export async function updateSuggestionStatus(id: string, status: 'approved' | 'rejected') {
+async function markSuggestionDecided(id: string, status: 'approved' | 'rejected') {
   const { data, error } = await supabase
     .from('book_suggestions')
     .update({ status })
@@ -86,23 +111,56 @@ export async function updateSuggestionStatus(id: string, status: 'approved' | 'r
   }
 }
 
-export type ManualBook = {
-  title: string;
-  author: string;
-  cover_url: string;
-  description: string;
-  genres: string; // comma-separated in the form, split before insert
-  published_year: string;
-  series: string;
-  series_index: string;
+// One-click path: adds the book to the catalog using exactly what was
+// suggested, then marks it approved. See app/admin.tsx's "Modifier" action
+// for the alternative path (tweak fields first, then save from the "Ajouter
+// un livre" tab, which calls markSuggestionApproved below instead).
+export async function approveSuggestion(s: BookSuggestion) {
+  await addBookManually(suggestionToForm(s));
+  await markSuggestionDecided(s.id, 'approved');
+}
+
+export async function rejectSuggestion(s: BookSuggestion) {
+  await markSuggestionDecided(s.id, 'rejected');
+}
+
+// Used after an admin edits a suggestion's fields in the "Ajouter un livre"
+// tab and saves it themselves (saveBook already inserted the book, so this
+// only flips the suggestion's status/notifies — no second insert).
+export async function markSuggestionApproved(id: string) {
+  await markSuggestionDecided(id, 'approved');
+}
+
+export type AdminUser = {
+  id: string;
+  username: string;
+  avatar_url: string | null;
+  role: string;
+  banned: boolean;
+  created_at: string;
 };
 
-// Suggestions only carry title/author/message (see book_suggestions schema) —
-// the admin fills in everything else (cover, description, genres, year,
-// series) by hand before it becomes a real catalog entry, same shape as a
-// search result going through books.addBookToDb, but with no external
-// source to normalize from.
-export async function addBookManually(book: ManualBook) {
+// profiles is world-readable by design (friend search, feed authorship — see
+// profiles_select_all in schema.sql), so this needs no special RPC; only the
+// write side (setUserRole/setUserBanned below) is actually admin-gated, by
+// profiles_update_admin + the prevent_role_self_escalation trigger.
+export async function getAllUsers(): Promise<AdminUser[]> {
+  const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+export async function setUserBanned(id: string, banned: boolean) {
+  const { error } = await supabase.from('profiles').update({ banned }).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function setUserRole(id: string, role: 'user' | 'admin') {
+  const { error } = await supabase.from('profiles').update({ role }).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function addBookManually(book: BookFormFields) {
   const externalId = `manual_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const { error } = await supabase.from('books').insert({
     external_id: externalId,

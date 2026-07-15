@@ -3,7 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Alert
 } from 'react-native';
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { fonts, ColorPalette } from '../../theme';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -12,6 +12,7 @@ import Button from '../../components/Button';
 export default function RegisterScreen() {
   const { colors } = useTheme();
   const { signUp } = useAuth();
+  const router = useRouter();
   const styles = makeStyles(colors);
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -22,7 +23,10 @@ export default function RegisterScreen() {
     if (!username || !email || !password) { Alert.alert('Erreur', 'Tous les champs sont requis'); return; }
     setLoading(true);
     try {
-      await signUp(email, password, username);
+      const { needsEmailConfirmation } = await signUp(email, password, username);
+      if (needsEmailConfirmation) {
+        router.push({ pathname: '/(auth)/confirm-email', params: { email } });
+      }
     } catch (err: any) {
       Alert.alert('Erreur', err.message || 'Erreur inscription');
     } finally {

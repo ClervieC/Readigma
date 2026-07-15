@@ -374,10 +374,24 @@ export async function getRecommendations(
   return merged.slice(0, 12);
 }
 
-export async function getPopular() {
+// Normalized like search()/getTrending() (external_id, genres capped, etc.)
+// so a popular result can go through the exact same add-to-list/detail path
+// as a search result — it already exists in `books`, so addBookToDb's
+// upsert-by-external_id just recognizes the same row instead of trying to
+// insert a new one with a missing external_id (see popular_books() in
+// db/schema.sql, which used to omit it entirely).
+export async function getPopular(): Promise<NormalizedBook[]> {
   const { data, error } = await supabase.rpc('popular_books');
   if (error) throw new Error(error.message);
-  return data ?? [];
+  return (data ?? []).map((row: any): NormalizedBook => ({
+    external_id: row.external_id,
+    title: row.title ?? 'Sans titre',
+    author: row.author,
+    cover_url: row.cover_url,
+    description: row.description,
+    published_year: row.published_year,
+    genres: row.genres?.slice(0, 5) ?? [],
+  }));
 }
 
 export async function addBookToDb(book: NormalizedBook) {

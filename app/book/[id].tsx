@@ -11,6 +11,7 @@ import * as books from '../../lib/books';
 import * as timer from '../../lib/timer';
 import { formatDuration } from '../../lib/timer';
 import { useTimer } from '../../context/TimerContext';
+import { useAuth } from '../../context/AuthContext';
 import Button from '../../components/Button';
 import Pill from '../../components/Pill';
 import ProgressBar from '../../components/ProgressBar';
@@ -61,6 +62,7 @@ function Card({ title, children, styles }: { title: string; children: React.Reac
 
 export default function BookDetailScreen() {
   const { colors } = useTheme();
+  const { profile } = useAuth();
   const router = useRouter();
   const styles = makeStyles(colors);
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -318,13 +320,23 @@ export default function BookDetailScreen() {
               )}
 
               <Card title="Série" styles={styles}>
-                <View style={styles.seriesRow}>
-                  <TextInput style={[styles.input, { flex: 1, minWidth: 0, textAlign: 'left' }]} value={seriesInput} onChangeText={setSeriesInput}
-                    placeholder="Nom de la série (optionnel)" placeholderTextColor={colors.gray} />
-                  <TextInput style={[styles.input, styles.seriesIndexInput]} value={seriesIndexInput} onChangeText={setSeriesIndexInput}
-                    keyboardType="decimal-pad" placeholder="Tome" placeholderTextColor={colors.gray} />
-                </View>
-                <Button label={savingSeries ? 'Sauvegarde...' : 'Sauvegarder'} onPress={saveSeries} disabled={savingSeries} style={{ marginTop: 12 }} />
+                {profile?.role === 'admin' ? (
+                  <>
+                    <View style={styles.seriesRow}>
+                      <TextInput style={[styles.input, { flex: 1, minWidth: 0, textAlign: 'left' }]} value={seriesInput} onChangeText={setSeriesInput}
+                        placeholder="Nom de la série (optionnel)" placeholderTextColor={colors.gray} />
+                      <TextInput style={[styles.input, styles.seriesIndexInput]} value={seriesIndexInput} onChangeText={setSeriesIndexInput}
+                        keyboardType="decimal-pad" placeholder="Tome" placeholderTextColor={colors.gray} />
+                    </View>
+                    <Button label={savingSeries ? 'Sauvegarde...' : 'Sauvegarder'} onPress={saveSeries} disabled={savingSeries} style={{ marginTop: 12 }} />
+                  </>
+                ) : currentBook.series ? (
+                  <Text style={styles.seriesReadOnly}>
+                    {currentBook.series}{currentBook.series_index ? ` — Tome ${currentBook.series_index}` : ''}
+                  </Text>
+                ) : (
+                  <Text style={styles.emptyText}>Ce livre n'est rattaché à aucune série.</Text>
+                )}
 
                 {currentBook.series ? (
                   loadingSeriesBooks ? (
@@ -572,6 +584,7 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   contextTags: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 14 },
   seriesRow: { flexDirection: 'row', gap: 8 },
   seriesIndexInput: { width: 70 },
+  seriesReadOnly: { fontSize: 14, color: colors.white, fontWeight: '600' },
   seriesSubheading: { fontSize: 11, fontFamily: fonts.headingBold, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 20, marginBottom: 12 },
   seriesBookCard: { width: 84, alignItems: 'center', gap: 6 },
   seriesBookCover: { width: 64, height: 92, backgroundColor: colors.card2, borderRadius: 6, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },

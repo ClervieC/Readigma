@@ -11,7 +11,6 @@ import { useTheme } from '../../context/ThemeContext';
 import * as friends from '../../lib/friends';
 import Row from '../../components/Row';
 import Pill from '../../components/Pill';
-import Button from '../../components/Button';
 
 export default function FriendsScreen() {
   const { colors } = useTheme();
@@ -90,7 +89,10 @@ export default function FriendsScreen() {
                 <Feather name="users" size={36} color={colors.gray} />
                 <Text style={styles.emptyTitle}>Pas encore d'amis</Text>
                 <Text style={styles.emptyText}>Cherche des lecteurs pour les ajouter !</Text>
-                <Button label="Chercher des lecteurs" onPress={() => setTab('search')} style={{ marginTop: 8 }} />
+                <TouchableOpacity style={styles.emptyCta} onPress={() => setTab('search')}>
+                  <Feather name="search" size={14} color={colors.purple} />
+                  <Text style={styles.emptyCtaText}>Chercher des lecteurs</Text>
+                </TouchableOpacity>
               </View>
             ) : friendsList.map((friend, i) => (
               <Row key={i} last={i === friendsList.length - 1} onPress={() => goToProfile(friend.id, friend.username)} chevron
@@ -144,4 +146,10 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   emptyState: { alignItems: 'center', paddingTop: 60, gap: 12 },
   emptyTitle: { fontSize: 16, fontFamily: fonts.headingBold, color: colors.white },
   emptyText: { color: colors.gray, fontSize: 13, textAlign: 'center', paddingTop: 8 },
+  emptyCta: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8,
+    borderWidth: 1, borderColor: colors.divider, borderRadius: 999,
+    paddingHorizontal: 18, paddingVertical: 10,
+  },
+  emptyCtaText: { fontSize: 13, fontWeight: '600', color: colors.purple },
 });

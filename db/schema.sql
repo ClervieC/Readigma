@@ -17,8 +17,10 @@ create table profiles (
   id          uuid primary key references auth.users(id) on delete cascade,
   username    varchar(255) not null unique,
   avatar_url  text,
-  role        varchar(20) not null default 'user', -- 'user' | 'admin'
-  created_at  timestamptz not null default now()
+  role             varchar(20) not null default 'user', -- 'user' | 'admin'
+  banned           boolean not null default false,
+  onboarding_done  boolean not null default false,
+  created_at       timestamptz not null default now()
 );
 
 -- Kept out of `profiles` (which is world-readable to any signed-in user, by
@@ -114,14 +116,23 @@ create table reading_goals (
   unique (user_id, year)
 );
 
+-- Mirrors admin.tsx's "Ajouter un livre" form exactly (see ManualBook in
+-- lib/admin.ts) — a suggestion carries everything needed to add it to the
+-- catalog directly; the admin reviews and confirms rather than re-typing it.
 create table book_suggestions (
-  id          uuid primary key default gen_random_uuid(),
-  user_id     uuid not null references profiles(id) on delete cascade,
-  title       varchar(500) not null,
-  author      varchar(500),
-  message     text,
-  status      varchar(20) not null default 'pending', -- 'pending' | 'approved' | 'rejected'
-  created_at  timestamptz not null default now()
+  id              uuid primary key default gen_random_uuid(),
+  user_id         uuid not null references profiles(id) on delete cascade,
+  title           varchar(500) not null,
+  author          varchar(500),
+  message         text,
+  cover_url       text,
+  description     text,
+  genres          text[] not null default '{}',
+  published_year  int,
+  series          varchar(500),
+  series_index    numeric(5,2),
+  status          varchar(20) not null default 'pending', -- 'pending' | 'approved' | 'rejected'
+  created_at      timestamptz not null default now()
 );
 
 -- "Write to the admin" contact form (app/help.tsx) — replaces the old
@@ -225,20 +236,27 @@ create trigger user_books_before_write
   before insert or update on user_books
   for each row execute function user_books_before_write();
 
--- profiles_update_self (below) only checks `id = auth.uid()`, with no
--- column restriction — without this trigger, any signed-in user could PATCH
--- their own row with {"role":"admin"} and self-promote. auth.uid() is only
+-- profiles_update_self/profiles_update_admin (below) only check *which rows*
+-- can be targeted, with no column restriction — without this trigger, any
+-- signed-in user could PATCH their own row with {"role":"admin"} to
+-- self-promote, or {"banned":false} to un-ban themselves. auth.uid() is only
 -- populated inside a PostgREST-authenticated request; it's null for the
 -- service_role key and for a direct SQL editor/superuser session (both
 -- already trusted, e.g. the admin bootstrap UPDATE near the end of this
--- file), so only real end-user sessions are constrained here.
+-- file), so only real end-user sessions are constrained here. A genuine
+-- admin (app/admin.tsx's "Utilisateurs" tab) is exempted so they can
+-- actually ban/promote other accounts.
 create or replace function prevent_role_self_escalation() returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  caller_is_admin boolean;
 begin
-  if new.role is distinct from old.role then
-    if auth.uid() is not null and not exists (
-      select 1 from profiles where id = auth.uid() and role = 'admin'
-    ) then
-      new.role := old.role;
+  if new.role is distinct from old.role or new.banned is distinct from old.banned then
+    if auth.uid() is not null then
+      select exists (select 1 from profiles where id = auth.uid() and role = 'admin') into caller_is_admin;
+      if not caller_is_admin then
+        new.role := old.role;
+        new.banned := old.banned;
+      end if;
     end if;
   end if;
   return new;
@@ -275,6 +293,14 @@ create policy profiles_insert_self on profiles for insert
   to authenticated with check (id = auth.uid());
 create policy profiles_update_self on profiles for update
   to authenticated using (id = auth.uid());
+-- Lets an admin target any other profile row (to ban/unban or promote/
+-- demote) — combines with profiles_update_self via OR, per Postgres RLS's
+-- multiple-permissive-policies rule. prevent_role_self_escalation above is
+-- what actually restricts *which columns* a non-admin caller may change.
+create policy profiles_update_admin on profiles for update
+  to authenticated using (
+    exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
+  );
 
 -- push_tokens: owner can save their own device token; never readable by
 -- anyone else through PostgREST — only the push/send server route (which
@@ -522,11 +548,23 @@ language sql security invoker stable as $$
   order by m.month;
 $$;
 
+-- Everything app/friends/[id].tsx shows for a friend: counts, currently-
+-- reading, their current-year goal, format split, total reading time, and
+-- every book they've finished (with rating/comment if they left one) — each
+-- carries the book's id so the viewer can tap through to add it to their own
+-- list. Mirrors what goal_progress()/
+-- format_stats()/reading_time_stats() compute for the *caller's own* data
+-- (those stay security invoker / auth.uid()-scoped); this is the security
+-- definer path for viewing someone else's.
 create or replace function friend_profile(p_user_id uuid)
 returns table (
   username text, avatar_url text,
   done_count bigint, to_read_count bigint, reading_count bigint, avg_rating numeric,
-  currently_reading jsonb
+  currently_reading jsonb,
+  goal_target int, goal_books_read bigint,
+  physical_count bigint, ereader_count bigint,
+  reading_seconds bigint,
+  reviews jsonb
 )
 language sql security definer set search_path = public stable as $$
   select
@@ -548,6 +586,22 @@ language sql security definer set search_path = public stable as $$
         limit 3
       ) ub2
       join books b2 on b2.id = ub2.book_id
+    ), '[]'::jsonb),
+    (select rg.target_books from reading_goals rg where rg.user_id = p_user_id and rg.year = extract(year from now())::int),
+    (select count(*) from user_books ub3
+       where ub3.user_id = p_user_id and ub3.status = 'done'
+         and extract(year from ub3.finished_at) = extract(year from now())),
+    count(*) filter (where ub.format = 'physical'),
+    count(*) filter (where ub.format = 'ereader'),
+    (select coalesce(sum(rs.duration_seconds), 0) from reading_sessions rs where rs.user_id = p_user_id and rs.duration_seconds is not null),
+    coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', b3.id, 'title', b3.title, 'author', b3.author, 'cover_url', b3.cover_url,
+        'rating', ub4.rating, 'comment', ub4.comment, 'finished_at', ub4.finished_at
+      ) order by ub4.finished_at desc nulls last)
+      from user_books ub4
+      join books b3 on b3.id = ub4.book_id
+      where ub4.user_id = p_user_id and ub4.status = 'done'
     ), '[]'::jsonb)
   from profiles p
   left join user_books ub on ub.user_id = p.id
@@ -590,13 +644,17 @@ language sql security invoker stable as $$
   order by f.created_at desc;
 $$;
 
+-- external_id travels along so the client can treat a popular result exactly
+-- like a search result (see books.getPopular()) — without it, adding a
+-- popular book to your list tried to upsert a brand-new `books` row with a
+-- null external_id instead of recognizing the one that already exists.
 create or replace function popular_books()
 returns table (
-  book_id uuid, title varchar, author varchar, cover_url text, description text,
+  book_id uuid, external_id varchar, title varchar, author varchar, cover_url text, description text,
   genres text[], published_year int, add_count bigint
 )
 language sql security definer set search_path = public stable as $$
-  select b.id, b.title, b.author, b.cover_url, b.description, b.genres, b.published_year, count(ub.id)
+  select b.id, b.external_id, b.title, b.author, b.cover_url, b.description, b.genres, b.published_year, count(ub.id)
   from books b
   join user_books ub on ub.book_id = b.id
   where b.approved = true
