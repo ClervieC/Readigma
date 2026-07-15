@@ -110,7 +110,9 @@
       "Bash(sleep 3; tail -40 /tmp/expo-web8.log)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8099/)",
       "Bash(NODE_PATH=/Users/clervie/Desktop/Projects/Epify/node_modules node check_all.js)",
-      "Bash(NODE_PATH=/Users/clervie/Desktop/Projects/Epify/node_modules node check_discover2.js)"
+      "Bash(NODE_PATH=/Users/clervie/Desktop/Projects/Epify/node_modules node check_discover2.js)",
+      "Bash(curl -s -o /dev/null -w \"HTTP status: %{http_code}\\\\n\" \"https://catalogue.bnf.fr/api/SRU?version=1.2&operation=searchRetrieve&query=%28bib.title%20all%20%22roman%22%29&maximumRecords=1&recordSchema=dublincore\" --max-time 15)",
+      "Bash(curl -s -D - -o /dev/null \"https://catalogue.bnf.fr/api/SRU?version=1.2&operation=searchRetrieve&query=%28bib.title%20all%20%22roman%22%29&maximumRecords=1&recordSchema=dublincore\" -H \"Origin: https://readigma.example.com\" --max-time 15)"
     ],
     "additionalDirectories": [
       "/Users/clervie/Desktop/Projects/Readigma/mobile/assets"

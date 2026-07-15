@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import {
-  View, Text, TextInput, ScrollView, TouchableOpacity,
+  View, Text, TextInput, ScrollView, FlatList, TouchableOpacity,
   StyleSheet, Alert, Image, useWindowDimensions, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -33,6 +33,14 @@ const STATUS_OPTIONS = [
   { label: 'Pas fini (DNF)', icon: 'x' as const, value: 'dnf' },
 ];
 
+function hexToRgba(hex: string, alpha: number) {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 export default function LibraryScreen() {
   const { colors } = useTheme();
   const router = useRouter();
@@ -43,20 +51,32 @@ export default function LibraryScreen() {
   const [allBooks, setAllBooks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedBook, setSelectedBook] = useState<any>(null);
-  const scrollRef = useRef<ScrollView>(null);
+  const listRef = useRef<FlatList>(null);
+  const hasLoadedOnce = useRef(false);
 
   const columns = Math.max(3, Math.floor((width - SCREEN_PADDING + SHELF_GAP) / (COVER_WIDTH + SHELF_GAP)));
 
   useFocusEffect(useCallback(() => {
-    requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: 0, animated: false }));
+    requestAnimationFrame(() => listRef.current?.scrollToOffset({ offset: 0, animated: false }));
     loadBooks();
   }, []));
 
-  useEffect(() => onScrollToTop('library', () => scrollRef.current?.scrollTo({ y: 0, animated: true })), []);
+  useEffect(() => onScrollToTop('library', () => listRef.current?.scrollToOffset({ offset: 0, animated: true })), []);
 
+  // Refetching every time this tab regains focus keeps it in sync after
+  // adding/removing books elsewhere — but flipping `loading` back to true
+  // (and blanking the whole shelf) on every single visit, with ~300 book
+  // covers each replaying their FadeInDown entrance animation, is what made
+  // arriving on this tab feel like it "went crazy". Only show the loading
+  // state on the true first load; a refocus refresh now swaps data in
+  // silently.
   const loadBooks = () => {
-    setLoading(true);
-    userBooks.getMyBooks().then(res => { setAllBooks(res); setLoading(false); }).catch(() => setLoading(false));
+    if (!hasLoadedOnce.current) setLoading(true);
+    userBooks.getMyBooks().then(res => {
+      hasLoadedOnce.current = true;
+      setAllBooks(res);
+      setLoading(false);
+    }).catch(() => setLoading(false));
   };
 
   const q = query.trim().toLowerCase();
@@ -65,9 +85,6 @@ export default function LibraryScreen() {
     .filter(b => !q || b.title?.toLowerCase().includes(q) || b.author?.toLowerCase().includes(q));
   const counts: any = {};
   allBooks.forEach(b => { counts[b.status] = (counts[b.status] || 0) + 1; });
-
-  const shelves: any[][] = [];
-  for (let i = 0; i < filteredBooks.length; i += columns) shelves.push(filteredBooks.slice(i, i + columns));
 
   const changeStatus = (status: string) => {
     userBooks.updateBook(selectedBook.book_id, { status }).then(() => { setSelectedBook(null); loadBooks(); });
@@ -122,18 +139,36 @@ export default function LibraryScreen() {
         ))}
       </ScrollView>
 
-      <ScrollView ref={scrollRef} style={styles.scroll} showsVerticalScrollIndicator={false}>
-        {loading ? (
-          <Text style={styles.emptyText}>Chargement...</Text>
-        ) : filteredBooks.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Feather name={q ? 'search' : 'book-open'} size={36} color={colors.gray} />
-            <Text style={styles.emptyText}>{q ? `Aucun résultat pour "${query}"` : 'Aucun livre ici'}</Text>
-          </View>
-        ) : shelves.map((row, rowIdx) => (
-          <View key={rowIdx} style={styles.shelf}>
-            {row.map((book, i) => (
-              <Animated.View key={i} entering={FadeInDown.duration(320).delay((rowIdx * columns + i) * 40)}>
+      {loading ? (
+        <Text style={styles.emptyText}>Chargement...</Text>
+      ) : filteredBooks.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Feather name={q ? 'search' : 'book-open'} size={36} color={colors.gray} />
+          <Text style={styles.emptyText}>{q ? `Aucun résultat pour "${query}"` : 'Aucun livre ici'}</Text>
+        </View>
+      ) : (
+        // key={columns} forces a clean remount if the column count changes
+        // (a window resize on web) — FlatList doesn't support changing
+        // numColumns on a live instance. Windowing here is the actual point:
+        // with up to a few hundred books, rendering every cover at once is
+        // what made this screen janky — a FlatList only mounts what's near
+        // the viewport and recycles cells as you scroll, so arriving on this
+        // tab is cheap regardless of library size.
+        <FlatList
+          key={columns}
+          ref={listRef}
+          data={filteredBooks}
+          keyExtractor={book => book.book_id}
+          numColumns={columns}
+          style={styles.scroll}
+          contentContainerStyle={{ paddingBottom: 20 }}
+          columnWrapperStyle={[styles.shelf, { borderBottomColor: hexToRgba(colors.teal, 0.3) }]}
+          showsVerticalScrollIndicator={false}
+          initialNumToRender={columns * 4}
+          windowSize={7}
+          removeClippedSubviews={Platform.OS !== 'web'}
+          renderItem={({ item: book, index }) => (
+            <Animated.View entering={FadeInDown.duration(320).delay((index % columns) * 40)}>
               <TouchableOpacity style={styles.bookSlot} activeOpacity={0.8}
                 onPress={() => router.push(`/book/${book.book_id}`)}>
                 <View style={styles.bookCover}>
@@ -158,16 +193,10 @@ export default function LibraryScreen() {
                 <Text style={styles.bookTitle} numberOfLines={1}>{book.title}</Text>
                 <Text style={styles.bookAuthor} numberOfLines={1}>{book.author}</Text>
               </TouchableOpacity>
-              </Animated.View>
-            ))}
-            {Array.from({ length: columns - row.length }).map((_, j) => (
-              <View key={`pad-${j}`} style={styles.bookSlot} />
-            ))}
-            <View style={styles.shelfPlank} />
-          </View>
-        ))}
-        <View style={{ height: 20 }} />
-      </ScrollView>
+            </Animated.View>
+          )}
+        />
+      )}
 
       {selectedBook && (
         <TouchableOpacity style={styles.overlay} onPress={() => setSelectedBook(null)} activeOpacity={1}>
@@ -205,8 +234,7 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   scroll: { flex: 1, paddingHorizontal: 20 },
   emptyState: { alignItems: 'center', paddingTop: 60, gap: 12 },
   emptyText: { color: colors.gray, fontSize: 14, textAlign: 'center', paddingTop: 40 },
-  shelf: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', paddingBottom: 16, marginBottom: 24, position: 'relative' },
-  shelfPlank: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 3, borderRadius: 2, backgroundColor: colors.teal, opacity: 0.3 },
+  shelf: { justifyContent: 'flex-start', alignItems: 'flex-end', paddingBottom: 16, marginBottom: 24, borderBottomWidth: 3, borderRadius: 2 },
   bookSlot: { width: COVER_WIDTH, marginRight: SHELF_GAP, marginBottom: 12 },
   bookCover: {
     width: COVER_WIDTH, height: COVER_HEIGHT, backgroundColor: colors.card2, borderRadius: 5,

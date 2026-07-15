@@ -93,7 +93,11 @@ async function searchByQuery(q: string, opts: { sort?: string } = {}): Promise<N
 // hence fast-xml-parser, since RN's JS engine has no native DOMParser the
 // way a browser does. `not (bib.doctype any "g h v")` excludes sound/image/
 // video records, matching BnF's own documented example query.
-const BNF_SRU_URL = 'http://catalogue.bnf.fr/api/SRU';
+// https, not http — the deployed site is served over HTTPS, and a browser
+// silently blocks a plain-http fetch from an https page as mixed content
+// (this only "worked" in local dev because http://localhost has no such
+// restriction — verified BnF serves this same endpoint over https just fine).
+const BNF_SRU_URL = 'https://catalogue.bnf.fr/api/SRU';
 const BNF_COVER_URL = 'https://openapi.bnf.fr/couverture/image/image/recupererImage';
 const xmlParser = new XMLParser({ removeNSPrefix: true, ignoreAttributes: true });
 const toArray = <T,>(v: T | T[] | undefined): T[] => (v == null ? [] : Array.isArray(v) ? v : [v]);

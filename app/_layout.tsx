@@ -128,7 +128,18 @@ export default function RootLayout() {
     meta.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
 
     const style = document.createElement('style');
-    style.textContent = `html, body { touch-action: manipulation; }`;
+    // `cursor: pointer` isn't about mouse cursors here — it's the classic
+    // workaround for iOS Safari's "standalone" (Add to Home Screen) mode,
+    // where WebKit only fires click on the *second* tap unless the element
+    // has a hover-eligible style, since it can't hover-preview on a device
+    // with no cursor. Every RN Web touchable renders as a plain div with no
+    // such style by default, which is what made switching tabs need two
+    // taps specifically once the app was bookmarked to the home screen
+    // (apple-mobile-web-app-capable below is what put it in that mode).
+    style.textContent = `
+      html, body { touch-action: manipulation; }
+      [tabindex] { cursor: pointer; }
+    `;
     document.head.appendChild(style);
   }, []);
 
