@@ -2,6 +2,7 @@ import { supabase, getCurrentUserId } from './supabase';
 
 export type UserBook = {
   book_id: string;
+  external_id: string;
   status: 'to_read' | 'reading' | 'done' | 'dnf';
   format: 'physical' | 'ereader' | null;
   rating: number | null;
@@ -9,6 +10,7 @@ export type UserBook = {
   current_page: number;
   total_pages: number;
   progress_percent: number;
+  progress_mode: 'pages' | 'percent';
   started_at: string | null;
   finished_at: string | null;
   title: string;
@@ -35,7 +37,7 @@ export async function getMyBooks(status?: string): Promise<UserBook[]> {
   const userId = await requireUserId();
   let q = supabase
     .from('user_books')
-    .select('*,book:books(title,author,cover_url,description,genres,tropes,published_year)')
+    .select('*,book:books(external_id,title,author,cover_url,description,genres,tropes,published_year)')
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
   if (status) q = q.eq('status', status);
@@ -54,7 +56,7 @@ export async function addBook(bookId: string, status = 'to_read') {
 
 export async function updateBook(
   bookId: string,
-  patch: { status?: string; rating?: number; comment?: string; format?: 'physical' | 'ereader' }
+  patch: { status?: string; rating?: number; comment?: string; format?: 'physical' | 'ereader'; progress_mode?: 'pages' | 'percent' }
 ) {
   const userId = await requireUserId();
   const { data, error } = await supabase
@@ -146,6 +148,7 @@ export async function getBookDetail(bookId: string) {
   if (ubErr) throw new Error(ubErr.message);
   return {
     book_id: bookId,
+    external_id: book?.external_id,
     title: book?.title,
     author: book?.author,
     cover_url: book?.cover_url,
@@ -153,6 +156,8 @@ export async function getBookDetail(bookId: string) {
     genres: book?.genres ?? [],
     tropes: book?.tropes ?? [],
     published_year: book?.published_year,
+    series: book?.series ?? null,
+    series_index: book?.series_index ?? null,
     status: userBook?.status,
     format: userBook?.format ?? null,
     rating: userBook?.rating,
@@ -160,6 +165,7 @@ export async function getBookDetail(bookId: string) {
     current_page: userBook?.current_page ?? 0,
     total_pages: userBook?.total_pages ?? 0,
     progress_percent: userBook?.progress_percent ?? 0,
+    progress_mode: userBook?.progress_mode ?? 'pages',
   };
 }
 
@@ -178,6 +184,25 @@ export async function getReactions(bookId: string) {
     .eq('user_id', userId)
     .eq('book_id', bookId)
     .order('progress_percent', { ascending: true });
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+// Community rating average + individual reviews for a book — crosses user
+// boundaries (any reader who finished the book, not just the caller), so
+// this goes through security-definer RPCs rather than a direct table read,
+// same pattern as friend_profile()/popular_books().
+export async function getBookRatingStats(bookId: string): Promise<{ avg_rating: number | null; ratings_count: number }> {
+  const { data, error } = await supabase.rpc('book_rating_stats', { p_book_id: bookId });
+  if (error) throw new Error(error.message);
+  const row = data?.[0];
+  return { avg_rating: row?.avg_rating ?? null, ratings_count: row?.ratings_count ?? 0 };
+}
+
+export async function getBookReviews(bookId: string): Promise<{
+  username: string; avatar_url: string | null; rating: number | null; comment: string | null; finished_at: string | null;
+}[]> {
+  const { data, error } = await supabase.rpc('book_reviews', { p_book_id: bookId });
   if (error) throw new Error(error.message);
   return data ?? [];
 }

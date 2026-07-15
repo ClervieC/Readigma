@@ -4,9 +4,10 @@ import {
   StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Alert
 } from 'react-native';
 import { Link } from 'expo-router';
-import { radius, fonts, ColorPalette } from '../../theme';
+import { fonts, ColorPalette } from '../../theme';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
+import Button from '../../components/Button';
 
 export default function RegisterScreen() {
   const { colors } = useTheme();
@@ -33,39 +34,35 @@ export default function RegisterScreen() {
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.top}>
-          <Text style={styles.logo}>📖 READIGMA</Text>
+          <Text style={styles.logo}>Readigma</Text>
           <Text style={styles.tagline}>Stop searching. Start discovering.</Text>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.title}>Créer un compte</Text>
-          <Text style={styles.subtitle}>Rejoins la communauté de lecteurs</Text>
+        <Text style={styles.title}>Créer un compte</Text>
+        <Text style={styles.subtitle}>Rejoins la communauté de lecteurs</Text>
 
-          <Text style={styles.label}>Nom d'utilisateur</Text>
-          <TextInput style={styles.input} value={username} onChangeText={setUsername}
-            placeholder="ton_pseudo" placeholderTextColor={colors.gray} autoCapitalize="none" />
+        <Text style={styles.label}>Nom d'utilisateur</Text>
+        <TextInput style={styles.input} value={username} onChangeText={setUsername}
+          placeholder="ton_pseudo" placeholderTextColor={colors.gray} autoCapitalize="none" />
 
-          <Text style={styles.label}>Email</Text>
-          <TextInput style={styles.input} value={email} onChangeText={setEmail}
-            placeholder="ton@email.com" placeholderTextColor={colors.gray}
-            keyboardType="email-address" autoCapitalize="none" />
+        <Text style={styles.label}>Email</Text>
+        <TextInput style={styles.input} value={email} onChangeText={setEmail}
+          placeholder="ton@email.com" placeholderTextColor={colors.gray}
+          keyboardType="email-address" autoCapitalize="none" />
 
-          <Text style={styles.label}>Mot de passe</Text>
-          <TextInput style={styles.input} value={password} onChangeText={setPassword}
-            placeholder="••••••••" placeholderTextColor={colors.gray} secureTextEntry />
+        <Text style={styles.label}>Mot de passe</Text>
+        <TextInput style={styles.input} value={password} onChangeText={setPassword}
+          placeholder="••••••••" placeholderTextColor={colors.gray} secureTextEntry />
 
-          <TouchableOpacity style={styles.btn} onPress={register} disabled={loading}>
-            <Text style={styles.btnText}>{loading ? 'Création...' : 'Créer mon compte'}</Text>
+        <Button label="Créer mon compte" onPress={register} loading={loading} style={{ marginTop: 24 }} />
+
+        <Link href="/(auth)/login" asChild>
+          <TouchableOpacity>
+            <Text style={styles.switchText}>
+              Déjà un compte ? <Text style={styles.switchLink}>Se connecter</Text>
+            </Text>
           </TouchableOpacity>
-
-          <Link href="/(auth)/login" asChild>
-            <TouchableOpacity>
-              <Text style={styles.switchText}>
-                Déjà un compte ? <Text style={styles.switchLink}>Se connecter</Text>
-              </Text>
-            </TouchableOpacity>
-          </Link>
-        </View>
+        </Link>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -73,20 +70,21 @@ export default function RegisterScreen() {
 
 const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  scroll: { flexGrow: 1, justifyContent: 'center', padding: 20 },
-  top: { alignItems: 'center', marginBottom: 32 },
-  logo: { fontSize: 26, fontFamily: fonts.headingBold, color: colors.purple, letterSpacing: 0.5 },
-  tagline: { fontSize: 13, color: colors.gray, marginTop: 4 },
-  card: { backgroundColor: colors.card, borderRadius: radius.lg, padding: 24, borderWidth: 1, borderColor: colors.divider },
-  title: { fontSize: 22, fontWeight: '700', color: colors.white, marginBottom: 4 },
-  subtitle: { fontSize: 13, color: colors.gray, marginBottom: 24 },
-  label: { fontSize: 12, color: colors.gray, marginBottom: 6, fontWeight: '500' },
+  scroll: { flexGrow: 1, justifyContent: 'center', padding: 28 },
+  top: { alignItems: 'center', marginBottom: 48 },
+  logo: { fontSize: 22, fontFamily: fonts.headingBold, color: colors.purple, letterSpacing: 1 },
+  tagline: { fontSize: 12, color: colors.gray, marginTop: 6 },
+  title: { fontSize: 24, fontFamily: fonts.headingBold, color: colors.white, marginBottom: 4 },
+  subtitle: { fontSize: 13, color: colors.gray, marginBottom: 28 },
+  label: { fontSize: 11, color: colors.gray, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 },
   input: {
-    backgroundColor: colors.card2, borderRadius: radius.sm, padding: 14,
-    color: colors.white, fontSize: 15, marginBottom: 16, borderWidth: 1, borderColor: colors.divider,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+    paddingVertical: 10,
+    color: colors.white,
+    fontSize: 15,
+    marginBottom: 22,
   },
-  btn: { backgroundColor: colors.purple, borderRadius: radius.md, padding: 16, alignItems: 'center', marginTop: 8, marginBottom: 16 },
-  btnText: { color: 'white', fontSize: 15, fontWeight: '700' },
-  switchText: { textAlign: 'center', fontSize: 13, color: colors.gray },
-  switchLink: { color: colors.lavender, fontWeight: '500' },
+  switchText: { textAlign: 'center', fontSize: 13, color: colors.gray, marginTop: 20 },
+  switchLink: { color: colors.lavender, fontWeight: '600' },
 });

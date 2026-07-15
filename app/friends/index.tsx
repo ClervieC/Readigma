@@ -1,12 +1,17 @@
 import { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, SafeAreaView, TextInput, Alert
+  StyleSheet, TextInput, Alert
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { radius, ColorPalette } from '../../theme';
+import { Feather } from '@expo/vector-icons';
+import { fonts, ColorPalette } from '../../theme';
 import { useTheme } from '../../context/ThemeContext';
 import * as friends from '../../lib/friends';
+import Row from '../../components/Row';
+import Pill from '../../components/Pill';
+import Button from '../../components/Button';
 
 export default function FriendsScreen() {
   const { colors } = useTheme();
@@ -36,52 +41,43 @@ export default function FriendsScreen() {
     friends.acceptRequest(id).then(() => { loadFriends(); loadPending(); }).catch(() => Alert.alert('Erreur', 'Impossible d\'accepter'));
   };
 
+  const goToProfile = (id: string, username: string) => router.push({ pathname: '/friends/[id]', params: { id, username } });
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backBtn}>← Retour</Text>
-        </TouchableOpacity>
+        <TouchableOpacity onPress={() => router.back()}><Feather name="arrow-left" size={20} color={colors.white} /></TouchableOpacity>
         <Text style={styles.headerTitle}>Amis lecteurs</Text>
-        <View style={{ width: 60 }} />
+        <View style={{ width: 20 }} />
       </View>
 
       <View style={styles.tabs}>
-        {[
-          { label: 'Mes amis', value: 'friends' },
-          { label: 'Chercher', value: 'search' },
-          { label: `Demandes${pending.length ? ` (${pending.length})` : ''}`, value: 'pending' },
-        ].map(t => (
-          <TouchableOpacity key={t.value} style={[styles.tab, tab === t.value && styles.tabActive]} onPress={() => setTab(t.value as any)}>
-            <Text style={[styles.tabText, tab === t.value && styles.tabTextActive]}>{t.label}</Text>
-          </TouchableOpacity>
-        ))}
+        <Pill label="Mes amis" active={tab === 'friends'} onPress={() => setTab('friends')} />
+        <Pill label="Chercher" active={tab === 'search'} onPress={() => setTab('search')} />
+        <Pill label={`Demandes${pending.length ? ` (${pending.length})` : ''}`} active={tab === 'pending'} onPress={() => setTab('pending')} />
       </View>
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         {tab === 'search' && (
           <>
             <View style={styles.searchBar}>
-              <Text style={{ fontSize: 18, color: colors.gray }}>🔍</Text>
+              <Feather name="search" size={17} color={colors.gray} />
               <TextInput style={styles.searchInput} value={query} onChangeText={setQuery}
                 placeholder="Chercher un lecteur..." placeholderTextColor={colors.gray}
                 returnKeyType="search" onSubmitEditing={search} autoCapitalize="none" />
             </View>
             {results.map((user, i) => (
-              <TouchableOpacity key={i} style={styles.userItem}
-                onPress={() => router.push({ pathname: '/friends/[id]', params: { id: user.id, username: user.username } })} activeOpacity={0.75}>
-                <View style={styles.userAvatar}>
-                  <Text style={styles.userAvatarText}>{user.username?.slice(0, 2).toUpperCase()}</Text>
-                </View>
-                <View style={styles.userInfo}>
-                  <Text style={styles.userName}>@{user.username}</Text>
-                  <Text style={styles.userBooks}>{user.books_count} livres lus</Text>
-                </View>
-                <TouchableOpacity style={[styles.addBtn, sentRequests.has(user.id) && styles.addBtnSent]}
-                  onPress={() => sendRequest(user.id, user.username)} disabled={sentRequests.has(user.id)}>
-                  <Text style={styles.addBtnText}>{sentRequests.has(user.id) ? '✓ Envoyé' : '+ Suivre'}</Text>
-                </TouchableOpacity>
-              </TouchableOpacity>
+              <Row key={i} last={i === results.length - 1} onPress={() => goToProfile(user.id, user.username)}
+                icon={<View style={styles.userAvatar}><Text style={styles.userAvatarText}>{user.username?.slice(0, 2).toUpperCase()}</Text></View>}
+                right={
+                  <TouchableOpacity style={[styles.addBtn, sentRequests.has(user.id) && styles.addBtnSent]}
+                    onPress={() => sendRequest(user.id, user.username)} disabled={sentRequests.has(user.id)}>
+                    <Text style={styles.addBtnText}>{sentRequests.has(user.id) ? 'Envoyé' : 'Suivre'}</Text>
+                  </TouchableOpacity>
+                }>
+                <Text style={styles.userName}>@{user.username}</Text>
+                <Text style={styles.userBooks}>{user.books_count} livres lus</Text>
+              </Row>
             ))}
             {results.length === 0 && query && <Text style={styles.emptyText}>Aucun lecteur trouvé</Text>}
           </>
@@ -91,25 +87,17 @@ export default function FriendsScreen() {
           <>
             {friendsList.length === 0 ? (
               <View style={styles.emptyState}>
-                <Text style={styles.emptyEmoji}>👥</Text>
+                <Feather name="users" size={36} color={colors.gray} />
                 <Text style={styles.emptyTitle}>Pas encore d'amis</Text>
                 <Text style={styles.emptyText}>Cherche des lecteurs pour les ajouter !</Text>
-                <TouchableOpacity style={styles.searchBtn} onPress={() => setTab('search')}>
-                  <Text style={styles.searchBtnText}>Chercher des lecteurs</Text>
-                </TouchableOpacity>
+                <Button label="Chercher des lecteurs" onPress={() => setTab('search')} style={{ marginTop: 8 }} />
               </View>
             ) : friendsList.map((friend, i) => (
-              <TouchableOpacity key={i} style={styles.userItem}
-                onPress={() => router.push({ pathname: '/friends/[id]', params: { id: friend.id, username: friend.username } })} activeOpacity={0.75}>
-                <View style={styles.userAvatar}>
-                  <Text style={styles.userAvatarText}>{friend.username?.slice(0, 2).toUpperCase()}</Text>
-                </View>
-                <View style={styles.userInfo}>
-                  <Text style={styles.userName}>@{friend.username}</Text>
-                  <Text style={styles.userBooks}>{friend.books_count} livres lus</Text>
-                </View>
-                <Text style={{ color: colors.gray, fontSize: 18 }}>›</Text>
-              </TouchableOpacity>
+              <Row key={i} last={i === friendsList.length - 1} onPress={() => goToProfile(friend.id, friend.username)} chevron
+                icon={<View style={styles.userAvatar}><Text style={styles.userAvatarText}>{friend.username?.slice(0, 2).toUpperCase()}</Text></View>}>
+                <Text style={styles.userName}>@{friend.username}</Text>
+                <Text style={styles.userBooks}>{friend.books_count} livres lus</Text>
+              </Row>
             ))}
           </>
         )}
@@ -119,18 +107,16 @@ export default function FriendsScreen() {
             {pending.length === 0 ? (
               <Text style={styles.emptyText}>Aucune demande en attente</Text>
             ) : pending.map((req, i) => (
-              <View key={i} style={styles.userItem}>
-                <View style={styles.userAvatar}>
-                  <Text style={styles.userAvatarText}>{req.username?.slice(0, 2).toUpperCase()}</Text>
-                </View>
-                <View style={styles.userInfo}>
-                  <Text style={styles.userName}>@{req.username}</Text>
-                  <Text style={styles.userBooks}>veut être ton ami</Text>
-                </View>
-                <TouchableOpacity style={styles.acceptBtn} onPress={() => acceptRequest(req.id)}>
-                  <Text style={styles.acceptBtnText}>Accepter</Text>
-                </TouchableOpacity>
-              </View>
+              <Row key={i} last={i === pending.length - 1}
+                icon={<View style={styles.userAvatar}><Text style={styles.userAvatarText}>{req.username?.slice(0, 2).toUpperCase()}</Text></View>}
+                right={
+                  <TouchableOpacity style={styles.addBtn} onPress={() => acceptRequest(req.id)}>
+                    <Text style={styles.addBtnText}>Accepter</Text>
+                  </TouchableOpacity>
+                }>
+                <Text style={styles.userName}>@{req.username}</Text>
+                <Text style={styles.userBooks}>veut être ton ami</Text>
+              </Row>
             ))}
           </>
         )}
@@ -142,32 +128,20 @@ export default function FriendsScreen() {
 
 const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.divider },
-  backBtn: { fontSize: 14, color: colors.lavender, fontWeight: '500' },
-  headerTitle: { fontSize: 16, fontWeight: '700', color: colors.white },
-  tabs: { flexDirection: 'row', backgroundColor: colors.card, borderRadius: radius.md, padding: 4, margin: 16 },
-  tab: { flex: 1, padding: 8, borderRadius: 12, alignItems: 'center' },
-  tabActive: { backgroundColor: colors.purple },
-  tabText: { fontSize: 11, color: colors.gray, fontWeight: '500' },
-  tabTextActive: { color: 'white' },
-  scroll: { flex: 1, paddingHorizontal: 16 },
-  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.card, borderRadius: radius.md, padding: 12, marginBottom: 16, borderWidth: 1, borderColor: colors.divider },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14 },
+  headerTitle: { fontSize: 15, fontFamily: fonts.headingBold, color: colors.white },
+  tabs: { flexDirection: 'row', gap: 8, paddingHorizontal: 20, marginBottom: 16 },
+  scroll: { flex: 1, paddingHorizontal: 20 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: 1, borderBottomColor: colors.divider, paddingVertical: 10, marginBottom: 16 },
   searchInput: { flex: 1, color: colors.white, fontSize: 15 },
-  userItem: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, backgroundColor: colors.card, borderRadius: radius.md, marginBottom: 8, borderWidth: 1, borderColor: colors.divider },
-  userAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(107,63,115,0.2)', alignItems: 'center', justifyContent: 'center' },
-  userAvatarText: { fontSize: 16, fontWeight: '700', color: colors.lavender },
-  userInfo: { flex: 1 },
+  userAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.purpleGlow, alignItems: 'center', justifyContent: 'center' },
+  userAvatarText: { fontSize: 14, fontWeight: '700', color: colors.lavender },
   userName: { fontSize: 14, fontWeight: '600', color: colors.white },
   userBooks: { fontSize: 11, color: colors.gray, marginTop: 2 },
   addBtn: { paddingHorizontal: 14, paddingVertical: 7, backgroundColor: colors.purple, borderRadius: 20 },
-  addBtnSent: { backgroundColor: 'rgba(107,63,115,0.2)', borderWidth: 1, borderColor: colors.purple },
+  addBtnSent: { backgroundColor: colors.purpleGlow },
   addBtnText: { color: 'white', fontSize: 12, fontWeight: '600' },
-  acceptBtn: { paddingHorizontal: 14, paddingVertical: 7, backgroundColor: colors.teal, borderRadius: 20 },
-  acceptBtnText: { color: colors.bg, fontSize: 12, fontWeight: '600' },
   emptyState: { alignItems: 'center', paddingTop: 60, gap: 12 },
-  emptyEmoji: { fontSize: 48 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: colors.white },
-  emptyText: { color: colors.gray, fontSize: 13, textAlign: 'center', paddingTop: 20 },
-  searchBtn: { backgroundColor: colors.purple, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, marginTop: 8 },
-  searchBtnText: { color: 'white', fontSize: 13, fontWeight: '600' },
+  emptyTitle: { fontSize: 16, fontFamily: fonts.headingBold, color: colors.white },
+  emptyText: { color: colors.gray, fontSize: 13, textAlign: 'center', paddingTop: 8 },
 });

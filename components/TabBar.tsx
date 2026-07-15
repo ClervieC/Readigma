@@ -1,7 +1,10 @@
+import { useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming, interpolateColor } from 'react-native-reanimated';
 import { ColorPalette, fonts } from '../theme';
 import { useTheme } from '../context/ThemeContext';
+import { emitScrollToTop } from '../lib/tabScrollEmitter';
 
 const TABS: { name: string; label: string; icon: keyof typeof Feather.glyphMap }[] = [
   { name: 'index', label: 'Découvrir', icon: 'compass' },
@@ -20,6 +23,35 @@ type TabBarProps = {
   navigation: { navigate: (name: string) => void };
 };
 
+function TabItem({ tab, focused, onPress, colors }: { tab: typeof TABS[number]; focused: boolean; onPress: () => void; colors: ColorPalette }) {
+  const styles = makeStyles(colors);
+  const progress = useSharedValue(focused ? 1 : 0);
+  const scale = useSharedValue(focused ? 1 : 1);
+
+  useEffect(() => {
+    progress.value = withTiming(focused ? 1 : 0, { duration: 180 });
+    if (focused) scale.value = withSequence(withTiming(1.18, { duration: 110 }), withTiming(1, { duration: 140 }));
+  }, [focused]);
+
+  const iconStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const labelStyle = useAnimatedStyle(() => ({ color: interpolateColor(progress.value, [0, 1], [colors.gray, colors.purple]) }));
+  const pillStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(progress.value, [0, 1], ['rgba(0,0,0,0)', colors.purpleGlow]),
+    transform: [{ scale: 0.85 + progress.value * 0.15 }],
+  }));
+
+  return (
+    <TouchableOpacity style={styles.item} onPress={onPress} activeOpacity={0.6}>
+      <Animated.View style={[styles.iconPill, pillStyle]}>
+        <Animated.View style={iconStyle}>
+          <Feather name={tab.icon} size={20} color={focused ? colors.purple : colors.gray} />
+        </Animated.View>
+      </Animated.View>
+      <Animated.Text style={[styles.label, labelStyle, focused && styles.labelActive]}>{tab.label}</Animated.Text>
+    </TouchableOpacity>
+  );
+}
+
 export default function TabBar({ state, navigation }: TabBarProps) {
   const { colors } = useTheme();
   const styles = makeStyles(colors);
@@ -31,15 +63,8 @@ export default function TabBar({ state, navigation }: TabBarProps) {
         const focused = state.index === index;
 
         return (
-          <TouchableOpacity
-            key={route.key}
-            style={styles.item}
-            onPress={() => navigation.navigate(route.name)}
-            activeOpacity={0.6}
-          >
-            <Feather name={tab.icon} size={20} color={focused ? colors.purple : colors.gray} />
-            <Text style={[styles.label, focused && styles.labelActive]}>{tab.label}</Text>
-          </TouchableOpacity>
+          <TabItem key={route.key} tab={tab} focused={focused} colors={colors}
+            onPress={() => focused ? emitScrollToTop(route.name) : navigation.navigate(route.name)} />
         );
       })}
     </View>
@@ -56,7 +81,8 @@ const makeStyles = (colors: ColorPalette) =>
       paddingTop: 10,
       paddingBottom: 28,
     },
-    item: { flex: 1, alignItems: 'center', gap: 5 },
-    label: { fontSize: 10, color: colors.gray, fontFamily: fonts.body, letterSpacing: 0.2 },
-    labelActive: { color: colors.purple, fontWeight: '600' },
+    item: { flex: 1, alignItems: 'center', gap: 4 },
+    iconPill: { paddingHorizontal: 18, paddingVertical: 5, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+    label: { fontSize: 10, fontFamily: fonts.body, letterSpacing: 0.2 },
+    labelActive: { fontWeight: '600' },
   });

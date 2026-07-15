@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, SafeAreaView, ScrollView, Alert, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Image } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { radius, ColorPalette } from '../theme';
+import { Feather } from '@expo/vector-icons';
+import { fonts, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import Screen from '../components/Screen';
 
 export default function EditProfileScreen() {
   const { colors } = useTheme();
@@ -39,10 +41,6 @@ export default function EditProfileScreen() {
     setLoading(true);
     try {
       if (!profile || username !== profile.username || avatarUri !== profile.avatar_url) {
-        // Upsert, not update: an account can reach this screen with no
-        // profiles row yet (e.g. it signed up while email confirmation was
-        // pending, so there was no session yet to attach one to — see
-        // lib/pendingUsername.ts). A plain update would silently no-op.
         const { error } = await supabase
           .from('profiles')
           .upsert({ id: session.user.id, username, avatar_url: avatarUri }, { onConflict: 'id' });
@@ -56,7 +54,7 @@ export default function EditProfileScreen() {
         if (error) throw new Error(error.message);
       }
       await refreshProfile();
-      Alert.alert('✅', 'Profil mis à jour !', [{ text: 'OK', onPress: () => router.back() }]);
+      Alert.alert('Fait', 'Profil mis à jour !', [{ text: 'OK', onPress: () => router.back() }]);
     } catch (err: any) {
       Alert.alert('Erreur', err.message || 'Impossible de mettre à jour');
     } finally {
@@ -65,74 +63,50 @@ export default function EditProfileScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}><Text style={styles.cancel}>Annuler</Text></TouchableOpacity>
-        <Text style={styles.title}>Modifier le profil</Text>
-        <TouchableOpacity onPress={save} disabled={loading}>
-          <Text style={[styles.save, loading && { opacity: 0.5 }]}>{loading ? '...' : 'Sauver'}</Text>
-        </TouchableOpacity>
-      </View>
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-        <TouchableOpacity style={styles.avatarWrap} onPress={pickImage}>
-          {avatarUri ? (
-            <Image source={{ uri: avatarUri }} style={styles.avatarImg} />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Text style={styles.avatarInitials}>{username.slice(0, 2).toUpperCase()}</Text>
-            </View>
-          )}
-          <View style={styles.avatarBadge}><Text style={{ fontSize: 14 }}>📷</Text></View>
-        </TouchableOpacity>
-        <Text style={styles.avatarHint}>Appuie pour changer la photo</Text>
+    <Screen
+      title="Modifier le profil"
+      left={<TouchableOpacity onPress={() => router.back()}><Text style={styles.cancel}>Annuler</Text></TouchableOpacity>}
+      right={<TouchableOpacity onPress={save} disabled={loading}><Text style={[styles.save, loading && { opacity: 0.5 }]}>{loading ? '...' : 'Sauver'}</Text></TouchableOpacity>}
+    >
+      <TouchableOpacity style={styles.avatarWrap} onPress={pickImage}>
+        {avatarUri ? (
+          <Image source={{ uri: avatarUri }} style={styles.avatarImg} />
+        ) : (
+          <View style={styles.avatarPlaceholder}>
+            <Text style={styles.avatarInitials}>{username.slice(0, 2).toUpperCase()}</Text>
+          </View>
+        )}
+        <View style={styles.avatarBadge}><Feather name="camera" size={13} color={colors.white} /></View>
+      </TouchableOpacity>
+      <Text style={styles.avatarHint}>Appuie pour changer la photo</Text>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Informations</Text>
-          <View style={styles.field}>
-            <Text style={styles.label}>Nom d'utilisateur</Text>
-            <TextInput style={styles.input} value={username} onChangeText={setUsername} autoCapitalize="none" placeholderTextColor={colors.gray} />
-          </View>
-          <View style={styles.field}>
-            <Text style={styles.label}>Email</Text>
-            <TextInput style={styles.input} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholderTextColor={colors.gray} />
-          </View>
-        </View>
+      <Text style={styles.sectionTitle}>Informations</Text>
+      <Text style={styles.label}>Nom d'utilisateur</Text>
+      <TextInput style={styles.input} value={username} onChangeText={setUsername} autoCapitalize="none" placeholderTextColor={colors.gray} />
+      <Text style={styles.label}>Email</Text>
+      <TextInput style={styles.input} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholderTextColor={colors.gray} />
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Changer le mot de passe</Text>
-          <Text style={styles.sectionHint}>Laisse vide pour ne pas modifier</Text>
-          <View style={styles.field}>
-            <Text style={styles.label}>Nouveau mot de passe</Text>
-            <TextInput style={styles.input} value={password} onChangeText={setPassword} secureTextEntry placeholder="••••••••" placeholderTextColor={colors.gray} />
-          </View>
-          <View style={styles.field}>
-            <Text style={styles.label}>Confirmer le mot de passe</Text>
-            <TextInput style={styles.input} value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry placeholder="••••••••" placeholderTextColor={colors.gray} />
-          </View>
-        </View>
-        <View style={{ height: 40 }} />
-      </ScrollView>
-    </SafeAreaView>
+      <Text style={[styles.sectionTitle, { marginTop: 12 }]}>Changer le mot de passe</Text>
+      <Text style={styles.sectionHint}>Laisse vide pour ne pas modifier</Text>
+      <Text style={styles.label}>Nouveau mot de passe</Text>
+      <TextInput style={styles.input} value={password} onChangeText={setPassword} secureTextEntry placeholder="••••••••" placeholderTextColor={colors.gray} />
+      <Text style={styles.label}>Confirmer le mot de passe</Text>
+      <TextInput style={styles.input} value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry placeholder="••••••••" placeholderTextColor={colors.gray} />
+    </Screen>
   );
 }
 
 const makeStyles = (colors: ColorPalette) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.divider },
-  title: { fontSize: 16, fontWeight: '700', color: colors.white },
   cancel: { fontSize: 14, color: colors.gray },
   save: { fontSize: 14, fontWeight: '700', color: colors.purple },
-  scroll: { flex: 1, paddingHorizontal: 16 },
-  avatarWrap: { alignSelf: 'center', marginTop: 24, marginBottom: 8, position: 'relative' },
-  avatarPlaceholder: { width: 88, height: 88, borderRadius: 44, backgroundColor: colors.purple, alignItems: 'center', justifyContent: 'center' },
-  avatarImg: { width: 88, height: 88, borderRadius: 44 },
-  avatarInitials: { fontSize: 32, fontWeight: '700', color: 'white' },
-  avatarBadge: { position: 'absolute', bottom: 0, right: 0, width: 28, height: 28, borderRadius: 14, backgroundColor: colors.card, borderWidth: 2, borderColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
-  avatarHint: { fontSize: 11, color: colors.gray, textAlign: 'center', marginBottom: 24 },
-  section: { backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.divider, padding: 16, marginBottom: 16 },
-  sectionTitle: { fontSize: 13, fontWeight: '700', color: colors.white, marginBottom: 4 },
+  avatarWrap: { alignSelf: 'center', marginTop: 8, marginBottom: 8, position: 'relative' },
+  avatarPlaceholder: { width: 84, height: 84, borderRadius: 42, backgroundColor: colors.purple, alignItems: 'center', justifyContent: 'center' },
+  avatarImg: { width: 84, height: 84, borderRadius: 42 },
+  avatarInitials: { fontSize: 30, fontWeight: '700', color: 'white' },
+  avatarBadge: { position: 'absolute', bottom: 0, right: 0, width: 26, height: 26, borderRadius: 13, backgroundColor: colors.purple, borderWidth: 2, borderColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
+  avatarHint: { fontSize: 11, color: colors.gray, textAlign: 'center', marginBottom: 28 },
+  sectionTitle: { fontSize: 12, fontFamily: fonts.headingBold, color: colors.gray, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 },
   sectionHint: { fontSize: 11, color: colors.gray, marginBottom: 12 },
-  field: { marginTop: 12 },
-  label: { fontSize: 11, color: colors.gray, marginBottom: 6 },
-  input: { backgroundColor: colors.card2, borderRadius: radius.sm, padding: 12, color: colors.white, fontSize: 15, borderWidth: 1, borderColor: colors.divider },
+  label: { fontSize: 11, color: colors.gray, marginTop: 14, marginBottom: 6 },
+  input: { borderBottomWidth: 1, borderBottomColor: colors.divider, paddingVertical: 10, color: colors.white, fontSize: 15 },
 });

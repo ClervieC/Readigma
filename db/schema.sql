@@ -42,6 +42,11 @@ create table books (
   genres           text[] not null default '{}',
   tropes           text[] not null default '{}',
   published_year   int,
+  series           varchar(500),        -- e.g. "Harry Potter" — best-effort from Open Library's
+                                         -- `series:X` subject tag, otherwise set manually on the
+                                         -- book detail screen (source coverage is too sparse to
+                                         -- rely on alone; see app/book/[id].tsx)
+  series_index     numeric(5,2),        -- tome/volume number within the series, e.g. 1, 2.5
   approved         boolean not null default false,
   created_at       timestamptz not null default now()
 );
@@ -57,6 +62,12 @@ create table user_books (
   current_page     int not null default 0,
   total_pages      int not null default 0,
   progress_percent numeric(5,2) not null default 0,
+  progress_mode    varchar(10) not null default 'pages',    -- 'pages' | 'percent' — which editor the
+                                                             -- reader last used, so Discover and the
+                                                             -- book detail screen agree on which one
+                                                             -- to show instead of each defaulting to
+                                                             -- 'pages' independently
+
   started_at       timestamptz,
   finished_at      timestamptz,
   created_at       timestamptz not null default now(),
@@ -113,6 +124,37 @@ create table book_suggestions (
   created_at  timestamptz not null default now()
 );
 
+-- "Write to the admin" contact form (app/help.tsx) — replaces the old
+-- mailto: link with an actual inbox an admin account can read/triage.
+create table admin_messages (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references profiles(id) on delete cascade,
+  message     text not null,
+  status      varchar(20) not null default 'unread', -- 'unread' | 'read'
+  created_at  timestamptz not null default now()
+);
+
+-- Likes + comments on feed posts (app/(tabs)/feed.tsx). No select policy on
+-- either table below — visibility follows the same friend-or-self rule as
+-- get_feed()'s union, enforced only through the security definer RPCs near
+-- the bottom of this file (is_feed_visible/toggle_feed_like/add_feed_comment/
+-- get_feed_comments), never through a relaxed table-level policy.
+create table feed_likes (
+  id          uuid primary key default gen_random_uuid(),
+  feed_id     uuid not null references activity_feed(id) on delete cascade,
+  user_id     uuid not null references profiles(id) on delete cascade,
+  created_at  timestamptz not null default now(),
+  unique (feed_id, user_id)
+);
+
+create table feed_comments (
+  id          uuid primary key default gen_random_uuid(),
+  feed_id     uuid not null references activity_feed(id) on delete cascade,
+  user_id     uuid not null references profiles(id) on delete cascade,
+  comment     text not null,
+  created_at  timestamptz not null default now()
+);
+
 -- Manual start/stop reading-session timer (lib/timer.ts). At most one
 -- session per user has ended_at null (the "currently running" one) — the
 -- app stops any other running session before starting a new one, rather
@@ -158,7 +200,12 @@ begin
     new.rating = round(new.rating * 4) / 4;
   end if;
 
-  if new.total_pages > 0 and new.current_page is not null then
+  -- Only re-derive progress_percent from pages when this write actually
+  -- touches current_page/total_pages — otherwise a percent-only update
+  -- (progress tracked by % rather than page count) would get silently
+  -- clobbered back to whatever the last page-based value was.
+  if new.total_pages > 0 and new.current_page is not null
+     and (tg_op = 'INSERT' or new.current_page is distinct from old.current_page or new.total_pages is distinct from old.total_pages) then
     new.progress_percent = round((new.current_page::numeric / new.total_pages) * 100, 2);
   end if;
 
@@ -178,6 +225,30 @@ create trigger user_books_before_write
   before insert or update on user_books
   for each row execute function user_books_before_write();
 
+-- profiles_update_self (below) only checks `id = auth.uid()`, with no
+-- column restriction — without this trigger, any signed-in user could PATCH
+-- their own row with {"role":"admin"} and self-promote. auth.uid() is only
+-- populated inside a PostgREST-authenticated request; it's null for the
+-- service_role key and for a direct SQL editor/superuser session (both
+-- already trusted, e.g. the admin bootstrap UPDATE near the end of this
+-- file), so only real end-user sessions are constrained here.
+create or replace function prevent_role_self_escalation() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.role is distinct from old.role then
+    if auth.uid() is not null and not exists (
+      select 1 from profiles where id = auth.uid() and role = 'admin'
+    ) then
+      new.role := old.role;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+create trigger trg_prevent_role_self_escalation
+  before update on profiles
+  for each row execute function prevent_role_self_escalation();
+
 -- ============================================================================
 -- Row-Level Security
 -- ============================================================================
@@ -191,6 +262,9 @@ alter table reading_reactions enable row level security;
 alter table activity_feed enable row level security;
 alter table reading_goals enable row level security;
 alter table book_suggestions enable row level security;
+alter table admin_messages enable row level security;
+alter table feed_likes enable row level security;
+alter table feed_comments enable row level security;
 alter table reading_sessions enable row level security;
 
 -- profiles: usernames/avatars are the app's public identity, readable by any
@@ -259,6 +333,31 @@ create policy book_suggestions_update_admin on book_suggestions for update
     exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
   );
 
+-- admin_messages: sender sees their own; admins see and triage all.
+create policy admin_messages_insert_self on admin_messages for insert
+  to authenticated with check (user_id = auth.uid());
+create policy admin_messages_select on admin_messages for select
+  to authenticated using (
+    user_id = auth.uid()
+    or exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
+  );
+create policy admin_messages_update_admin on admin_messages for update
+  to authenticated using (
+    exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
+  );
+
+-- feed_likes/feed_comments: owner can write/delete their own row; deliberately
+-- no select policy (see table comments above) — reads only happen inside
+-- get_feed()/get_feed_comments() below.
+create policy feed_likes_owner_insert on feed_likes for insert
+  to authenticated with check (user_id = auth.uid());
+create policy feed_likes_owner_delete on feed_likes for delete
+  to authenticated using (user_id = auth.uid());
+create policy feed_comments_owner_insert on feed_comments for insert
+  to authenticated with check (user_id = auth.uid());
+create policy feed_comments_owner_delete on feed_comments for delete
+  to authenticated using (user_id = auth.uid());
+
 -- reading_sessions: owner-only, same shape as user_books/reading_reactions.
 create policy reading_sessions_owner on reading_sessions for all
   to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
@@ -272,13 +371,14 @@ create policy reading_sessions_owner on reading_sessions for all
 -- per Postgres's security-definer hardening guidance.
 -- ============================================================================
 
-create or replace function get_feed()
+create function get_feed()
 returns table (
   id uuid, user_id uuid, username text, avatar_url text,
   book_id uuid, book_title text, book_author text, cover_url text,
   genres text[], description text, published_year int,
   activity_type text, metadata jsonb,
   emoji text, note text, reaction_percent numeric,
+  like_count bigint, liked_by_me boolean, comment_count bigint,
   created_at timestamptz
 )
 language sql security definer set search_path = public stable as $$
@@ -288,11 +388,15 @@ language sql security definer set search_path = public stable as $$
     b.genres, b.description, b.published_year,
     af.activity_type, af.metadata,
     rr.emoji, rr.note, rr.progress_percent,
+    coalesce(lc.count, 0), coalesce(ml.liked, false), coalesce(cc.count, 0),
     af.created_at
   from activity_feed af
   join profiles p on p.id = af.user_id
   left join books b on b.id = af.book_id
   left join reading_reactions rr on rr.id = af.reaction_id
+  left join (select feed_id, count(*) as count from feed_likes group by feed_id) lc on lc.feed_id = af.id
+  left join (select feed_id, count(*) as count from feed_comments group by feed_id) cc on cc.feed_id = af.id
+  left join (select feed_id, true as liked from feed_likes where user_id = auth.uid()) ml on ml.feed_id = af.id
   where af.user_id = auth.uid()
      or af.user_id in (
        select case when f.requester_id = auth.uid() then f.receiver_id else f.requester_id end
@@ -302,6 +406,78 @@ language sql security definer set search_path = public stable as $$
      )
   order by af.created_at desc
   limit 50;
+$$;
+
+-- Backs toggle_feed_like/add_feed_comment/get_feed_comments below: a post is
+-- only actionable by the same audience get_feed()'s union already grants
+-- read access to (the author, or an accepted friend of theirs).
+create or replace function is_feed_visible(p_feed_id uuid)
+returns boolean
+language sql security definer set search_path = public stable as $$
+  select exists (
+    select 1 from activity_feed af
+    where af.id = p_feed_id
+      and (
+        af.user_id = auth.uid()
+        or af.user_id in (
+          select case when f.requester_id = auth.uid() then f.receiver_id else f.requester_id end
+          from friendships f
+          where f.status = 'accepted'
+            and (f.requester_id = auth.uid() or f.receiver_id = auth.uid())
+        )
+      )
+  );
+$$;
+
+create or replace function toggle_feed_like(p_feed_id uuid)
+returns boolean
+language plpgsql security definer set search_path = public as $$
+declare
+  now_liked boolean;
+begin
+  if not is_feed_visible(p_feed_id) then
+    raise exception 'Post introuvable';
+  end if;
+  if exists (select 1 from feed_likes where feed_id = p_feed_id and user_id = auth.uid()) then
+    delete from feed_likes where feed_id = p_feed_id and user_id = auth.uid();
+    now_liked := false;
+  else
+    insert into feed_likes (feed_id, user_id) values (p_feed_id, auth.uid());
+    now_liked := true;
+  end if;
+  return now_liked;
+end;
+$$;
+
+create or replace function add_feed_comment(p_feed_id uuid, p_comment text)
+returns table (id uuid, user_id uuid, username text, avatar_url text, comment text, created_at timestamptz)
+language plpgsql security definer set search_path = public as $$
+declare
+  new_id uuid;
+begin
+  if not is_feed_visible(p_feed_id) then
+    raise exception 'Post introuvable';
+  end if;
+  if trim(p_comment) = '' then
+    raise exception 'Commentaire vide';
+  end if;
+  insert into feed_comments (feed_id, user_id, comment) values (p_feed_id, auth.uid(), trim(p_comment))
+  returning feed_comments.id into new_id;
+  return query
+    select fc.id, fc.user_id, p.username, p.avatar_url, fc.comment, fc.created_at
+    from feed_comments fc join profiles p on p.id = fc.user_id
+    where fc.id = new_id;
+end;
+$$;
+
+create or replace function get_feed_comments(p_feed_id uuid)
+returns table (id uuid, user_id uuid, username text, avatar_url text, comment text, created_at timestamptz)
+language sql security definer set search_path = public stable as $$
+  select fc.id, fc.user_id, p.username, p.avatar_url, fc.comment, fc.created_at
+  from feed_comments fc
+  join profiles p on p.id = fc.user_id
+  where fc.feed_id = p_feed_id and is_feed_visible(p_feed_id)
+  order by fc.created_at asc;
 $$;
 
 create or replace function randomize_book(p_genre text default null, p_trope text default null)
@@ -361,7 +537,7 @@ language sql security definer set search_path = public stable as $$
     round(avg(ub.rating) filter (where ub.rating is not null), 2),
     coalesce((
       select jsonb_agg(jsonb_build_object(
-        'title', b2.title, 'author', b2.author, 'genres', b2.genres,
+        'title', b2.title, 'author', b2.author, 'genres', b2.genres, 'cover_url', b2.cover_url,
         'progress_percent', ub2.progress_percent,
         'current_page', ub2.current_page, 'total_pages', ub2.total_pages
       ) order by ub2.updated_at desc)
@@ -460,3 +636,36 @@ language sql security invoker stable as $$
   from user_books
   where user_id = auth.uid();
 $$;
+
+-- Community rating average + individual reviews for the book detail screen
+-- (lib/userBooks.ts) — reads every finished reader's rating/comment for a
+-- book, not just the caller's own, so this needs security definer like
+-- friend_profile()/popular_books() above.
+create or replace function book_rating_stats(p_book_id uuid)
+returns table (avg_rating numeric, ratings_count int)
+language sql security definer set search_path = public stable as $$
+  select round(avg(rating), 2), count(rating)::int
+  from user_books
+  where book_id = p_book_id and status = 'done' and rating is not null;
+$$;
+
+create or replace function book_reviews(p_book_id uuid)
+returns table (username text, avatar_url text, rating numeric, comment text, finished_at timestamptz)
+language sql security definer set search_path = public stable as $$
+  select p.username, p.avatar_url, ub.rating, ub.comment, ub.finished_at
+  from user_books ub
+  join profiles p on p.id = ub.user_id
+  where ub.book_id = p_book_id
+    and ub.status = 'done'
+    and (ub.rating is not null or ub.comment is not null)
+  order by ub.finished_at desc nulls last
+  limit 50;
+$$;
+
+-- ============================================================================
+-- One-time data: promote the dev/owner account to admin so there's someone
+-- who can triage book_suggestions/admin_messages and add books manually
+-- through app/admin.tsx. No-op if that account doesn't exist yet.
+-- ============================================================================
+update profiles set role = 'admin'
+where id = (select id from auth.users where email = 'clervie@bluedays.com');
