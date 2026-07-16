@@ -1,11 +1,15 @@
 import { useState, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Image, Platform } from 'react-native';
-import { useFocusEffect, Redirect } from 'expo-router';
+import { useFocusEffect, useRouter, Redirect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { fonts, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import * as admin from '../lib/admin';
+import * as supportChat from '../lib/supportChat';
+import * as reports from '../lib/reports';
+import * as bookEdits from '../lib/bookEdits';
+import * as books from '../lib/books';
 import Screen from '../components/Screen';
 import Pill from '../components/Pill';
 import Button from '../components/Button';
@@ -14,7 +18,9 @@ import BookForm, { BookFormFields, EMPTY_BOOK_FORM } from '../components/BookFor
 const TABS = [
   { label: 'Utilisateurs', value: 'users' },
   { label: 'Messages', value: 'messages' },
+  { label: 'Signalements', value: 'reports' },
   { label: 'Suggestions', value: 'suggestions' },
+  { label: 'Modifications', value: 'edits' },
   { label: 'Ajouter un livre', value: 'add' },
 ] as const;
 
@@ -32,9 +38,10 @@ function timeAgo(dateStr: string) {
 export default function AdminScreen() {
   const { colors } = useTheme();
   const { profile } = useAuth();
+  const router = useRouter();
   const styles = makeStyles(colors);
   const [tab, setTab] = useState<typeof TABS[number]['value']>('users');
-  const [messages, setMessages] = useState<admin.AdminMessage[]>([]);
+  const [threads, setThreads] = useState<supportChat.ThreadSummary[]>([]);
   const [suggestions, setSuggestions] = useState<admin.BookSuggestion[]>([]);
   const [users, setUsers] = useState<admin.AdminUser[]>([]);
   const [userQuery, setUserQuery] = useState('');
@@ -42,38 +49,21 @@ export default function AdminScreen() {
   const [book, setBook] = useState<BookFormFields>(EMPTY_BOOK_FORM);
   const [editingSuggestionId, setEditingSuggestionId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
-  const [sendingReplyId, setSendingReplyId] = useState<string | null>(null);
+  const [userReports, setUserReports] = useState<reports.Report[]>([]);
+  const [bookEditList, setBookEditList] = useState<bookEdits.BookEditSuggestion[]>([]);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillProgress, setBackfillProgress] = useState<{ done: number; total: number; updated: number } | null>(null);
 
   const load = () => {
     setLoading(true);
-    Promise.all([admin.getMessages(), admin.getSuggestions(), admin.getAllUsers()])
-      .then(([m, s, u]) => { setMessages(m); setSuggestions(s); setUsers(u); setLoading(false); })
+    Promise.all([supportChat.getThreadSummaries(), admin.getSuggestions(), admin.getAllUsers(), reports.getReports(), bookEdits.getBookEdits()])
+      .then(([t, s, u, r, be]) => { setThreads(t); setSuggestions(s); setUsers(u); setUserReports(r); setBookEditList(be); setLoading(false); })
       .catch(() => setLoading(false));
   };
 
   useFocusEffect(useCallback(() => { load(); }, []));
 
   if (profile && profile.role !== 'admin') return <Redirect href="/(tabs)/profile" />;
-
-  const openMessage = (m: admin.AdminMessage) => {
-    if (m.status === 'unread') {
-      admin.markMessageRead(m.id).then(() => setMessages(cur => cur.map(x => x.id === m.id ? { ...x, status: 'read' } : x)));
-    }
-  };
-
-  const sendReply = (m: admin.AdminMessage) => {
-    const reply = (replyDrafts[m.id] ?? '').trim();
-    if (!reply) return;
-    setSendingReplyId(m.id);
-    admin.replyToMessage(m.id, reply)
-      .then(() => {
-        setMessages(cur => cur.map(x => x.id === m.id ? { ...x, status: 'replied', reply, replied_at: new Date().toISOString() } : x));
-        setReplyDrafts(cur => { const next = { ...cur }; delete next[m.id]; return next; });
-      })
-      .catch(() => Alert.alert('Erreur', "Impossible d'envoyer la réponse"))
-      .finally(() => setSendingReplyId(null));
-  };
 
   const quickApprove = (s: admin.BookSuggestion) => {
     admin.approveSuggestion(s)
@@ -121,6 +111,69 @@ export default function AdminScreen() {
   };
 
   const filteredUsers = users.filter(u => u.username.toLowerCase().includes(userQuery.trim().toLowerCase()));
+
+  const resolveReport = (r: reports.Report) => {
+    reports.markReportReviewed(r.id)
+      .then(() => setUserReports(cur => cur.map(x => x.id === r.id ? { ...x, status: 'reviewed' } : x)))
+      .catch(() => Alert.alert('Erreur', "Impossible de mettre à jour le signalement"));
+  };
+
+  const approveEdit = (e: bookEdits.BookEditSuggestion) => {
+    bookEdits.approveBookEdit(e)
+      .then(() => setBookEditList(cur => cur.map(x => x.id === e.id ? { ...x, status: 'approved' } : x)))
+      .catch(() => Alert.alert('Erreur', "Impossible d'appliquer cette modification"));
+  };
+
+  const rejectEdit = (e: bookEdits.BookEditSuggestion) => {
+    bookEdits.rejectBookEdit(e.id)
+      .then(() => setBookEditList(cur => cur.map(x => x.id === e.id ? { ...x, status: 'rejected' } : x)))
+      .catch(() => Alert.alert('Erreur', "Impossible de refuser cette modification"));
+  };
+
+  // One-time sweep over every book already in the catalog that's missing a
+  // cover — tries an ISBN lookup first, then falls back to the same title/
+  // author search used elsewhere (see books.backfillMissingCovers). Can take
+  // a while on a large catalog since it's deliberately sequential/throttled
+  // rather than firing dozens of requests at once.
+  const runCoverBackfill = () => {
+    setBackfilling(true);
+    setBackfillProgress({ done: 0, total: 0, updated: 0 });
+    books.backfillMissingCovers((done, total, updated) => setBackfillProgress({ done, total, updated }))
+      .then(({ checked, updated }) => {
+        setBackfilling(false);
+        Alert.alert('Terminé', `${updated} livre(s) complété(s) sur ${checked} qu'il manquait quelque chose (couverture, résumé ou genres).`);
+      })
+      .catch(() => { setBackfilling(false); Alert.alert('Erreur', 'Le balayage a échoué.'); });
+  };
+
+  // Unlike runCoverBackfill above, this touches every book — including ones
+  // that already have a cover — and replaces the cover whenever a source
+  // resolves one, now that Hardcover is tried first (description/genres
+  // still only get filled in, never overwritten). Confirmed separately
+  // since it's the only one of the two that can overwrite an already-good
+  // cover.
+  const runCoverRepopulate = () => {
+    Alert.alert(
+      'Repeupler tout le catalogue ?',
+      'Remplace la couverture de chaque livre (même ceux qui en ont déjà une) par celle trouvée en priorité via Hardcover, et complète résumé/genres manquants. Peut prendre du temps.',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Repeupler',
+          onPress: () => {
+            setBackfilling(true);
+            setBackfillProgress({ done: 0, total: 0, updated: 0 });
+            books.repopulateAllCovers((done, total, updated) => setBackfillProgress({ done, total, updated }))
+              .then(({ checked, updated }) => {
+                setBackfilling(false);
+                Alert.alert('Terminé', `${updated} livre(s) mis à jour sur ${checked} au total.`);
+              })
+              .catch(() => { setBackfilling(false); Alert.alert('Erreur', 'Le repeuplement a échoué.'); });
+          },
+        },
+      ],
+    );
+  };
 
   const saveBook = () => {
     if (!book.title.trim()) { Alert.alert('Erreur', 'Le titre est requis'); return; }
@@ -196,40 +249,18 @@ export default function AdminScreen() {
 
         {tab === 'messages' && (
           loading ? <Text style={styles.emptyText}>Chargement...</Text> :
-          messages.length === 0 ? <Text style={styles.emptyText}>Aucun message.</Text> :
-          messages.map((m, i) => (
-            <TouchableOpacity key={m.id} style={[styles.card, i < messages.length - 1 && styles.cardDivider]} activeOpacity={1} onPress={() => openMessage(m)}>
+          threads.length === 0 ? <Text style={styles.emptyText}>Aucun message.</Text> :
+          threads.map((t, i) => (
+            <TouchableOpacity key={t.user_id} style={[styles.card, i < threads.length - 1 && styles.cardDivider]} activeOpacity={0.75}
+              onPress={() => router.push({ pathname: '/admin-thread', params: { userId: t.user_id, username: t.username ?? '?' } })}>
               <View style={styles.cardHeader}>
-                <Text style={styles.cardUser}>@{m.username ?? '?'}</Text>
-                {m.status === 'unread' && <View style={styles.unreadDot} />}
-                <Text style={styles.cardTime}>{timeAgo(m.created_at)}</Text>
+                <Text style={styles.cardUser}>@{t.username ?? '?'}</Text>
+                {t.last_sender === 'user' && <View style={styles.unreadDot} />}
+                <Text style={styles.cardTime}>{timeAgo(t.last_at)}</Text>
               </View>
-              <Text style={styles.cardBody}>{m.message}</Text>
-              {m.status === 'replied' ? (
-                <View style={styles.replyBox}>
-                  <Text style={styles.replyLabel}>Ta réponse</Text>
-                  <Text style={styles.replyText}>{m.reply}</Text>
-                </View>
-              ) : (
-                <View style={styles.replyForm}>
-                  <TextInput
-                    style={styles.replyInput}
-                    value={replyDrafts[m.id] ?? ''}
-                    onChangeText={t => setReplyDrafts(cur => ({ ...cur, [m.id]: t }))}
-                    placeholder="Répondre..."
-                    placeholderTextColor={colors.gray}
-                    multiline
-                  />
-                  <TouchableOpacity
-                    style={styles.actionBtn}
-                    disabled={!(replyDrafts[m.id] ?? '').trim() || sendingReplyId === m.id}
-                    onPress={() => sendReply(m)}
-                  >
-                    <Feather name="send" size={13} color={colors.purple} />
-                    <Text style={styles.actionText}>{sendingReplyId === m.id ? 'Envoi...' : 'Envoyer'}</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+              <Text style={styles.cardBody} numberOfLines={2}>
+                {t.last_sender === 'admin' ? 'Toi : ' : ''}{t.last_body}
+              </Text>
             </TouchableOpacity>
           ))
         )}
@@ -253,6 +284,7 @@ export default function AdminScreen() {
                   </View>
                   <Text style={styles.suggestionTitle}>{s.title}</Text>
                   {s.author ? <Text style={styles.suggestionAuthor}>{s.author}</Text> : null}
+                  {s.isbn ? <Text style={styles.suggestionAuthor}>ISBN {s.isbn}</Text> : null}
                 </View>
               </View>
               {s.description ? <Text style={styles.cardBody} numberOfLines={3}>{s.description}</Text> : null}
@@ -276,8 +308,101 @@ export default function AdminScreen() {
           ))
         )}
 
+        {tab === 'reports' && (
+          loading ? <Text style={styles.emptyText}>Chargement...</Text> :
+          userReports.length === 0 ? <Text style={styles.emptyText}>Aucun signalement.</Text> :
+          userReports.map((r, i) => (
+            <View key={r.id} style={[styles.card, i < userReports.length - 1 && styles.cardDivider]}>
+              <View style={styles.cardHeader}>
+                <Feather name={r.target_type === 'book' ? 'book' : 'user'} size={13} color={colors.error} />
+                <Text style={styles.cardUser}>{r.target_label ?? '(introuvable)'}</Text>
+                <Text style={[styles.statusBadge, r.status === 'reviewed' && styles.statusApproved]}>
+                  {r.status === 'pending' ? 'En attente' : 'Traité'}
+                </Text>
+                <Text style={styles.cardTime}>{timeAgo(r.created_at)}</Text>
+              </View>
+              <Text style={styles.suggestionAuthor}>Signalé par @{r.reporter_username ?? '?'} · {r.reason}</Text>
+              {r.details ? <Text style={styles.cardBody}>{r.details}</Text> : null}
+              {r.status === 'pending' && (
+                <View style={styles.suggestionActions}>
+                  <TouchableOpacity style={styles.actionBtn} onPress={() => resolveReport(r)}>
+                    <Feather name="check-circle" size={14} color={colors.teal} />
+                    <Text style={[styles.actionText, { color: colors.teal }]}>Marquer traité</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          ))
+        )}
+
+        {tab === 'edits' && (
+          loading ? <Text style={styles.emptyText}>Chargement...</Text> :
+          bookEditList.length === 0 ? <Text style={styles.emptyText}>Aucune modification proposée.</Text> :
+          bookEditList.map((e, i) => (
+            <View key={e.id} style={[styles.card, i < bookEditList.length - 1 && styles.cardDivider]}>
+              <View style={styles.suggestionBook}>
+                <View style={styles.suggestionCover}>
+                  {e.cover_url ? <Image source={{ uri: e.cover_url }} style={styles.suggestionCoverImg} /> : <Feather name="book" size={18} color={colors.purple} />}
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={styles.cardHeader}>
+                    <Text style={styles.cardUser}>@{e.username ?? '?'}</Text>
+                    <Text style={[styles.statusBadge, e.status === 'approved' && styles.statusApproved, e.status === 'rejected' && styles.statusRejected]}>
+                      {e.status === 'pending' ? 'En attente' : e.status === 'approved' ? 'Appliqué' : 'Refusé'}
+                    </Text>
+                    <Text style={styles.cardTime}>{timeAgo(e.created_at)}</Text>
+                  </View>
+                  <Text style={styles.suggestionTitle}>{e.book_title ?? '(livre introuvable)'}</Text>
+                </View>
+              </View>
+              {e.description ? <Text style={styles.cardBody} numberOfLines={3}>Résumé : {e.description}</Text> : null}
+              {e.genres && e.genres.length > 0 ? <Text style={styles.suggestionAuthor}>Genres : {e.genres.join(', ')}</Text> : null}
+              {e.series ? <Text style={styles.suggestionAuthor}>Série : {e.series}{e.series_index != null ? ` · Tome ${e.series_index}` : ''}</Text> : null}
+              {e.published_year ? <Text style={styles.suggestionAuthor}>Année : {e.published_year}</Text> : null}
+              {e.isbn ? <Text style={styles.suggestionAuthor}>ISBN : {e.isbn}</Text> : null}
+              {e.status === 'pending' && (
+                <View style={styles.suggestionActions}>
+                  <TouchableOpacity style={styles.actionBtn} onPress={() => approveEdit(e)}>
+                    <Feather name="check-circle" size={14} color={colors.teal} />
+                    <Text style={[styles.actionText, { color: colors.teal }]}>Appliquer</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.actionBtn} onPress={() => rejectEdit(e)}>
+                    <Feather name="x-circle" size={14} color={colors.error} />
+                    <Text style={[styles.actionText, { color: colors.error }]}>Refuser</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          ))
+        )}
+
         {tab === 'add' && (
           <View style={{ paddingBottom: 20 }}>
+            <View style={styles.backfillCard}>
+              <Text style={styles.backfillTitle}>Infos manquantes</Text>
+              <Text style={styles.backfillSub}>
+                {backfilling && backfillProgress
+                  ? `Recherche... ${backfillProgress.done}/${backfillProgress.total} (${backfillProgress.updated} livre${backfillProgress.updated > 1 ? 's' : ''} complété${backfillProgress.updated > 1 ? 's' : ''})`
+                  : "Cherche couverture, résumé, genres et ISBN manquants (Hardcover, Open Library, Google Books, Wikidata) pour chaque livre du catalogue qui n'en a pas."}
+              </Text>
+              <TouchableOpacity style={styles.actionBtn} onPress={runCoverBackfill} disabled={backfilling}>
+                <Feather name="image" size={14} color={backfilling ? colors.gray : colors.purple} />
+                <Text style={[styles.actionText, backfilling && { color: colors.gray }]}>
+                  {backfilling ? 'En cours...' : 'Compléter les infos manquantes'}
+                </Text>
+              </TouchableOpacity>
+              <View style={styles.backfillDivider} />
+              <Text style={styles.backfillSub}>
+                Repasse sur tout le catalogue : remplace la couverture par celle de Hardcover en priorité (même si le livre en a déjà une), et complète résumé/genres/ISBN seulement s'ils manquent.
+              </Text>
+              <TouchableOpacity style={styles.actionBtn} onPress={runCoverRepopulate} disabled={backfilling}>
+                <Feather name="refresh-cw" size={14} color={backfilling ? colors.gray : colors.error} />
+                <Text style={[styles.actionText, { color: backfilling ? colors.gray : colors.error }]}>
+                  {backfilling ? 'En cours...' : 'Repeupler tout le catalogue'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
             {editingSuggestionId ? (
               <View style={styles.editingBanner}>
                 <Feather name="edit-2" size={13} color={colors.purple} />
@@ -306,14 +431,6 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   unreadDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.purple },
   cardTime: { fontSize: 10, color: colors.gray, marginLeft: 'auto' },
   cardBody: { fontSize: 13, color: colors.muted, lineHeight: 18 },
-  replyBox: { marginTop: 10, backgroundColor: colors.purpleGlow, borderRadius: 8, padding: 10 },
-  replyLabel: { fontSize: 10, fontFamily: fonts.headingBold, color: colors.lavender, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 },
-  replyText: { fontSize: 13, color: colors.lavender, lineHeight: 18 },
-  replyForm: { marginTop: 10, gap: 8 },
-  replyInput: {
-    borderWidth: 1, borderColor: colors.divider, borderRadius: 8, padding: 10,
-    color: colors.white, fontSize: 13, minHeight: 44, textAlignVertical: 'top',
-  },
   suggestionBook: { flexDirection: 'row', gap: 10, marginBottom: 8 },
   suggestionCover: { width: 40, height: 56, borderRadius: 5, backgroundColor: colors.card2, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 },
   suggestionCoverImg: { width: 40, height: 56 },
@@ -327,6 +444,10 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   actionText: { fontSize: 12, fontWeight: '600', color: colors.purple },
   editingBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.purpleGlow, borderRadius: 8, padding: 10, marginBottom: 16 },
   editingBannerText: { flex: 1, fontSize: 12, color: colors.lavender },
+  backfillCard: { backgroundColor: colors.card, borderRadius: 10, padding: 14, marginBottom: 20, gap: 8 },
+  backfillTitle: { fontSize: 13, fontWeight: '700', color: colors.white },
+  backfillSub: { fontSize: 12, color: colors.gray, lineHeight: 17 },
+  backfillDivider: { height: 1, backgroundColor: colors.divider, marginVertical: 4 },
   userSearchBar: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     borderBottomWidth: 1, borderBottomColor: colors.divider,

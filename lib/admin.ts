@@ -1,6 +1,7 @@
 import { supabase, getCurrentUserId } from './supabase';
 import { API_BASE } from './apiUrl';
 import { BookFormFields, EMPTY_BOOK_FORM } from '../components/BookForm';
+import { findCoverByIsbn } from './books';
 
 // Fire-and-forget, same pattern as lib/friends.ts's notify() — a missing/
 // stale push token shouldn't block the moderation action itself.
@@ -31,6 +32,7 @@ export type BookSuggestion = {
   user_id: string;
   title: string;
   author: string | null;
+  isbn: string | null;
   message: string | null;
   cover_url: string | null;
   description: string | null;
@@ -48,6 +50,7 @@ export function suggestionToForm(s: BookSuggestion): BookFormFields {
     ...EMPTY_BOOK_FORM,
     title: s.title,
     author: s.author ?? '',
+    isbn: s.isbn ?? '',
     cover_url: s.cover_url ?? '',
     description: s.description ?? '',
     genres: (s.genres ?? []).join(', '),
@@ -175,11 +178,13 @@ export async function setUserRole(id: string, role: 'user' | 'admin') {
 
 export async function addBookManually(book: BookFormFields) {
   const externalId = `manual_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const coverUrl = book.cover_url.trim() || (book.isbn.trim() ? await findCoverByIsbn(book.isbn.trim()) : null);
   const { error } = await supabase.from('books').insert({
     external_id: externalId,
     title: book.title.trim(),
     author: book.author.trim() || null,
-    cover_url: book.cover_url.trim() || null,
+    isbn: book.isbn.trim() || null,
+    cover_url: coverUrl,
     description: book.description.trim() || null,
     genres: book.genres.split(',').map(g => g.trim()).filter(Boolean),
     published_year: book.published_year.trim() ? parseInt(book.published_year, 10) : null,

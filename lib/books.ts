@@ -24,6 +24,7 @@ export type NormalizedBook = {
   published_year: number | null;
   genres: string[];
   series?: string | null;
+  isbn?: string | null;
 };
 
 // Open Library tags some (not all — coverage is sparse) search docs with a
@@ -82,6 +83,7 @@ async function searchByQuery(q: string, opts: { sort?: string } = {}): Promise<N
     published_year: doc.first_publish_year ?? null,
     genres: doc.subject?.slice(0, 5) ?? [],
     series: extractSeries(doc.subject),
+    isbn: doc.isbn?.[0] ?? null,
   }));
 }
 
@@ -174,6 +176,10 @@ async function fetchGoogleBooks(q: string, attempt = 0): Promise<NormalizedBook[
   return (json.items ?? []).map((item: any): NormalizedBook => {
     const info = item.volumeInfo ?? {};
     const cover = info.imageLinks?.thumbnail ?? info.imageLinks?.smallThumbnail ?? null;
+    const identifiers: { type: string; identifier: string }[] = info.industryIdentifiers ?? [];
+    const isbn = identifiers.find(i => i.type === 'ISBN_13')?.identifier
+      ?? identifiers.find(i => i.type === 'ISBN_10')?.identifier
+      ?? null;
     return {
       external_id: `gb_${item.id}`,
       title: info.title ?? 'Sans titre',
@@ -182,6 +188,7 @@ async function fetchGoogleBooks(q: string, attempt = 0): Promise<NormalizedBook[
       description: info.description ?? null,
       published_year: info.publishedDate ? parseInt(info.publishedDate.slice(0, 4), 10) || null : null,
       genres: info.categories ?? [],
+      isbn,
     };
   });
 }
@@ -192,6 +199,157 @@ async function searchGoogleBooks(q: string): Promise<NormalizedBook[]> {
   } catch {
     return [];
   }
+}
+
+// Hardcover's GraphQL API is free but needs a personal API token (generated
+// from a Hardcover account at hardcover.app/account/api — same optional-key
+// pattern as Google Books, just skipped entirely when unset). It's a modern,
+// reader-focused catalog (closer in spirit to this app than a generic
+// library index), so it's tried right after the two biggest keyless sources.
+const HARDCOVER_API_URL = 'https://api.hardcover.app/v1/graphql';
+// Hardcover's account page shows the token already prefixed with "Bearer "
+// (ready to paste as-is into the header) — but it's easy to instead paste
+// just the raw token, so this strips an existing "Bearer " before re-adding
+// it below, working correctly either way.
+const HARDCOVER_API_TOKEN = process.env.EXPO_PUBLIC_HARDCOVER_API_TOKEN?.replace(/^Bearer\s+/i, '');
+
+type FoundBookInfo = { cover_url: string | null; description: string | null; genres: string[] | null; isbn?: string | null };
+
+async function findInfoViaHardcover(isbn: string): Promise<FoundBookInfo | null> {
+  if (!HARDCOVER_API_TOKEN) return null;
+  const query = `
+    query FindInfo($isbn: String!) {
+      editions(where: { _or: [{ isbn_13: { _eq: $isbn } }, { isbn_10: { _eq: $isbn } }] }, limit: 1) {
+        image { url }
+        book { image { url } description cached_tags }
+      }
+    }
+  `;
+  const res = await fetch(HARDCOVER_API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${HARDCOVER_API_TOKEN}` },
+    body: JSON.stringify({ query, variables: { isbn } }),
+  });
+  if (!res.ok) return null;
+  const json = await res.json();
+  const edition = json.data?.editions?.[0];
+  if (!edition) return null;
+  // cached_tags is grouped by tag category (e.g. { Genre: [...], Mood: [...] });
+  // the shape of each entry isn't documented in detail, so this is
+  // deliberately defensive about whether an entry is a bare string or an
+  // object with a `tag` field.
+  let genres: string[] | null = null;
+  const genreTags = edition.book?.cached_tags?.Genre;
+  if (Array.isArray(genreTags)) {
+    const names = genreTags.map((t: any) => (typeof t === 'string' ? t : t?.tag)).filter(Boolean);
+    if (names.length) genres = names.slice(0, 5);
+  }
+  return {
+    cover_url: edition.image?.url ?? edition.book?.image?.url ?? null,
+    description: edition.book?.description ?? null,
+    genres,
+  };
+}
+
+// Wikidata's SPARQL endpoint is free, keyless, and CORS-open — worth trying
+// as a last-resort source since it indexes book editions by ISBN-10 (P957)
+// or ISBN-13 (P212) with a cover image (P18, a Commons file) for a fair
+// number of them, especially anything with any real notability. Coverage is
+// sparser than the other sources, which is exactly why it only runs after
+// all of them have already missed.
+const WIKIDATA_SPARQL_URL = 'https://query.wikidata.org/sparql';
+
+async function findCoverViaWikidata(isbn: string): Promise<string | null> {
+  const prop = isbn.length === 13 ? 'wdt:P212' : 'wdt:P957';
+  const query = `SELECT ?image WHERE { ?item ${prop} "${isbn}". ?item wdt:P18 ?image. } LIMIT 1`;
+  const url = `${WIKIDATA_SPARQL_URL}?query=${encodeURIComponent(query)}&format=json`;
+  const res = await fetch(url, { headers: { Accept: 'application/sparql-results+json' } });
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.results?.bindings?.[0]?.image?.value ?? null;
+}
+
+// Tries, in order, every keyless (or optional-free-key) ISBN-keyed source:
+// Hardcover first when a token is configured (best-fit catalog for this
+// app, and a real API rather than a guessed URL — also the only one of
+// these that can return a description/genres alongside the cover), then
+// Open Library's predictable per-ISBN image URL for a cover (verified with
+// a real request — `default=false` makes it 404 instead of silently
+// serving a blank placeholder for editions with no cover on file, so a bad
+// hit doesn't get treated as a real one), then Google Books (cover +
+// description + categories), then Wikidata as a cover-only last resort.
+// ISBNdb was considered too but its API is a paid product now (no usable
+// free tier), so it's deliberately left out. Each field is filled in by
+// whichever source finds it first — a later source can still contribute a
+// genre list even if an earlier one already supplied the cover.
+export async function findBookInfoByIsbn(isbn: string): Promise<FoundBookInfo> {
+  const clean = isbn.replace(/[^0-9Xx]/g, '');
+  const result: FoundBookInfo = { cover_url: null, description: null, genres: null };
+  if (!clean) return result;
+
+  const merge = (partial: Partial<FoundBookInfo>) => {
+    if (!result.cover_url && partial.cover_url) result.cover_url = partial.cover_url;
+    if (!result.description && partial.description) result.description = partial.description;
+    if (!result.genres && partial.genres && partial.genres.length) result.genres = partial.genres;
+  };
+
+  try {
+    const hc = await findInfoViaHardcover(clean);
+    if (hc) merge(hc);
+  } catch {
+    // fall through to the next source
+  }
+
+  if (!result.cover_url) {
+    const olUrl = `${OL_COVERS_URL.replace('/b/id', '/b/isbn')}/${clean}-M.jpg?default=false`;
+    try {
+      const res = await fetch(olUrl, { method: 'HEAD' });
+      if (res.ok) result.cover_url = olUrl;
+    } catch {
+      // fall through to the next source
+    }
+  }
+
+  if (!result.cover_url || !result.description || !result.genres) {
+    try {
+      const params = new URLSearchParams({ q: `isbn:${clean}` });
+      if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY);
+      const res = await fetch(`${GOOGLE_BOOKS_URL}?${params.toString()}`);
+      if (res.ok) {
+        const json = await res.json();
+        const info = json.items?.[0]?.volumeInfo;
+        merge({
+          cover_url: info?.imageLinks?.thumbnail
+            ? (info.imageLinks.thumbnail as string).replace(/^http:/, 'https:')
+            : info?.imageLinks?.smallThumbnail
+              ? (info.imageLinks.smallThumbnail as string).replace(/^http:/, 'https:')
+              : null,
+          description: info?.description ?? null,
+          genres: info?.categories ?? null,
+        });
+      }
+    } catch {
+      // fall through to the next source
+    }
+  }
+
+  if (!result.cover_url) {
+    try {
+      const cover = await findCoverViaWikidata(clean);
+      if (cover) result.cover_url = cover;
+    } catch {
+      // no more sources left
+    }
+  }
+
+  return result;
+}
+
+// Cover-only convenience wrapper for callers that don't need description/
+// genres (BookForm's "Trouver la couverture via ISBN" button, the
+// suggestion/manual-add auto-fill in suggestions.ts/admin.ts).
+export async function findCoverByIsbn(isbn: string): Promise<string | null> {
+  return (await findBookInfoByIsbn(isbn)).cover_url;
 }
 
 export async function search(q: string): Promise<NormalizedBook[]> {
@@ -432,4 +590,122 @@ export async function addBookToDb(book: NormalizedBook) {
 export async function updateBookSeries(bookId: string, patch: { series?: string | null; series_index?: number | null }) {
   const { error } = await supabase.from('books').update(patch).eq('id', bookId);
   if (error) throw new Error(error.message);
+}
+
+type CatalogRow = {
+  id: string;
+  isbn: string | null;
+  title: string;
+  author: string | null;
+  cover_url: string | null;
+  description: string | null;
+  genres: string[] | null;
+};
+
+// One-time catalog sweep (see app/admin.tsx's "Compléter les couvertures"
+// button) — every book missing a cover, description, genres, or isbn gets a
+// real attempt at whichever it's missing: findBookInfoByIsbn if it already
+// has an isbn on file, otherwise falling back to the same title/author
+// search used everywhere else (which is also the only way to *discover* an
+// isbn in the first place — there's no isbn-keyed lookup for a book that
+// doesn't have one yet). Sequential (not Promise.all) and lightly throttled
+// so this doesn't fire a burst of dozens of simultaneous requests at
+// Hardcover/Open Library/Google Books/Wikidata all at once.
+export async function getBooksMissingInfo(): Promise<CatalogRow[]> {
+  // Filtered client-side rather than with a `.or()` PostgREST filter — an
+  // empty-array equality check (genres = '{}') doesn't have a clean,
+  // reliably-escaped spot in that mini-syntax, and this table isn't large
+  // enough for the extra rows fetched here to matter.
+  const { data, error } = await supabase
+    .from('books')
+    .select('id,isbn,title,author,cover_url,description,genres');
+  if (error) throw new Error(error.message);
+  return (data ?? []).filter((b) => !b.cover_url || !b.description || !b.genres || b.genres.length === 0 || !b.isbn);
+}
+
+async function findInfoForBook(b: { isbn: string | null; title: string; author: string | null }): Promise<FoundBookInfo> {
+  let info: FoundBookInfo = { cover_url: null, description: null, genres: null, isbn: b.isbn ?? null };
+  if (b.isbn) {
+    try {
+      const found = await findBookInfoByIsbn(b.isbn);
+      info = { ...found, isbn: b.isbn };
+    } catch { /* try the fallback below */ }
+  }
+  if (!info.cover_url || !info.description || !info.genres || !info.isbn) {
+    try {
+      const results = await search(`${b.title} ${b.author ?? ''}`.trim());
+      const match = results.find(r => r.cover_url || r.description || (r.genres && r.genres.length) || r.isbn);
+      if (match) {
+        info = {
+          cover_url: info.cover_url ?? match.cover_url,
+          description: info.description ?? match.description,
+          genres: info.genres ?? (match.genres.length ? match.genres : null),
+          isbn: info.isbn ?? match.isbn ?? null,
+        };
+      }
+    } catch { /* leave whatever was already found */ }
+  }
+  return info;
+}
+
+// Only ever fills in fields the row doesn't already have — never overwrites
+// an existing cover/description/genres/isbn, on either backfillMissingCovers
+// or repopulateAllCovers below (repopulate's "replace" behavior is
+// cover-only, see there).
+function buildFillPatch(row: CatalogRow, info: FoundBookInfo): Record<string, any> {
+  const patch: Record<string, any> = {};
+  if (!row.cover_url && info.cover_url) patch.cover_url = info.cover_url;
+  if (!row.description && info.description) patch.description = info.description;
+  if ((!row.genres || row.genres.length === 0) && info.genres && info.genres.length) patch.genres = info.genres;
+  if (!row.isbn && info.isbn) patch.isbn = info.isbn;
+  return patch;
+}
+
+export async function backfillMissingCovers(
+  onProgress?: (done: number, total: number, updated: number) => void
+): Promise<{ checked: number; updated: number }> {
+  const rows = await getBooksMissingInfo();
+  let updated = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const info = await findInfoForBook(rows[i]);
+    const patch = buildFillPatch(rows[i], info);
+    if (Object.keys(patch).length > 0) {
+      const { error } = await supabase.from('books').update(patch).eq('id', rows[i].id);
+      if (!error) updated++;
+    }
+    onProgress?.(i + 1, rows.length, updated);
+    await new Promise(r => setTimeout(r, 150));
+  }
+  return { checked: rows.length, updated };
+}
+
+// Same idea as backfillMissingCovers, but sweeps the *entire* catalog: the
+// cover gets overwritten whenever a source (now Hardcover-first, see
+// findBookInfoByIsbn) actually returns one — even replacing an existing
+// cover, for re-running after adding a new/better source — while
+// description/genres are still only ever filled in when missing, never
+// overwritten (there's no "better description" signal the way there's a
+// clearly-better cover source, so overwriting those would just be
+// destructive). Deliberately a separate, explicitly-triggered function
+// rather than a flag on backfillMissingCovers, since overwriting existing
+// covers is a bigger blast radius and shouldn't be the default path.
+export async function repopulateAllCovers(
+  onProgress?: (done: number, total: number, updated: number) => void
+): Promise<{ checked: number; updated: number }> {
+  const { data, error } = await supabase.from('books').select('id,isbn,title,author,cover_url,description,genres');
+  if (error) throw new Error(error.message);
+  const rows = data ?? [];
+  let updated = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const info = await findInfoForBook(rows[i]);
+    const patch = buildFillPatch(rows[i], info);
+    if (info.cover_url && info.cover_url !== rows[i].cover_url) patch.cover_url = info.cover_url;
+    if (Object.keys(patch).length > 0) {
+      const { error: updateError } = await supabase.from('books').update(patch).eq('id', rows[i].id);
+      if (!updateError) updated++;
+    }
+    onProgress?.(i + 1, rows.length, updated);
+    await new Promise(r => setTimeout(r, 150));
+  }
+  return { checked: rows.length, updated };
 }

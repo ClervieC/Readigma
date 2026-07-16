@@ -40,6 +40,7 @@ create table books (
   external_id      varchar(255) not null unique, -- Open Library work id, e.g. "OL893415W"
   title            varchar(500) not null,
   author           varchar(500),
+  isbn             varchar(20),
   cover_url        text,
   description      text,
   genres           text[] not null default '{}',
@@ -73,6 +74,17 @@ create table user_books (
 
   started_at       timestamptz,
   finished_at      timestamptz,
+  shelf_position   integer,                                  -- manual drag/tap order within a status
+                                                               -- on the library shelf; null = not yet
+                                                               -- manually placed, falls back to created_at
+  pile_id          text,                                     -- books sharing a pile_id (same user+status)
+                                                               -- render as one manual lying-flat stack;
+                                                               -- null = not manually piled
+  manual_tilt      smallint,                                 -- -1/0/1 = user-chosen spine tilt on the
+                                                               -- shelf; null = automatic (hashed) angle
+  shelf_break_before boolean,                                -- true = an empty shelf renders just
+                                                               -- before this book's row (see the "+"
+                                                               -- divider in reorder mode)
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now(),
   unique (user_id, book_id),
@@ -125,6 +137,7 @@ create table book_suggestions (
   user_id         uuid not null references profiles(id) on delete cascade,
   title           varchar(500) not null,
   author          varchar(500),
+  isbn            varchar(20),
   message         text,
   cover_url       text,
   description     text,
@@ -146,6 +159,49 @@ create table admin_messages (
   reply       text,
   replied_at  timestamptz,
   created_at  timestamptz not null default now()
+);
+
+-- Superseded admin_messages above (one message + one reply) with a real
+-- back-and-forth thread — every message either side sends is its own row.
+-- See app/contact.tsx (user side) and app/admin.tsx's "Messages" tab (admin
+-- side, reading/replying to any user's thread).
+create table admin_thread_messages (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references profiles(id) on delete cascade, -- whose thread this belongs to
+  sender      varchar(10) not null check (sender in ('user', 'admin')),
+  body        text not null,
+  created_at  timestamptz not null default now()
+);
+
+-- A user reporting a book or another user (app/report.tsx) for admin triage.
+create table reports (
+  id           uuid primary key default gen_random_uuid(),
+  reporter_id  uuid not null references profiles(id) on delete cascade,
+  target_type  varchar(10) not null check (target_type in ('book', 'user')),
+  target_id    uuid not null, -- books.id or profiles.id depending on target_type
+  reason       text not null,
+  details      text,
+  status       varchar(20) not null default 'pending', -- 'pending' | 'reviewed'
+  created_at   timestamptz not null default now()
+);
+
+-- A user proposing a fix/addition to an existing book's info (e.g. a
+-- missing summary or genre) — see app/edit-book-suggestion.tsx. Same
+-- approve/reject review pattern as book_suggestions, but patches an
+-- existing books row instead of inserting a new one.
+create table book_edit_suggestions (
+  id              uuid primary key default gen_random_uuid(),
+  user_id         uuid not null references profiles(id) on delete cascade,
+  book_id         uuid not null references books(id) on delete cascade,
+  description     text,
+  genres          text[],
+  cover_url       text,
+  isbn            varchar(20),
+  published_year  int,
+  series          varchar(500),
+  series_index    numeric(5,2),
+  status          varchar(20) not null default 'pending', -- 'pending' | 'approved' | 'rejected'
+  created_at      timestamptz not null default now()
 );
 
 -- Likes + comments on feed posts (app/(tabs)/feed.tsx). No select policy on
@@ -284,6 +340,9 @@ alter table activity_feed enable row level security;
 alter table reading_goals enable row level security;
 alter table book_suggestions enable row level security;
 alter table admin_messages enable row level security;
+alter table admin_thread_messages enable row level security;
+alter table reports enable row level security;
+alter table book_edit_suggestions enable row level security;
 alter table feed_likes enable row level security;
 alter table feed_comments enable row level security;
 alter table reading_sessions enable row level security;
@@ -371,6 +430,47 @@ create policy admin_messages_select on admin_messages for select
     or exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
   );
 create policy admin_messages_update_admin on admin_messages for update
+  to authenticated using (
+    exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
+  );
+
+-- admin_thread_messages: a user can only post into their own thread as
+-- 'user'; an admin can post into anyone's thread as 'admin'. Both sides can
+-- read a thread they're party to (the user their own, an admin any of them).
+create policy admin_thread_messages_insert on admin_thread_messages for insert
+  to authenticated with check (
+    (sender = 'user' and user_id = auth.uid())
+    or (sender = 'admin' and exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin'))
+  );
+create policy admin_thread_messages_select on admin_thread_messages for select
+  to authenticated using (
+    user_id = auth.uid()
+    or exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
+  );
+
+-- reports: only the reporter can insert (as themselves); only admins can
+-- read/triage — a report shouldn't be visible to its target or anyone else.
+create policy reports_insert_self on reports for insert
+  to authenticated with check (reporter_id = auth.uid());
+create policy reports_select_admin on reports for select
+  to authenticated using (
+    exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
+  );
+create policy reports_update_admin on reports for update
+  to authenticated using (
+    exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
+  );
+
+-- book_edit_suggestions: same shape as book_suggestions — sender sees their
+-- own, admins see and triage all.
+create policy book_edit_suggestions_insert_self on book_edit_suggestions for insert
+  to authenticated with check (user_id = auth.uid());
+create policy book_edit_suggestions_select on book_edit_suggestions for select
+  to authenticated using (
+    user_id = auth.uid()
+    or exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
+  );
+create policy book_edit_suggestions_update_admin on book_edit_suggestions for update
   to authenticated using (
     exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
   );
@@ -721,6 +821,182 @@ language sql security definer set search_path = public stable as $$
     and (ub.rating is not null or ub.comment is not null)
   order by ub.finished_at desc nulls last
   limit 50;
+$$;
+
+-- Backs the stats page (app/stats.tsx, lib/stats.ts).
+create or replace function reading_stats_overview()
+returns table (
+  total_done bigint,
+  books_this_month bigint,
+  books_this_year bigint,
+  avg_days_to_finish numeric,
+  avg_reading_seconds_per_book numeric,
+  favorite_author text,
+  favorite_author_count bigint,
+  avg_rating numeric
+)
+language sql security invoker stable as $$
+  with done as (
+    select * from user_books where user_id = auth.uid() and status = 'done'
+  ),
+  author_counts as (
+    select b.author, count(*) as c
+    from done ub join books b on b.id = ub.book_id
+    where b.author is not null
+    group by b.author
+    order by c desc, b.author
+    limit 1
+  ),
+  session_totals as (
+    select ub.book_id, sum(rs.duration_seconds) as secs
+    from done ub
+    join reading_sessions rs on rs.book_id = ub.book_id and rs.user_id = auth.uid() and rs.duration_seconds is not null
+    group by ub.book_id
+  )
+  select
+    (select count(*) from done),
+    (select count(*) from done where finished_at >= date_trunc('month', now())),
+    (select count(*) from done where finished_at >= date_trunc('year', now())),
+    (select round(avg(extract(epoch from (finished_at - started_at)) / 86400)::numeric, 1)
+       from done where started_at is not null and finished_at is not null and finished_at > started_at),
+    (select round(avg(secs)::numeric, 0) from session_totals),
+    (select author from author_counts),
+    (select c from author_counts),
+    (select round(avg(rating)::numeric, 2) from done where rating is not null);
+$$;
+
+-- Top 5 genres among finished books. books.genres entries are sometimes
+-- themselves comma-joined phrases (see normalizeTags in lib/books.ts) rather
+-- than one tag per array element, so this splits each entry on commas too
+-- before counting, matching how the app displays genres everywhere else.
+create or replace function reading_stats_genres()
+returns table (genre text, count bigint)
+language sql security invoker stable as $$
+  select trim(g) as genre, count(*) as count
+  from user_books ub
+  join books b on b.id = ub.book_id
+  cross join lateral unnest(b.genres) as raw_g
+  cross join lateral unnest(string_to_array(raw_g, ',')) as g
+  where ub.user_id = auth.uid() and ub.status = 'done' and trim(g) <> ''
+  group by trim(g)
+  order by count desc
+  limit 5;
+$$;
+
+-- Consecutive days (ending today or yesterday — so it doesn't zero out
+-- before you've logged today's session yet) with at least one reading
+-- session.
+create or replace function reading_streak()
+returns int
+language sql security invoker stable as $$
+  with days as (
+    select distinct date(started_at) as d
+    from reading_sessions
+    where user_id = auth.uid()
+  ),
+  numbered as (
+    select d, d - (row_number() over (order by d))::int as grp
+    from days
+  ),
+  streaks as (
+    select grp, count(*) as len, max(d) as last_day
+    from numbered
+    group by grp
+  )
+  select coalesce(
+    (select len from streaks where last_day >= current_date - 1 order by last_day desc limit 1),
+    0
+  );
+$$;
+
+-- Total reading time per day of week (0 = Sunday .. 6 = Saturday, matching
+-- Postgres's extract(dow)) — the app picks the max client-side.
+create or replace function reading_stats_by_weekday()
+returns table (weekday int, seconds bigint)
+language sql security invoker stable as $$
+  select extract(dow from started_at)::int as weekday, sum(coalesce(duration_seconds, 0)) as seconds
+  from reading_sessions
+  where user_id = auth.uid()
+  group by 1
+  order by 1;
+$$;
+
+-- The single longest and single fastest read, by calendar days from
+-- started_at to finished_at.
+create or replace function reading_stats_extremes()
+returns table (
+  longest_book_id uuid, longest_title text, longest_days numeric,
+  fastest_book_id uuid, fastest_title text, fastest_days numeric
+)
+language sql security invoker stable as $$
+  with done as (
+    select ub.book_id, b.title, extract(epoch from (ub.finished_at - ub.started_at)) / 86400 as days
+    from user_books ub
+    join books b on b.id = ub.book_id
+    where ub.user_id = auth.uid() and ub.status = 'done'
+      and ub.started_at is not null and ub.finished_at is not null and ub.finished_at > ub.started_at
+  )
+  select
+    (select book_id from done order by days desc limit 1),
+    (select title from done order by days desc limit 1),
+    (select round(days::numeric, 1) from done order by days desc limit 1),
+    (select book_id from done order by days asc limit 1),
+    (select title from done order by days asc limit 1),
+    (select round(days::numeric, 1) from done order by days asc limit 1);
+$$;
+
+-- Average books finished this year across the caller's accepted friends —
+-- security definer since it reads other users' user_books, same pattern as
+-- list_friends()/friend_profile() above.
+create or replace function friends_avg_books_this_year()
+returns table (friend_count int, avg_books numeric)
+language sql security definer set search_path = public stable as $$
+  with friend_ids as (
+    select case when f.requester_id = auth.uid() then f.receiver_id else f.requester_id end as id
+    from friendships f
+    where f.status = 'accepted' and (f.requester_id = auth.uid() or f.receiver_id = auth.uid())
+  ),
+  counts as (
+    select fi.id, count(ub.id) as cnt
+    from friend_ids fi
+    left join user_books ub on ub.user_id = fi.id and ub.status = 'done'
+      and extract(year from ub.finished_at) = extract(year from now())
+    group by fi.id
+  )
+  select (select count(*) from friend_ids)::int, round(avg(cnt)::numeric, 1) from counts;
+$$;
+
+-- Backs the badges page (app/badges.tsx, lib/badges.ts) — badges themselves
+-- aren't stored anywhere (no "earned badges" table); every tier is just
+-- recomputed live from these counts each time the page loads, so there's
+-- nothing to backfill/keep in sync if a badge's thresholds ever change.
+create or replace function badge_stats()
+returns table (
+  done_count bigint,
+  to_read_count bigint,
+  reading_count bigint,
+  total_reading_seconds bigint,
+  streak_days int,
+  distinct_genres bigint,
+  distinct_authors_read bigint
+)
+language sql security invoker stable as $$
+  select
+    (select count(*) from user_books where user_id = auth.uid() and status = 'done'),
+    (select count(*) from user_books where user_id = auth.uid() and status = 'to_read'),
+    (select count(*) from user_books where user_id = auth.uid() and status = 'reading'),
+    (select coalesce(sum(duration_seconds), 0) from reading_sessions where user_id = auth.uid() and duration_seconds is not null),
+    reading_streak(),
+    (select count(distinct trim(g))
+       from user_books ub
+       join books b on b.id = ub.book_id
+       cross join lateral unnest(b.genres) as raw_g
+       cross join lateral unnest(string_to_array(raw_g, ',')) as g
+       where ub.user_id = auth.uid() and ub.status = 'done' and trim(g) <> ''),
+    (select count(distinct b.author)
+       from user_books ub
+       join books b on b.id = ub.book_id
+       where ub.user_id = auth.uid() and ub.status = 'done' and b.author is not null);
 $$;
 
 -- ============================================================================

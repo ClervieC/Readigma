@@ -13,6 +13,11 @@ export type UserBook = {
   progress_mode: 'pages' | 'percent';
   started_at: string | null;
   finished_at: string | null;
+  shelf_position: number | null;
+  pile_id: string | null;
+  manual_tilt: number | null;
+  shelf_break_before: boolean | null;
+  created_at: string;
   title: string;
   author: string;
   cover_url: string | null;
@@ -39,11 +44,82 @@ export async function getMyBooks(status?: string): Promise<UserBook[]> {
     .from('user_books')
     .select('*,book:books(external_id,title,author,cover_url,description,genres,tropes,published_year)')
     .eq('user_id', userId)
+    // Manually placed books (see saveShelfOrder, app/(tabs)/library.tsx's
+    // reorder mode) come first in their saved order; anything never
+    // manually placed falls back to date added.
+    .order('shelf_position', { ascending: true, nullsFirst: false })
     .order('created_at', { ascending: false });
   if (status) q = q.eq('status', status);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
   return (data ?? []).map(flatten);
+}
+
+// Persists a manual drag/tap reorder for one status list — see
+// app/(tabs)/library.tsx's reorder mode. Assigns sequential positions
+// (0, 1, 2...) to the given book ids in the order provided; called with the
+// *entire* status list every time (not just the two swapped), since a
+// partial write would otherwise leave stale positions from a previous order.
+export async function saveShelfOrder(orderedBookIds: string[]) {
+  const userId = await requireUserId();
+  // One batched upsert instead of one PATCH per book — with a large library,
+  // firing dozens of parallel requests here was hitting the browser's
+  // connection limit (net::ERR_INSUFFICIENT_RESOURCES) and made every drop
+  // feel slow/inconsistent. merge-duplicates only touches shelf_position on
+  // conflict, it doesn't null out the rest of the row.
+  const rows = orderedBookIds.map((bookId, index) => ({
+    user_id: userId,
+    book_id: bookId,
+    shelf_position: index,
+  }));
+  const { error } = await supabase
+    .from('user_books')
+    .upsert(rows, { onConflict: 'user_id,book_id' });
+  if (error) throw new Error(error.message);
+}
+
+// Piles bookId onto targetBookId's stack (or starts a new one if targetBookId
+// wasn't already in one) — see app/(tabs)/library.tsx's reorder mode. Books
+// sharing a pile_id render as one manual lying-flat stack instead of the
+// automatic pseudo-random grouping.
+export async function stackBooks(bookId: string, targetBookId: string, existingPileId: string | null) {
+  const userId = await requireUserId();
+  const pileId = existingPileId ?? targetBookId;
+  await Promise.all([
+    supabase.from('user_books').update({ pile_id: pileId }).eq('user_id', userId).eq('book_id', bookId),
+    existingPileId
+      ? Promise.resolve()
+      : supabase.from('user_books').update({ pile_id: pileId }).eq('user_id', userId).eq('book_id', targetBookId),
+  ]);
+}
+
+// Pulls one book back out of its manual pile, standing it upright again.
+export async function unstackBook(bookId: string) {
+  const userId = await requireUserId();
+  const { error } = await supabase.from('user_books').update({ pile_id: null }).eq('user_id', userId).eq('book_id', bookId);
+  if (error) throw new Error(error.message);
+}
+
+// null cycles back to the automatic (hashed) angle — see spineTilt in
+// app/(tabs)/library.tsx.
+export async function setManualTilt(bookId: string, tilt: -1 | 0 | 1 | null) {
+  const userId = await requireUserId();
+  const { error } = await supabase.from('user_books').update({ manual_tilt: tilt }).eq('user_id', userId).eq('book_id', bookId);
+  if (error) throw new Error(error.message);
+}
+
+// Marks/clears bookId as the anchor of an empty shelf inserted just before
+// its row — see the "+" divider between shelf rows in reorder mode
+// (app/(tabs)/library.tsx). Dropping a book into that empty shelf clears the
+// flag on the old anchor since the shelf isn't empty anymore.
+export async function setShelfBreak(bookId: string, value: boolean | null) {
+  const userId = await requireUserId();
+  const { error } = await supabase
+    .from('user_books')
+    .update({ shelf_break_before: value })
+    .eq('user_id', userId)
+    .eq('book_id', bookId);
+  if (error) throw new Error(error.message);
 }
 
 export async function addBook(bookId: string, status = 'to_read') {

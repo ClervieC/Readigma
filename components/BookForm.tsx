@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, ActivityIndicator, ScrollView, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
@@ -8,6 +8,7 @@ import * as books from '../lib/books';
 export type BookFormFields = {
   title: string;
   author: string;
+  isbn: string;
   cover_url: string;
   description: string;
   genres: string; // comma-separated in the form, split before insert
@@ -17,7 +18,7 @@ export type BookFormFields = {
 };
 
 export const EMPTY_BOOK_FORM: BookFormFields = {
-  title: '', author: '', cover_url: '', description: '', genres: '', published_year: '', series: '', series_index: '',
+  title: '', author: '', isbn: '', cover_url: '', description: '', genres: '', published_year: '', series: '', series_index: '',
 };
 
 // Shared by app/suggest-book.tsx and app/admin.tsx's "Ajouter un livre" tab —
@@ -28,6 +29,7 @@ export default function BookForm({ value, onChange, requireAuthor }: { value: Bo
   const styles = makeStyles(colors);
   const [coverResults, setCoverResults] = useState<books.NormalizedBook[]>([]);
   const [searchingCover, setSearchingCover] = useState(false);
+  const [searchingIsbnCover, setSearchingIsbnCover] = useState(false);
 
   const set = (patch: Partial<BookFormFields>) => onChange({ ...value, ...patch });
 
@@ -39,6 +41,20 @@ export default function BookForm({ value, onChange, requireAuthor }: { value: Bo
       setCoverResults(res.filter(r => r.cover_url).slice(0, 12));
       setSearchingCover(false);
     }).catch(() => setSearchingCover(false));
+  };
+
+  // Tries Open Library / Google Books / ISBNdb in turn (see
+  // books.findCoverByIsbn) — a more targeted lookup than the title search
+  // above when an exact ISBN is known, since it doesn't depend on the title/
+  // author text matching well.
+  const searchCoverByIsbn = () => {
+    if (!value.isbn.trim() || searchingIsbnCover) return;
+    setSearchingIsbnCover(true);
+    books.findCoverByIsbn(value.isbn.trim()).then(url => {
+      setSearchingIsbnCover(false);
+      if (url) set({ cover_url: url });
+      else Alert.alert('Introuvable', "Aucune couverture trouvée pour cet ISBN.");
+    }).catch(() => setSearchingIsbnCover(false));
   };
 
   const pickCover = (url: string) => {
@@ -53,6 +69,16 @@ export default function BookForm({ value, onChange, requireAuthor }: { value: Bo
 
       <Text style={styles.label}>Auteur{requireAuthor ? ' *' : ''}</Text>
       <TextInput style={styles.input} value={value.author} onChangeText={t => set({ author: t })} placeholderTextColor={colors.gray} />
+
+      <Text style={styles.label}>ISBN</Text>
+      <TextInput style={styles.input} value={value.isbn} onChangeText={t => set({ isbn: t })} placeholder="978-2-070..." placeholderTextColor={colors.gray} keyboardType="default" autoCapitalize="none" />
+
+      {value.isbn.trim() ? (
+        <TouchableOpacity style={styles.coverSearchBtn} onPress={searchCoverByIsbn} disabled={searchingIsbnCover}>
+          {searchingIsbnCover ? <ActivityIndicator size="small" color={colors.purple} /> : <Feather name="hash" size={14} color={colors.purple} />}
+          <Text style={styles.coverSearchText}>{searchingIsbnCover ? 'Recherche...' : 'Trouver la couverture via ISBN'}</Text>
+        </TouchableOpacity>
+      ) : null}
 
       <Text style={styles.label}>URL de couverture</Text>
       <TextInput style={styles.input} value={value.cover_url} onChangeText={t => set({ cover_url: t })} placeholder="https://..." placeholderTextColor={colors.gray} autoCapitalize="none" />

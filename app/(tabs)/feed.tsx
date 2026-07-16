@@ -276,16 +276,16 @@ export default function FeedScreen() {
 
 const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingTop: 28, paddingBottom: 14 },
   title: { fontSize: 19, fontFamily: fonts.headingBold, color: colors.white },
   subtitle: { fontSize: 12, color: colors.gray, marginTop: 2 },
-  scroll: { flex: 1, paddingHorizontal: 20 },
+  scroll: { flex: 1, paddingHorizontal: 14 },
   loadingText: { color: colors.gray, textAlign: 'center', paddingTop: 40 },
   emptyState: { alignItems: 'center', paddingTop: 80, gap: 12 },
   emptyTitle: { fontSize: 16, fontFamily: fonts.headingBold, color: colors.white },
   emptyText: { fontSize: 13, color: colors.gray, textAlign: 'center', paddingHorizontal: 40 },
   card: {
-    padding: 14, backgroundColor: colors.card, borderRadius: radius.md,
+    padding: 16, backgroundColor: colors.card, borderRadius: radius.md,
     borderLeftWidth: 3, ...shadows.card,
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },

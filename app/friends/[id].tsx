@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, ActivityIndicator, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -17,6 +17,7 @@ export default function UserProfileScreen() {
   const { id, username } = useLocalSearchParams<{ id: string; username?: string }>();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   useEffect(() => {
     friends.getUserProfile(id).then(setData).catch(() => {}).finally(() => setLoading(false));
@@ -56,8 +57,30 @@ export default function UserProfileScreen() {
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}><Feather name="arrow-left" size={20} color={colors.white} /></TouchableOpacity>
         <Text style={styles.headerTitle}>Profil</Text>
-        <View style={{ width: 20 }} />
+        <TouchableOpacity onPress={() => setShowMoreMenu(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Feather name="more-vertical" size={20} color={colors.white} />
+        </TouchableOpacity>
       </View>
+
+      {showMoreMenu && (
+        <Modal transparent animationType="fade" onRequestClose={() => setShowMoreMenu(false)}>
+          <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setShowMoreMenu(false)}>
+            <View style={styles.menuSheet}>
+              <TouchableOpacity
+                style={styles.menuRow}
+                onPress={() => {
+                  setShowMoreMenu(false);
+                  router.push({ pathname: '/report', params: { targetType: 'user', targetId: id, label: `@${user.username}` } });
+                }}
+              >
+                <Feather name="flag" size={16} color={colors.error} />
+                <Text style={[styles.menuRowText, { color: colors.error }]}>Signaler ce profil</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
+
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
           {user.avatar_url ? (
@@ -176,6 +199,10 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   headerTitle: { fontSize: 15, fontFamily: fonts.headingBold, color: colors.white },
   loader: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   errorText: { color: colors.gray, fontSize: 14 },
+  menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  menuSheet: { backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 10, paddingBottom: 30 },
+  menuRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 22, paddingVertical: 16 },
+  menuRowText: { fontSize: 14, fontWeight: '600', color: colors.white },
   scroll: { flex: 1, paddingHorizontal: 20 },
   hero: { alignItems: 'center', paddingVertical: 24, gap: 4 },
   avatar: { width: 76, height: 76, borderRadius: 38 },

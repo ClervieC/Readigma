@@ -59,7 +59,7 @@ export default function TabBar({ state, navigation }: TabBarProps) {
   const styles = makeStyles(colors);
 
   return (
-    <View style={[styles.wrapper, { paddingBottom: 10 + insets.bottom }]}>
+    <View style={[styles.wrapper, { paddingBottom: 18 + insets.bottom }]}>
       {state.routes.map((route, index) => {
         const tab = TABS.find((t) => t.name === route.name) ?? TABS[index];
         const focused = state.index === index;

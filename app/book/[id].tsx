@@ -93,6 +93,7 @@ export default function BookDetailScreen() {
   const [savingSeries, setSavingSeries] = useState(false);
   const [seriesBooks, setSeriesBooks] = useState<any[]>([]);
   const [loadingSeriesBooks, setLoadingSeriesBooks] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const { session: activeSession, elapsedSeconds, start: startGlobalTimer, stop: stopGlobalTimer } = useTimer();
 
   useEffect(() => {
@@ -270,7 +271,40 @@ export default function BookDetailScreen() {
         <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Feather name="arrow-left" size={20} color={colors.white} />
         </TouchableOpacity>
+        <View style={{ flex: 1 }} />
+        <TouchableOpacity onPress={() => setShowMoreMenu(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Feather name="more-vertical" size={20} color={colors.white} />
+        </TouchableOpacity>
       </View>
+
+      {showMoreMenu && (
+        <Modal transparent animationType="fade" onRequestClose={() => setShowMoreMenu(false)}>
+          <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setShowMoreMenu(false)}>
+            <View style={styles.menuSheet}>
+              <TouchableOpacity
+                style={styles.menuRow}
+                onPress={() => {
+                  setShowMoreMenu(false);
+                  router.push({ pathname: '/edit-book-suggestion', params: { bookId: id, title: currentBook.title } });
+                }}
+              >
+                <Feather name="edit-3" size={16} color={colors.white} />
+                <Text style={styles.menuRowText}>Proposer une modification</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.menuRow}
+                onPress={() => {
+                  setShowMoreMenu(false);
+                  router.push({ pathname: '/report', params: { targetType: 'book', targetId: id, label: currentBook.title } });
+                }}
+              >
+                <Feather name="flag" size={16} color={colors.error} />
+                <Text style={[styles.menuRowText, { color: colors.error }]}>Signaler ce livre</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
@@ -561,7 +595,11 @@ export default function BookDetailScreen() {
 
 const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  header: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14 },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14 },
+  menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  menuSheet: { backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 10, paddingBottom: 30 },
+  menuRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 22, paddingVertical: 16 },
+  menuRowText: { fontSize: 14, fontWeight: '600', color: colors.white },
   scroll: { flex: 1, paddingHorizontal: 20 },
   hero: { alignItems: 'center', paddingBottom: 20 },
   heroCover: {

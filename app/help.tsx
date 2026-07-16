@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { fonts, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
-import { sendAdminMessage } from '../lib/admin';
 import Screen from '../components/Screen';
-import Button from '../components/Button';
 
 const FAQ = [
   { q: 'Comment ajouter un livre à ma bibliothèque ?', a: 'Dans "Découvrir" ou "Chercher", appuie sur un livre pour voir ses détails, puis choisis son statut : À lire, En cours ou Lu.' },
@@ -20,20 +19,9 @@ const FAQ = [
 
 export default function HelpScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
   const styles = makeStyles(colors);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
-  const [message, setMessage] = useState('');
-  const [sending, setSending] = useState(false);
-
-  const contactAdmin = () => {
-    if (!message.trim()) { Alert.alert('Erreur', 'Écris un message avant d\'envoyer'); return; }
-    setSending(true);
-    sendAdminMessage(message.trim()).then(() => {
-      setSending(false);
-      setMessage('');
-      Alert.alert('Envoyé', 'Ton message a été envoyé à l\'équipe.');
-    }).catch(() => { setSending(false); Alert.alert('Erreur', "Impossible d'envoyer le message"); });
-  };
 
   return (
     <Screen back title="Aide">
@@ -57,16 +45,10 @@ export default function HelpScreen() {
       <View style={styles.contactCard}>
         <Text style={styles.contactTitle}>Un problème non résolu ?</Text>
         <Text style={styles.contactSub}>Écris-nous, notre équipe répond généralement sous 48 h.</Text>
-        <TextInput
-          style={styles.contactInput}
-          value={message}
-          onChangeText={setMessage}
-          placeholder="Ton message..."
-          placeholderTextColor={colors.gray}
-          multiline
-          maxLength={500}
-        />
-        <Button label={sending ? 'Envoi...' : "Envoyer à l'équipe"} onPress={contactAdmin} disabled={sending} style={{ marginTop: 12, alignSelf: 'stretch' }} />
+        <TouchableOpacity style={styles.contactBtn} onPress={() => router.push('/contact')}>
+          <Feather name="message-circle" size={16} color="#FFFFFF" />
+          <Text style={styles.contactBtnText}>Contacter l'équipe</Text>
+        </TouchableOpacity>
       </View>
     </Screen>
   );
@@ -85,8 +67,9 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   contactCard: { alignItems: 'center', gap: 6, paddingVertical: 28, marginTop: 12, borderTopWidth: 1, borderTopColor: colors.divider },
   contactTitle: { fontSize: 15, fontFamily: fonts.headingBold, color: colors.white },
   contactSub: { fontSize: 13, color: colors.gray, textAlign: 'center' },
-  contactInput: {
-    alignSelf: 'stretch', marginTop: 14, minHeight: 70, borderWidth: 1, borderColor: colors.divider,
-    borderRadius: 10, padding: 12, color: colors.white, fontSize: 14, textAlignVertical: 'top',
+  contactBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14,
+    backgroundColor: colors.purple, borderRadius: 999, paddingHorizontal: 20, paddingVertical: 12,
   },
+  contactBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
 });
