@@ -17,6 +17,8 @@ export type UserBook = {
   pile_id: string | null;
   manual_tilt: number | null;
   shelf_break_before: boolean | null;
+  shelf_gap_before: boolean | null;
+  shelf_gap_after: boolean | null;
   created_at: string;
   title: string;
   author: string;
@@ -117,6 +119,24 @@ export async function setShelfBreak(bookId: string, value: boolean | null) {
   const { error } = await supabase
     .from('user_books')
     .update({ shelf_break_before: value })
+    .eq('user_id', userId)
+    .eq('book_id', bookId);
+  if (error) throw new Error(error.message);
+}
+
+// A horizontal gap belongs to one book's left or right edge, which makes it
+// possible to keep deliberate empty space at the start, middle, or end of a
+// shelf even after reopening the library.
+export async function setShelfGap(
+  bookId: string,
+  side: 'before' | 'after',
+  value: boolean,
+) {
+  const userId = await requireUserId();
+  const column = side === 'before' ? 'shelf_gap_before' : 'shelf_gap_after';
+  const { error } = await supabase
+    .from('user_books')
+    .update({ [column]: value })
     .eq('user_id', userId)
     .eq('book_id', bookId);
   if (error) throw new Error(error.message);

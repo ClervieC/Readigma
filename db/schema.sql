@@ -85,6 +85,8 @@ create table user_books (
   shelf_break_before boolean,                                -- true = an empty shelf renders just
                                                                -- before this book's row (see the "+"
                                                                -- divider in reorder mode)
+  shelf_gap_before boolean not null default false,            -- horizontal empty space before a book
+  shelf_gap_after boolean not null default false,             -- horizontal empty space after a book
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now(),
   unique (user_id, book_id),

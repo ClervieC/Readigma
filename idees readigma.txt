@@ -1,0 +1,28 @@
+
+- je veux pourvoir ajouter des elements de "decoration" comme des plantes, une petite horloge, des cadres ou je peux ajouter une image (de ma gallery ou bien une cover d'un livre dans ma pale, ou lu ou entrain de lire)
+- revoir l'espace entre les livres, mettre le texte en blanc
+- pouvoir aller a la ligne, je veux pouvoir mettre qu'un seul livre sur mon etagere
+- revoir les espace sur une pile de livres, c'est en dessous du truc pour deplacer la pile
+- comment fermer la pop up pour mettre les espaces, rappuyer sur le livre et ca le ferme
+- faut qu'on voit qu'on a selectionne le livre (encadre violet comme quand on merge deux livres)
+- revoir le salon, 2 grande bibliotheques avec 2 sections chacun, a lire et DNF puis en cours et lus (que visuellement)
+- revoir comment on ajoute la deco et comment on les "gagne" (rendre certains elements payant)
+- ajouter aussi la possibilite de mettre des elements dans la bibliotheque (cadre, petite plante)
+- le edit dans le "salon" permet d'ajouter les elements a la piece 
+- mettre plus en Valeur le crayon d'edit quand on l'a selectionne
+- autres idees?
+
+
+
+- quand je passe du mode edit a normal et inversement je veux rester la ou je suis dans la page, debut, milieu ou fin peu importe
+- revoir le fil d'actualite, elargir les posts, mettre un peu plus d'espace en haut
+- remonter un poil la nav bar en bas (vu que les bords sont arrondis sur un tel)
+- dans la suggestion d'un livre ajouter le code isbn
+- revoir pour ecrire un message a l'equipe, l'ouvrir dans une autre page, avoir une trace de notre message + reponse comme une vraie conversation live
+- je veux pouvoir report un livre, ou un utilisateur, je veux aussi pouvoir proposer un edit a un livre (comme ajouter un resume et un genre)
+- il faut trouve les images des livres, cherche dans toutes les api pour le numero isbn pour avoir la couverture de quelque part
+- ajouter une page de stats, quell genre on lit le plus, combine de livre en 1 mois, en combien de temps en Moyenne sur un livre (calculer en function de quand on a commence le livre et quand on le finit), temps de lecture en Moyenne, autre idee?
+- badges a gagner au fur et a mesure, en function de combien de livres on a lu, envie de lire, temps de lecture...
+- ca debloque aussi de Nouvelles decoration a mettre dans la bibliotheque
+- je veux pouvoir personnalise un maximum ma bibliotheque, peut etre avoir une troisieme vue ou c'est un premier plan large d'un salon avec des bibliotheques remplis
+- quand on clique sur la bibliotheque ca zoom dessus et on voit nos livres

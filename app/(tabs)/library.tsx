@@ -41,6 +41,7 @@ const STACK_WIDTH = 168;
 const STACK_BAR_HEIGHT = 42;
 const STACK_SIZE = 4; // books per lying-down pile
 const SLOT_GAP = 3;
+const SHELF_GAP_SIZE = 36;
 // A tilted spine's top corner swings sideways as it rotates — packing it
 // edge-to-edge with its neighbor like the straight ones would clip into
 // them, so tilted spines get a little breathing room the straight ones don't.
@@ -70,7 +71,9 @@ const STATUS_OPTIONS = [
   { label: "Pas fini (DNF)", icon: "x" as const, value: "dnf" },
 ];
 
-type Slot = { type: "spine"; book: any } | { type: "stack"; books: any[] };
+type Slot =
+  | { type: "spine"; book: any; gapBefore: boolean; gapAfter: boolean }
+  | { type: "stack"; books: any[]; gapBefore: boolean; gapAfter: boolean };
 type Row =
   | { type: "books"; slots: Slot[] }
   | { type: "empty"; anchorId: string };
@@ -139,7 +142,19 @@ function buildRows(books: any[], maxRowWidth: number): Row[] {
   const pushSpine = (book: any) => {
     const tiltWidth =
       spineTilt(book) !== 0 ? SPINE_WIDTH + SPINE_TILT_MARGIN * 2 : SPINE_WIDTH;
-    push({ type: "spine", book }, tiltWidth, book);
+    const gapWidth =
+      (book.shelf_gap_before ? SHELF_GAP_SIZE : 0) +
+      (book.shelf_gap_after ? SHELF_GAP_SIZE : 0);
+    push(
+      {
+        type: "spine",
+        book,
+        gapBefore: !!book.shelf_gap_before,
+        gapAfter: !!book.shelf_gap_after,
+      },
+      tiltWidth + gapWidth,
+      book,
+    );
   };
 
   const hasManualPiles = books.some((b) => b.pile_id);
@@ -153,7 +168,20 @@ function buildRows(books: any[], maxRowWidth: number): Row[] {
           (b) => !used.has(b.book_id) && b.pile_id === book.pile_id,
         );
         group.forEach((b) => used.add(b.book_id));
-        push({ type: "stack", books: group }, STACK_WIDTH, group[0]);
+        const anchor = group[0];
+        const gapWidth =
+          (anchor.shelf_gap_before ? SHELF_GAP_SIZE : 0) +
+          (anchor.shelf_gap_after ? SHELF_GAP_SIZE : 0);
+        push(
+          {
+            type: "stack",
+            books: group,
+            gapBefore: !!anchor.shelf_gap_before,
+            gapAfter: !!anchor.shelf_gap_after,
+          },
+          STACK_WIDTH + gapWidth,
+          anchor,
+        );
       } else {
         used.add(book.book_id);
         pushSpine(book);
@@ -169,7 +197,20 @@ function buildRows(books: any[], maxRowWidth: number): Row[] {
         hashRatio(books[i].book_id) < 0.3;
       if (canStack) {
         const stackBooks = books.slice(i, i + STACK_SIZE);
-        push({ type: "stack", books: stackBooks }, STACK_WIDTH, stackBooks[0]);
+        const anchor = stackBooks[0];
+        const gapWidth =
+          (anchor.shelf_gap_before ? SHELF_GAP_SIZE : 0) +
+          (anchor.shelf_gap_after ? SHELF_GAP_SIZE : 0);
+        push(
+          {
+            type: "stack",
+            books: stackBooks,
+            gapBefore: !!anchor.shelf_gap_before,
+            gapAfter: !!anchor.shelf_gap_after,
+          },
+          STACK_WIDTH + gapWidth,
+          anchor,
+        );
         i += stackBooks.length;
         sinceStack = 0;
       } else {
@@ -261,6 +302,7 @@ function DraggableGridBook({
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const dragging = useSharedValue(false);
+  const scale = useSharedValue(1);
   // The book's own live index, and the delta already reported for the
   // current drag — both as shared values (not plain closures) because this
   // component doesn't unmount/remount as the list reorders around it (same
@@ -291,8 +333,12 @@ function DraggableGridBook({
 
   const pan = Gesture.Pan()
     .enabled(!disabled)
+    // Keep ordinary taps available for selecting a book. The drag starts only
+    // after a deliberate movement, rather than claiming every touch instantly.
+    .minDistance(8)
     .onStart(() => {
       dragging.value = true;
+      scale.value = withSpring(1.04, { damping: 18 });
       startIndexSV.value = indexSV.value;
       lastDeltaCols.value = 0;
       lastDeltaRows.value = 0;
@@ -322,6 +368,7 @@ function DraggableGridBook({
       runOnJS(onDrop)();
       translateX.value = withSpring(0, { damping: 18 });
       translateY.value = withSpring(0, { damping: 18 });
+      scale.value = withSpring(1, { damping: 18 });
       dragging.value = false;
     });
 
@@ -332,6 +379,7 @@ function DraggableGridBook({
     transform: [
       { translateX: translateX.value },
       { translateY: translateY.value },
+      { scale: scale.value },
     ],
     zIndex: dragging.value ? 10 : 0,
     opacity: dragging.value ? 0.85 : 1,
@@ -371,7 +419,7 @@ function DraggableGridBook({
 // neighbor than the book's own original spot and silently reorder it, which
 // read as "the book disappears and reappears somewhere else" for a tap that
 // never meant to move anything.
-const MIN_DRAG_DISTANCE = 20;
+const MIN_DRAG_DISTANCE = 12;
 
 function DraggableShelfBook({
   bookId,
@@ -381,6 +429,8 @@ function DraggableShelfBook({
   onDragUpdateY,
   onDragUpdate,
   onDrop,
+  onTap,
+  style,
   children,
 }: {
   bookId: string;
@@ -390,11 +440,14 @@ function DraggableShelfBook({
   onDragUpdateY: (absoluteY: number) => void;
   onDragUpdate: (bookId: string, x: number, y: number) => void;
   onDrop: (bookId: string, x: number, y: number) => void;
+  onTap?: () => void;
+  style?: any;
   children: React.ReactNode;
 }) {
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const dragging = useSharedValue(false);
+  const scale = useSharedValue(1);
 
   const pan = Gesture.Pan()
     .enabled(!disabled)
@@ -403,12 +456,13 @@ function DraggableShelfBook({
     // tilt button (↻) and pile "x" unstack button both live inside this same
     // draggable tile, so a light tap on either was getting swallowed as a
     // (near-zero-distance) drag instead of reaching the button's onPress.
-    // Requiring a real 10px move before the pan activates lets a genuine tap
-    // pass through to them, while an actual drag still starts normally.
-    .activeOffsetX([-10, 10])
-    .activeOffsetY([-10, 10])
+    // minDistance preserves taps on the nested buttons while allowing a drag
+    // in *any* direction. Using both X and Y active offsets here required a
+    // diagonal movement before the gesture could activate.
+    .minDistance(8)
     .onStart(() => {
       dragging.value = true;
+      scale.value = withSpring(1.04, { damping: 18 });
       runOnJS(onDragStart)();
     })
     .onUpdate((e) => {
@@ -425,6 +479,7 @@ function DraggableShelfBook({
       }
       translateX.value = withSpring(0, { damping: 18 });
       translateY.value = withSpring(0, { damping: 18 });
+      scale.value = withSpring(1, { damping: 18 });
       dragging.value = false;
     });
 
@@ -432,17 +487,22 @@ function DraggableShelfBook({
     transform: [
       { translateX: translateX.value },
       { translateY: translateY.value },
+      { scale: scale.value },
     ],
     zIndex: dragging.value ? 10 : 0,
     opacity: dragging.value ? 0.85 : 1,
   }));
 
+  const tap = Gesture.Tap().onEnd(() => {
+    if (onTap) runOnJS(onTap)();
+  });
+
   return (
-    <GestureDetector gesture={pan}>
+    <GestureDetector gesture={onTap ? Gesture.Exclusive(pan, tap) : pan}>
       <Animated.View
         ref={(node: any) => registerRef(bookId, node)}
         layout={LinearTransition.springify().damping(18)}
-        style={animatedStyle}
+        style={[style, animatedStyle]}
       >
         {children}
       </Animated.View>
@@ -767,6 +827,10 @@ export default function LibraryScreen() {
   const [reorderSelectedId, setReorderSelectedId] = useState<string | null>(
     null,
   );
+  const [spacingSelectedId, setSpacingSelectedId] = useState<string | null>(
+    null,
+  );
+  const [stackTargetId, setStackTargetId] = useState<string | null>(null);
   // Shelf mode's drag-and-drop (see DraggableShelfBook): every mounted
   // tile's own View ref, remeasured fresh into shelfFramesRef right when a
   // drag starts (not just once on layout — this list scrolls, and a frame
@@ -1098,6 +1162,24 @@ export default function LibraryScreen() {
       .catch(() => Alert.alert("Erreur", "Impossible de retirer l'étagère"));
   };
 
+  const toggleShelfGap = (side: "before" | "after") => {
+    if (!spacingSelectedId) return;
+    const book = allBooks.find((item) => item.book_id === spacingSelectedId);
+    if (!book) return;
+    const field = side === "before" ? "shelf_gap_before" : "shelf_gap_after";
+    const value = !book[field];
+    setAllBooks((current) =>
+      current.map((item) =>
+        item.book_id === book.book_id ? { ...item, [field]: value } : item,
+      ),
+    );
+    userBooks
+      .setShelfGap(book.book_id, side, value)
+      .catch(() =>
+        Alert.alert("Erreur", "Impossible de modifier cet espace"),
+      );
+  };
+
   // Cycles a spine's tilt: left → right → straight → left. Deliberately
   // only these three explicit states — cycling back through "automatic"
   // (null) used to be one of the stops, but the automatic angle is a hashed
@@ -1124,7 +1206,10 @@ export default function LibraryScreen() {
   // immediately to the left/right of a pile without merging into it, and
   // for "holes" to open up anywhere in the row rather than only between
   // whole slots.
-  const STACK_HIT_MARGIN = 0.22;
+  // Keep a small edge strip for precise left/right reordering, but make most
+  // of a book a valid stacking target so merging two books doesn't require a
+  // pixel-perfect drop in its center.
+  const STACK_HIT_MARGIN = 0.14;
   // Piles render each member as its own overlapping DraggableShelfBook (for
   // per-book unstack), so testing against individual member frames meant the
   // *whole* footprint of a pile was one big overlapping stack of "center
@@ -1234,7 +1319,15 @@ export default function LibraryScreen() {
   // drag direction.
   const handleShelfDragUpdate = (bookId: string, x: number, y: number) => {
     const resolved = resolveShelfDrop(new Set([bookId]), x, y);
-    if (!resolved || resolved.type === "stack") return;
+    if (!resolved) {
+      setStackTargetId(null);
+      return;
+    }
+    if (resolved.type === "stack") {
+      if (resolved.targetId !== stackTargetId) setStackTargetId(resolved.targetId);
+      return;
+    }
+    if (stackTargetId) setStackTargetId(null);
     const targetId =
       resolved.type === "fill-empty" ? resolved.anchorId : resolved.targetId;
     if (targetId === lastShelfTargetRef.current) return;
@@ -1265,10 +1358,26 @@ export default function LibraryScreen() {
   const handleShelfDrop = (bookId: string, x: number, y: number) => {
     stopAutoScroll();
     lastShelfTargetRef.current = null;
+    setStackTargetId(null);
     const dragged = filteredBooks.find((b) => b.book_id === bookId);
     if (!dragged) return;
     const resolved = resolveShelfDrop(new Set([bookId]), x, y);
     if (resolved?.type === "stack") {
+      // Move the dragged book beside its target first. This makes the newly
+      // created pile appear where it was dropped (rather than back at the
+      // book's old location) and saves that order at the same time.
+      const ids = filteredBooks.map((b) => b.book_id);
+      const currentIndex = ids.indexOf(bookId);
+      ids.splice(currentIndex, 1);
+      ids.splice(ids.indexOf(resolved.targetId), 0, bookId);
+      setAllBooks((current) =>
+        current.map((book) =>
+          book.status === activeTab
+            ? { ...book, shelf_position: ids.indexOf(book.book_id) }
+            : book,
+        ),
+      );
+      persistOrder(ids);
       doStack(bookId, resolved.targetId);
       return;
     }
@@ -1391,18 +1500,44 @@ export default function LibraryScreen() {
   // this in a TouchableOpacity (renderSpine, below); reorder mode instead
   // wraps it in DraggableShelfBook's GestureDetector, which needs to be the
   // only thing handling touches on that tile, not a second nested handler.
-  const renderSpineVisual = (book: any) => {
+  const renderSpineVisual = (book: any, gapBefore = false, gapAfter = false) => {
     const tilt = spineTilt(book);
     return (
       <View
         style={[
           styles.spineWrap,
+          gapBefore && { marginLeft: SHELF_GAP_SIZE },
+          gapAfter && { marginRight: SHELF_GAP_SIZE },
           tilt !== 0 && { marginHorizontal: SPINE_TILT_MARGIN },
           { transform: [{ rotate: `${tilt}deg` }] },
           poppedBook?.book_id === book.book_id && styles.slotLifted,
         ]}
       >
-        <View style={[styles.spine, { backgroundColor: colors.card2 }]}>
+        {reorderMode && spacingSelectedId === book.book_id ? (
+          <View style={styles.spacingBookActions}>
+            <TouchableOpacity
+              style={styles.spacingBookActionBtn}
+              onPress={() => toggleShelfGap("before")}
+            >
+              <Feather name="chevron-left" size={14} color={colors.white} />
+              <Text style={styles.spacingBookActionText}>Gauche</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.spacingBookActionBtn}
+              onPress={() => toggleShelfGap("after")}
+            >
+              <Text style={styles.spacingBookActionText}>Droite</Text>
+              <Feather name="chevron-right" size={14} color={colors.white} />
+            </TouchableOpacity>
+          </View>
+        ) : null}
+        <View
+          style={[
+            styles.spine,
+            { backgroundColor: colors.card2 },
+            reorderMode && stackTargetId === book.book_id && styles.slotStackTarget,
+          ]}
+        >
           <CoverSliver
             uri={book.cover_url}
             width={SPINE_WIDTH}
@@ -1432,18 +1567,25 @@ export default function LibraryScreen() {
     );
   };
 
-  const renderSpine = (book: any) => (
+  const renderSpine = (book: any, gapBefore = false, gapAfter = false) => (
     <TouchableOpacity
       key={book.book_id}
       activeOpacity={0.8}
       onPress={() => onSlotPress(book)}
     >
-      {renderSpineVisual(book)}
+      {renderSpineVisual(book, gapBefore, gapAfter)}
     </TouchableOpacity>
   );
 
-  const renderStack = (books: any[]) => (
-    <View key={books.map((b) => b.book_id).join("-")} style={styles.stackWrap}>
+  const renderStack = (books: any[], gapBefore = false, gapAfter = false) => (
+    <View
+      key={books.map((b) => b.book_id).join("-")}
+      style={[
+        styles.stackWrap,
+        gapBefore && { marginLeft: SHELF_GAP_SIZE },
+        gapAfter && { marginRight: SHELF_GAP_SIZE },
+      ]}
+    >
       {books.map((book, i) => (
         <TouchableOpacity
           key={book.book_id}
@@ -1526,8 +1668,19 @@ export default function LibraryScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => {
-              setReorderMode((cur) => !cur);
+              const nextReorderMode = !reorderMode;
+              setReorderMode(nextReorderMode);
+              // Manual positioning needs the actual saved order. A date sort
+              // would immediately re-sort the books after every drop and make
+              // a successful drag look like it had been ignored.
+              if (nextReorderMode) {
+                setSortOrder("manual");
+                if (viewMode === "shelf" && !roomZoomed) {
+                  setRoomZoomed(true);
+                }
+              }
               setReorderSelectedId(null);
+              setSpacingSelectedId(null);
               setPoppedBook(null);
             }}
             hitSlop={6}
@@ -1548,7 +1701,7 @@ export default function LibraryScreen() {
           <Text style={styles.reorderBannerText}>
             {viewMode === "grid"
               ? "Glisse un livre pour le déplacer, ou touche-en deux pour les échanger"
-              : "Glisse un livre sur un autre pour les empiler, ou ailleurs pour le déplacer · touche l'icône ↻ pour l'incliner"}
+              : "Glisse pour déplacer ou empiler · touche un livre pour ajouter un espace à gauche ou à droite"}
           </Text>
         </View>
       )}
@@ -1870,17 +2023,27 @@ export default function LibraryScreen() {
                               registerRef={registerShelfRef}
                               onDragStart={() => {
                                 lastShelfTargetRef.current = null;
+                                setStackTargetId(null);
                                 remeasureShelfFrames();
                               }}
                               onDragUpdateY={handleDragAutoScroll}
                               onDragUpdate={handleShelfDragUpdate}
                               onDrop={handleShelfDrop}
+                              onTap={() => setSpacingSelectedId(slot.book.book_id)}
+                              style={[
+                                slot.gapBefore && { marginLeft: SHELF_GAP_SIZE },
+                                slot.gapAfter && { marginRight: SHELF_GAP_SIZE },
+                              ]}
                             >
                               {renderSpineVisual(slot.book)}
                             </DraggableShelfBook>
                           ) : (
                             <View
                               key={slot.books.map((b) => b.book_id).join("-")}
+                              style={[
+                                slot.gapBefore && { marginLeft: SHELF_GAP_SIZE },
+                                slot.gapAfter && { marginRight: SHELF_GAP_SIZE },
+                              ]}
                             >
                               <DraggableHandle
                                 groupIds={slot.books.map((b) => b.book_id)}
@@ -1912,12 +2075,33 @@ export default function LibraryScreen() {
                                     registerRef={registerShelfRef}
                                     onDragStart={() => {
                                       lastShelfTargetRef.current = null;
+                                      setStackTargetId(null);
                                       remeasureShelfFrames();
                                     }}
                                     onDragUpdateY={handleDragAutoScroll}
                                     onDragUpdate={handleShelfDragUpdate}
                                     onDrop={handleShelfDrop}
+                                    onTap={() => setSpacingSelectedId(slot.books[0].book_id)}
                                   >
+                                    {i === 0 &&
+                                    spacingSelectedId === slot.books[0].book_id ? (
+                                      <View style={styles.stackSpacingBookActions}>
+                                        <TouchableOpacity
+                                          style={styles.spacingBookActionBtn}
+                                          onPress={() => toggleShelfGap("before")}
+                                        >
+                                          <Feather name="chevron-left" size={14} color={colors.white} />
+                                          <Text style={styles.spacingBookActionText}>Gauche</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                          style={styles.spacingBookActionBtn}
+                                          onPress={() => toggleShelfGap("after")}
+                                        >
+                                          <Text style={styles.spacingBookActionText}>Droite</Text>
+                                          <Feather name="chevron-right" size={14} color={colors.white} />
+                                        </TouchableOpacity>
+                                      </View>
+                                    ) : null}
                                     <View
                                       style={[
                                         styles.stackBar,
@@ -1925,6 +2109,8 @@ export default function LibraryScreen() {
                                           backgroundColor: colors.card2,
                                           zIndex: slot.books.length - i,
                                         },
+                                        stackTargetId === slot.books[0].book_id &&
+                                          styles.slotStackTarget,
                                       ]}
                                     >
                                       <CoverSliver
@@ -2025,10 +2211,10 @@ export default function LibraryScreen() {
                       },
                     ]}
                   >
-                    {row.slots.map((slot) =>
+                    {row.slots.map((slot: Slot) =>
                       slot.type === "spine"
-                        ? renderSpine(slot.book)
-                        : renderStack(slot.books),
+                        ? renderSpine(slot.book, slot.gapBefore, slot.gapAfter)
+                        : renderStack(slot.books, slot.gapBefore, slot.gapAfter),
                     )}
                   </Animated.View>
                 )
@@ -2247,6 +2433,46 @@ const makeStyles = (colors: ColorPalette) =>
       marginBottom: 10,
     },
     reorderBannerText: { fontSize: 12, color: colors.lavender, flex: 1 },
+    spacingBookActions: {
+      position: "absolute",
+      zIndex: 30,
+      bottom: SPINE_HEIGHT + 8,
+      left: -18,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      padding: 4,
+      borderRadius: 999,
+      backgroundColor: colors.card2,
+      borderWidth: 1,
+      borderColor: colors.purple,
+      ...shadows.card,
+    },
+    spacingBookActionBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 2,
+      paddingHorizontal: 6,
+      paddingVertical: 4,
+      borderRadius: 999,
+      backgroundColor: colors.purple,
+    },
+    spacingBookActionText: { color: colors.white, fontSize: 10, fontWeight: "700" },
+    stackSpacingBookActions: {
+      position: "absolute",
+      zIndex: 30,
+      bottom: STACK_BAR_HEIGHT + 8,
+      left: 0,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      padding: 4,
+      borderRadius: 999,
+      backgroundColor: colors.card2,
+      borderWidth: 1,
+      borderColor: colors.purple,
+      ...shadows.card,
+    },
     searchBar: {
       flexDirection: "row",
       alignItems: "center",
@@ -2475,6 +2701,14 @@ const makeStyles = (colors: ColorPalette) =>
     // The book currently picked for a reorder swap — a bright outline so
     // it's obvious which one will move when you tap a second book.
     slotSelected: { borderWidth: 2, borderColor: colors.purple },
+    slotStackTarget: {
+      borderWidth: 3,
+      borderColor: colors.purple,
+      shadowColor: colors.purple,
+      shadowOpacity: 0.7,
+      shadowRadius: 8,
+      elevation: 8,
+    },
 
     // "Room" view (the un-zoomed side of viewMode "shelf") — a furnished-
     // feeling wall of wooden bookshelf cabinets, one per status, built
