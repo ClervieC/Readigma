@@ -3,7 +3,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Animated as RNAnimated, Image, TextInput, Alert, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
+import Animated, { FadeInDown, ZoomIn, useSharedValue, useAnimatedStyle, withTiming, interpolateColor } from 'react-native-reanimated';
 import { radius, fonts, ColorPalette } from '../../theme';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -33,6 +33,23 @@ const FILTERS = [
   { label: 'Sci-Fi', value: 'Science Fiction' },
   { label: 'Fiction', value: 'Fiction' },
 ];
+
+// Animates width + color on focus instead of just snapping between the two
+// styles, so the pager dots actually read as feedback for the swipe.
+function ReadingDot({ focused, colors, styles }: { focused: boolean; colors: ColorPalette; styles: any }) {
+  const progress = useSharedValue(focused ? 1 : 0);
+
+  useEffect(() => {
+    progress.value = withTiming(focused ? 1 : 0, { duration: 220 });
+  }, [focused]);
+
+  const dotStyle = useAnimatedStyle(() => ({
+    width: 6 + progress.value * 10,
+    backgroundColor: interpolateColor(progress.value, [0, 1], [colors.divider, colors.purple]),
+  }));
+
+  return <Animated.View style={[styles.readingDot, dotStyle]} />;
+}
 
 // One page of the horizontal "en cours" scroll — each book manages its own
 // progress-editor state independently (mode/inputs), since with several
@@ -84,6 +101,10 @@ function ReadingBookCard({ book, colors, styles, onUpdate }: { book: any; colors
 
   return (
     <View style={styles.readingCard}>
+      <TouchableOpacity style={styles.readingCardLink} onPress={() => router.push(`/book/${book.book_id}`)} hitSlop={8}>
+        <Feather name="arrow-up-right" size={15} color={colors.gray} />
+      </TouchableOpacity>
+
       <TouchableOpacity style={styles.readingTop} onPress={() => router.push(`/book/${book.book_id}`)} activeOpacity={0.75}>
         <View style={styles.readingCover}>
           {book.cover_url ? <Image source={{ uri: book.cover_url }} style={styles.readingCoverImg} /> : <Feather name="book" size={20} color={colors.purple} />}
@@ -216,15 +237,16 @@ export default function DiscoverScreen() {
           <View style={{ marginBottom: 28 }}>
             <View style={styles.readingHeaderRow}>
               <Text style={styles.eyebrow}>En cours de lecture{readingBooks.length > 1 ? ` · ${readingBooks.length}` : ''}</Text>
-              <TouchableOpacity onPress={() => router.push(`/book/${readingBooks[activeReadingIndex].book_id}`)} hitSlop={8}>
-                <Feather name="arrow-up-right" size={15} color={colors.gray} />
-              </TouchableOpacity>
             </View>
 
             <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}
               snapToInterval={readingCardWidth + READING_CARD_GAP} decelerationRate="fast"
               contentContainerStyle={{ gap: READING_CARD_GAP }}
-              onMomentumScrollEnd={(e) => setActiveReadingIndex(Math.round(e.nativeEvent.contentOffset.x / (readingCardWidth + READING_CARD_GAP)))}
+              scrollEventThrottle={16}
+              onScroll={(e) => {
+                const index = Math.round(e.nativeEvent.contentOffset.x / (readingCardWidth + READING_CARD_GAP));
+                setActiveReadingIndex(cur => cur === index ? cur : Math.max(0, Math.min(index, readingBooks.length - 1)));
+              }}
             >
               {readingBooks.map((book) => (
                 <View key={book.book_id} style={{ width: readingCardWidth }}>
@@ -236,7 +258,7 @@ export default function DiscoverScreen() {
             {readingBooks.length > 1 && (
               <View style={styles.readingDots}>
                 {readingBooks.map((_, i) => (
-                  <View key={i} style={[styles.readingDot, i === activeReadingIndex && styles.readingDotActive]} />
+                  <ReadingDot key={i} focused={i === activeReadingIndex} colors={colors} styles={styles} />
                 ))}
               </View>
             )}
@@ -338,11 +360,11 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
     backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border,
     padding: 16,
   },
-  readingHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  readingCardLink: { position: 'absolute', top: 14, right: 14, zIndex: 1 },
+  readingHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   readingDots: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 12 },
   readingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.divider },
-  readingDotActive: { backgroundColor: colors.purple, width: 16 },
-  readingTop: { flexDirection: 'row', gap: 14 },
+  readingTop: { flexDirection: 'row', gap: 14, paddingRight: 22 },
   readingCover: { width: 56, height: 80, backgroundColor: colors.card2, borderRadius: 8, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   readingCoverImg: { width: 56, height: 80 },
   readingInfo: { flex: 1, justifyContent: 'flex-start' },

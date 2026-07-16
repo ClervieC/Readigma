@@ -157,10 +157,10 @@ export default function BookDetailScreen() {
       .finally(() => setSavingSeries(false));
   };
 
-  const addSeriesBook = (book: any) => {
+  const openSeriesBook = (book: any) => {
     books.addBookToDb(book)
-      .then(row => userBooks.addBook(row.id, 'to_read').then(() => router.push(`/book/${row.id}`)))
-      .catch(() => Alert.alert('Erreur', "Impossible d'ajouter ce livre"));
+      .then(row => router.push(`/book/${row.id}`))
+      .catch(() => Alert.alert('Erreur', "Impossible d'ouvrir ce livre"));
   };
 
   // A book is "being read" the moment you time it, log a page, or react to
@@ -346,7 +346,7 @@ export default function BookDetailScreen() {
                       <Text style={styles.seriesSubheading}>Autres livres de la série</Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
                         {seriesBooks.map((b, i) => (
-                          <TouchableOpacity key={i} style={styles.seriesBookCard} onPress={() => addSeriesBook(b)} activeOpacity={0.75}>
+                          <TouchableOpacity key={i} style={styles.seriesBookCard} onPress={() => openSeriesBook(b)} activeOpacity={0.75}>
                             <View style={styles.seriesBookCover}>
                               {b.cover_url ? <Image source={{ uri: b.cover_url }} style={styles.seriesBookCoverImg} /> : <Feather name="book" size={18} color={colors.purple} />}
                             </View>

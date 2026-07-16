@@ -23,7 +23,7 @@ export const EMPTY_BOOK_FORM: BookFormFields = {
 // Shared by app/suggest-book.tsx and app/admin.tsx's "Ajouter un livre" tab —
 // a suggestion is meant to carry everything an admin would otherwise type by
 // hand, so both screens capture the exact same fields.
-export default function BookForm({ value, onChange }: { value: BookFormFields; onChange: (next: BookFormFields) => void }) {
+export default function BookForm({ value, onChange, requireAuthor }: { value: BookFormFields; onChange: (next: BookFormFields) => void; requireAuthor?: boolean }) {
   const { colors } = useTheme();
   const styles = makeStyles(colors);
   const [coverResults, setCoverResults] = useState<books.NormalizedBook[]>([]);
@@ -51,7 +51,7 @@ export default function BookForm({ value, onChange }: { value: BookFormFields; o
       <Text style={styles.label}>Titre *</Text>
       <TextInput style={styles.input} value={value.title} onChangeText={t => set({ title: t })} placeholderTextColor={colors.gray} />
 
-      <Text style={styles.label}>Auteur</Text>
+      <Text style={styles.label}>Auteur{requireAuthor ? ' *' : ''}</Text>
       <TextInput style={styles.input} value={value.author} onChangeText={t => set({ author: t })} placeholderTextColor={colors.gray} />
 
       <Text style={styles.label}>URL de couverture</Text>

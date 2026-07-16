@@ -46,6 +46,7 @@ export type Profile = {
   role: string;
   banned: boolean;
   onboarding_done: boolean;
+  library_view_mode: 'shelf' | 'grid';
 };
 
 type AuthContextType = {
@@ -56,6 +57,7 @@ type AuthContextType = {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, username: string) => Promise<{ needsEmailConfirmation: boolean }>;
   completeOnboarding: () => Promise<void>;
+  setLibraryViewMode: (mode: 'shelf' | 'grid') => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 };
@@ -176,6 +178,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.from('profiles').update({ onboarding_done: true }).eq('id', session.user.id);
   };
 
+  // Persisted on the profile row (not device storage) so the shelf/grid
+  // choice in app/(tabs)/library.tsx sticks across sessions and devices
+  // instead of resetting every time the app is reopened.
+  const setLibraryViewMode = async (mode: 'shelf' | 'grid') => {
+    if (!session) return;
+    setProfile(cur => (cur ? { ...cur, library_view_mode: mode } : cur));
+    await supabase.from('profiles').update({ library_view_mode: mode }).eq('id', session.user.id);
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
   };
@@ -186,7 +197,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ session, profile, loading, needsOnboarding, signIn, signUp, completeOnboarding, signOut, refreshProfile }}
+      value={{ session, profile, loading, needsOnboarding, signIn, signUp, completeOnboarding, setLibraryViewMode, signOut, refreshProfile }}
     >
       {children}
     </AuthContext.Provider>

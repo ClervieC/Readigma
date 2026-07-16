@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming, interpolateColor } from 'react-native-reanimated';
 import { ColorPalette, fonts } from '../theme';
@@ -54,10 +55,11 @@ function TabItem({ tab, focused, onPress, colors }: { tab: typeof TABS[number]; 
 
 export default function TabBar({ state, navigation }: TabBarProps) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = makeStyles(colors);
 
   return (
-    <View style={styles.wrapper}>
+    <View style={[styles.wrapper, { paddingBottom: 10 + insets.bottom }]}>
       {state.routes.map((route, index) => {
         const tab = TABS.find((t) => t.name === route.name) ?? TABS[index];
         const focused = state.index === index;
@@ -79,7 +81,6 @@ const makeStyles = (colors: ColorPalette) =>
       borderTopWidth: 1,
       borderTopColor: colors.divider,
       paddingTop: 10,
-      paddingBottom: 28,
     },
     item: { flex: 1, alignItems: 'center', gap: 4 },
     iconPill: { paddingHorizontal: 18, paddingVertical: 5, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },

@@ -16,7 +16,9 @@ export type AdminMessage = {
   id: string;
   user_id: string;
   message: string;
-  status: 'unread' | 'read';
+  status: 'unread' | 'read' | 'replied';
+  reply: string | null;
+  replied_at: string | null;
   created_at: string;
   username?: string;
 };
@@ -81,6 +83,17 @@ export async function getMessages(): Promise<AdminMessage[]> {
 export async function markMessageRead(id: string) {
   const { error } = await supabase.from('admin_messages').update({ status: 'read' }).eq('id', id);
   if (error) throw new Error(error.message);
+}
+
+export async function replyToMessage(id: string, reply: string) {
+  const { data, error } = await supabase
+    .from('admin_messages')
+    .update({ status: 'replied', reply, replied_at: new Date().toISOString() })
+    .eq('id', id)
+    .select('user_id')
+    .single();
+  if (error) throw new Error(error.message);
+  if (data) notify(data.user_id, "Réponse de l'équipe Readigma", reply);
 }
 
 export async function getSuggestions(): Promise<BookSuggestion[]> {

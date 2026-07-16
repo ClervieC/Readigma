@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { radius, fonts, ColorPalette } from '../../theme';
+import { radius, fonts, shadows, ColorPalette } from '../../theme';
 import { useTheme } from '../../context/ThemeContext';
 import * as feed from '../../lib/feed';
 import NotificationBell from '../../components/NotificationBell';
@@ -21,6 +21,18 @@ function timeAgo(dateStr: string) {
   if (mins < 60) return `Il y a ${mins}min`;
   if (hours < 24) return `Il y a ${hours}h`;
   return `Il y a ${days}j`;
+}
+
+// Each activity type gets its own accent color so the feed reads at a glance
+// instead of every card looking like the same flat gray row.
+function activityAccent(type: string, colors: ColorPalette) {
+  switch (type) {
+    case 'finished': return { color: colors.success };
+    case 'reaction': return { color: colors.pink };
+    case 'progress_update': return { color: colors.teal };
+    case 'started': return { color: colors.purple };
+    default: return { color: colors.purple };
+  }
 }
 
 function ActivityCard({ item, last, onUserPress, onBookPress, onLike, onCommentAdded, styles, colors }: {
@@ -70,15 +82,19 @@ function ActivityCard({ item, last, onUserPress, onBookPress, onLike, onCommentA
     }
   };
 
+  const accent = activityAccent(item.activity_type, colors);
+
   return (
-    <View style={[styles.card, !last && styles.cardDivider]}>
+    <View style={[styles.card, { borderLeftColor: accent.color }, !last && { marginBottom: 12 }]}>
       <View style={styles.cardHeader}>
-        <TouchableOpacity style={styles.avatar} onPress={() => onUserPress(item.user_id, item.username)}>
-          <Text style={styles.avatarText}>{item.username?.slice(0, 2).toUpperCase()}</Text>
+        <TouchableOpacity onPress={() => onUserPress(item.user_id, item.username)}>
+          <View style={[styles.avatar, { borderColor: accent.color }]}>
+            <Text style={styles.avatarText}>{item.username?.slice(0, 2).toUpperCase()}</Text>
+          </View>
         </TouchableOpacity>
         <TouchableOpacity style={styles.cardMeta} onPress={() => onUserPress(item.user_id, item.username)}>
           <Text style={styles.username}>{item.username}</Text>
-          <Text style={styles.activityText}>{getActivityText()}</Text>
+          <Text style={[styles.activityText, { color: accent.color }]}>{getActivityText()}</Text>
         </TouchableOpacity>
         <Text style={styles.timeAgo}>{timeAgo(item.created_at)}</Text>
       </View>
@@ -103,18 +119,25 @@ function ActivityCard({ item, last, onUserPress, onBookPress, onLike, onCommentA
 
       {item.activity_type === 'finished' ? (
         <View style={styles.finishedBox}>
-          <Text style={styles.finishedText}>
-            Livre terminé{item.metadata?.rating ? ` · ${item.metadata.rating}★` : ''}
-          </Text>
-          {item.metadata?.comment ? <Text style={styles.finishedComment}>"{item.metadata.comment}"</Text> : null}
+          <Feather name="check-circle" size={16} color={colors.success} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.finishedText}>
+              Livre terminé{item.metadata?.rating ? ` · ${item.metadata.rating}★` : ''}
+            </Text>
+            {item.metadata?.comment ? <Text style={styles.finishedComment}>"{item.metadata.comment}"</Text> : null}
+          </View>
         </View>
       ) : null}
 
       {item.activity_type === 'reaction' && item.emoji ? (
         <View style={styles.reactionBox}>
-          <Text style={styles.reactionEmoji}>{item.emoji}</Text>
-          {item.note ? <Text style={styles.reactionNote}>{item.note}</Text> : null}
-          {item.reaction_percent ? <Text style={styles.reactionMeta}>à {Math.round(item.reaction_percent)}% du livre</Text> : null}
+          <View style={styles.reactionEmojiWrap}>
+            <Text style={styles.reactionEmoji}>{item.emoji}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            {item.note ? <Text style={styles.reactionNote}>{item.note}</Text> : null}
+            {item.reaction_percent ? <Text style={styles.reactionMeta}>à {Math.round(item.reaction_percent)}% du livre</Text> : null}
+          </View>
         </View>
       ) : null}
 
@@ -131,13 +154,13 @@ function ActivityCard({ item, last, onUserPress, onBookPress, onLike, onCommentA
       ) : null}
 
       <View style={styles.actionsRow}>
-        <TouchableOpacity style={styles.actionBtn} onPress={onLike} hitSlop={8}>
-          <Feather name="heart" size={16} color={item.liked_by_me ? colors.error : colors.gray} />
+        <TouchableOpacity style={[styles.actionBtn, item.liked_by_me && styles.actionBtnActive]} onPress={onLike} hitSlop={8}>
+          <Feather name="heart" size={15} color={item.liked_by_me ? colors.error : colors.gray} />
           <Text style={[styles.actionCount, item.liked_by_me && { color: colors.error }]}>{item.like_count > 0 ? item.like_count : ''}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={toggleComments} hitSlop={8}>
-          <Feather name="message-circle" size={16} color={colors.gray} />
-          <Text style={styles.actionCount}>{item.comment_count > 0 ? item.comment_count : ''}</Text>
+        <TouchableOpacity style={[styles.actionBtn, expanded && styles.actionBtnActive]} onPress={toggleComments} hitSlop={8}>
+          <Feather name="message-circle" size={15} color={expanded ? colors.purple : colors.gray} />
+          <Text style={[styles.actionCount, expanded && { color: colors.purple }]}>{item.comment_count > 0 ? item.comment_count : ''}</Text>
         </TouchableOpacity>
       </View>
 
@@ -261,34 +284,41 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   emptyState: { alignItems: 'center', paddingTop: 80, gap: 12 },
   emptyTitle: { fontSize: 16, fontFamily: fonts.headingBold, color: colors.white },
   emptyText: { fontSize: 13, color: colors.gray, textAlign: 'center', paddingHorizontal: 40 },
-  card: { paddingVertical: 16 },
-  cardDivider: { borderBottomWidth: 1, borderBottomColor: colors.divider },
+  card: {
+    padding: 14, backgroundColor: colors.card, borderRadius: radius.md,
+    borderLeftWidth: 3, ...shadows.card,
+  },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-  avatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.purpleGlow, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  avatar: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: colors.purpleGlow,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0, borderWidth: 1.5,
+  },
   avatarText: { fontSize: 12, fontWeight: '700', color: colors.lavender },
   cardMeta: { flex: 1 },
   username: { fontSize: 13, fontWeight: '700', color: colors.white },
-  activityText: { fontSize: 11, color: colors.gray, marginTop: 1 },
+  activityText: { fontSize: 11, fontWeight: '600', marginTop: 1 },
   timeAgo: { fontSize: 10, color: colors.gray, flexShrink: 0 },
   bookRow: { flexDirection: 'row', gap: 10, backgroundColor: colors.card2, borderRadius: radius.sm, padding: 10, alignItems: 'center', marginBottom: 8 },
-  bookCover: { width: 32, height: 44, backgroundColor: colors.bg, borderRadius: 5, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  coverImg: { width: 32, height: 44 },
+  bookCover: { width: 34, height: 48, backgroundColor: colors.bg, borderRadius: 5, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', ...shadows.card },
+  coverImg: { width: 34, height: 48 },
   bookInfo: { flex: 1 },
   bookTitle: { fontSize: 13, fontWeight: '600', color: colors.white },
   bookAuthor: { fontSize: 11, color: colors.gray, marginTop: 2 },
-  finishedBox: { backgroundColor: colors.purpleGlow, borderRadius: radius.sm, padding: 10 },
-  finishedText: { color: colors.lavender, fontSize: 13, fontWeight: '600' },
+  finishedBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.purpleGlow, borderRadius: radius.sm, padding: 10 },
+  finishedText: { color: colors.success, fontSize: 13, fontWeight: '700' },
   finishedComment: { color: colors.gray, fontSize: 12, marginTop: 4, fontStyle: 'italic' },
-  reactionBox: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.purpleGlow, borderRadius: radius.sm, padding: 10 },
-  reactionEmoji: { fontSize: 24 },
+  reactionBox: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.purpleGlow, borderRadius: radius.sm, padding: 10 },
+  reactionEmojiWrap: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  reactionEmoji: { fontSize: 22 },
   reactionNote: { flex: 1, fontSize: 13, color: colors.white },
   reactionMeta: { fontSize: 10, color: colors.gray },
-  progressBox: { gap: 6 },
-  progressBar: { height: 4, backgroundColor: colors.card2, borderRadius: 2, overflow: 'hidden' },
-  progressFill: { height: '100%', backgroundColor: colors.teal, borderRadius: 2 },
-  progressText: { fontSize: 11, color: colors.teal },
-  actionsRow: { flexDirection: 'row', gap: 20, marginTop: 12 },
-  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  progressBox: { gap: 6, backgroundColor: colors.card2, borderRadius: radius.sm, padding: 10 },
+  progressBar: { height: 6, backgroundColor: colors.bg, borderRadius: 3, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: colors.teal, borderRadius: 3 },
+  progressText: { fontSize: 11, color: colors.teal, fontWeight: '700' },
+  actionsRow: { flexDirection: 'row', gap: 10, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.divider },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 999 },
+  actionBtnActive: { backgroundColor: colors.purpleGlow },
   actionCount: { fontSize: 12, color: colors.gray, fontWeight: '600', minWidth: 8 },
   commentsBox: { marginTop: 10, backgroundColor: colors.card2, borderRadius: radius.sm, padding: 10, gap: 8 },
   commentRow: { paddingBottom: 8, gap: 2 },

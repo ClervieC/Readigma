@@ -42,6 +42,8 @@ export default function AdminScreen() {
   const [book, setBook] = useState<BookFormFields>(EMPTY_BOOK_FORM);
   const [editingSuggestionId, setEditingSuggestionId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [sendingReplyId, setSendingReplyId] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -58,6 +60,19 @@ export default function AdminScreen() {
     if (m.status === 'unread') {
       admin.markMessageRead(m.id).then(() => setMessages(cur => cur.map(x => x.id === m.id ? { ...x, status: 'read' } : x)));
     }
+  };
+
+  const sendReply = (m: admin.AdminMessage) => {
+    const reply = (replyDrafts[m.id] ?? '').trim();
+    if (!reply) return;
+    setSendingReplyId(m.id);
+    admin.replyToMessage(m.id, reply)
+      .then(() => {
+        setMessages(cur => cur.map(x => x.id === m.id ? { ...x, status: 'replied', reply, replied_at: new Date().toISOString() } : x));
+        setReplyDrafts(cur => { const next = { ...cur }; delete next[m.id]; return next; });
+      })
+      .catch(() => Alert.alert('Erreur', "Impossible d'envoyer la réponse"))
+      .finally(() => setSendingReplyId(null));
   };
 
   const quickApprove = (s: admin.BookSuggestion) => {
@@ -183,13 +198,38 @@ export default function AdminScreen() {
           loading ? <Text style={styles.emptyText}>Chargement...</Text> :
           messages.length === 0 ? <Text style={styles.emptyText}>Aucun message.</Text> :
           messages.map((m, i) => (
-            <TouchableOpacity key={m.id} style={[styles.card, i < messages.length - 1 && styles.cardDivider]} onPress={() => openMessage(m)}>
+            <TouchableOpacity key={m.id} style={[styles.card, i < messages.length - 1 && styles.cardDivider]} activeOpacity={1} onPress={() => openMessage(m)}>
               <View style={styles.cardHeader}>
                 <Text style={styles.cardUser}>@{m.username ?? '?'}</Text>
                 {m.status === 'unread' && <View style={styles.unreadDot} />}
                 <Text style={styles.cardTime}>{timeAgo(m.created_at)}</Text>
               </View>
               <Text style={styles.cardBody}>{m.message}</Text>
+              {m.status === 'replied' ? (
+                <View style={styles.replyBox}>
+                  <Text style={styles.replyLabel}>Ta réponse</Text>
+                  <Text style={styles.replyText}>{m.reply}</Text>
+                </View>
+              ) : (
+                <View style={styles.replyForm}>
+                  <TextInput
+                    style={styles.replyInput}
+                    value={replyDrafts[m.id] ?? ''}
+                    onChangeText={t => setReplyDrafts(cur => ({ ...cur, [m.id]: t }))}
+                    placeholder="Répondre..."
+                    placeholderTextColor={colors.gray}
+                    multiline
+                  />
+                  <TouchableOpacity
+                    style={styles.actionBtn}
+                    disabled={!(replyDrafts[m.id] ?? '').trim() || sendingReplyId === m.id}
+                    onPress={() => sendReply(m)}
+                  >
+                    <Feather name="send" size={13} color={colors.purple} />
+                    <Text style={styles.actionText}>{sendingReplyId === m.id ? 'Envoi...' : 'Envoyer'}</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </TouchableOpacity>
           ))
         )}
@@ -266,6 +306,14 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   unreadDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.purple },
   cardTime: { fontSize: 10, color: colors.gray, marginLeft: 'auto' },
   cardBody: { fontSize: 13, color: colors.muted, lineHeight: 18 },
+  replyBox: { marginTop: 10, backgroundColor: colors.purpleGlow, borderRadius: 8, padding: 10 },
+  replyLabel: { fontSize: 10, fontFamily: fonts.headingBold, color: colors.lavender, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 },
+  replyText: { fontSize: 13, color: colors.lavender, lineHeight: 18 },
+  replyForm: { marginTop: 10, gap: 8 },
+  replyInput: {
+    borderWidth: 1, borderColor: colors.divider, borderRadius: 8, padding: 10,
+    color: colors.white, fontSize: 13, minHeight: 44, textAlignVertical: 'top',
+  },
   suggestionBook: { flexDirection: 'row', gap: 10, marginBottom: 8 },
   suggestionCover: { width: 40, height: 56, borderRadius: 5, backgroundColor: colors.card2, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 },
   suggestionCoverImg: { width: 40, height: 56 },

@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Image, TextInput, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -8,7 +8,9 @@ import { useAuth } from '../../context/AuthContext';
 import * as userBooks from '../../lib/userBooks';
 import * as timer from '../../lib/timer';
 import { formatDuration } from '../../lib/timer';
+import { sendAdminMessage } from '../../lib/admin';
 import Row from '../../components/Row';
+import Button from '../../components/Button';
 import NotificationBell from '../../components/NotificationBell';
 import { onScrollToTop } from '../../lib/tabScrollEmitter';
 import { useTheme } from '../../context/ThemeContext';
@@ -29,6 +31,9 @@ export default function ProfileScreen() {
   const [formatStats, setFormatStats] = useState({ physical_count: 0, ereader_count: 0 });
   const [monthSeconds, setMonthSeconds] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
+  const [showContact, setShowContact] = useState(false);
+  const [contactMessage, setContactMessage] = useState('');
+  const [sendingContact, setSendingContact] = useState(false);
 
   useFocusEffect(useCallback(() => {
     requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: 0, animated: false }));
@@ -46,6 +51,17 @@ export default function ProfileScreen() {
     const rated = allBooks.filter(b => b.rating);
     if (!rated.length) return '—';
     return (rated.reduce((sum, b) => sum + parseFloat(b.rating), 0) / rated.length).toFixed(1) + '★';
+  };
+
+  const sendContactMessage = () => {
+    if (!contactMessage.trim()) return;
+    setSendingContact(true);
+    sendAdminMessage(contactMessage.trim()).then(() => {
+      setSendingContact(false);
+      setContactMessage('');
+      setShowContact(false);
+      Alert.alert('Envoyé', "Ton message a été envoyé à l'équipe.");
+    }).catch(() => { setSendingContact(false); Alert.alert('Erreur', "Impossible d'envoyer le message"); });
   };
 
   const formatTotal = formatStats.physical_count + formatStats.ereader_count;
@@ -128,13 +144,32 @@ export default function ProfileScreen() {
               <Text style={styles.settingLabel}>Administration</Text>
             </Row>
           )}
-          {QUICK_LINKS.map((item, i) => (
-            <Row key={item.route} last={i === QUICK_LINKS.length - 1} onPress={() => router.push(item.route as any)} chevron
+          {QUICK_LINKS.map((item) => (
+            <Row key={item.route} onPress={() => router.push(item.route as any)} chevron
               icon={<Feather name={item.icon} size={18} color={colors.white} />}>
               <Text style={styles.settingLabel}>{item.label}</Text>
             </Row>
           ))}
+          <Row last onPress={() => setShowContact(v => !v)} chevron={!showContact}
+            icon={<Feather name="mail" size={18} color={colors.white} />}>
+            <Text style={styles.settingLabel}>Écrire à l'équipe</Text>
+          </Row>
         </View>
+
+        {showContact && (
+          <View style={styles.contactBox}>
+            <TextInput
+              style={styles.contactInput}
+              value={contactMessage}
+              onChangeText={setContactMessage}
+              placeholder="Ton message pour l'équipe..."
+              placeholderTextColor={colors.gray}
+              multiline
+              maxLength={500}
+            />
+            <Button label={sendingContact ? 'Envoi...' : 'Envoyer'} onPress={sendContactMessage} disabled={sendingContact || !contactMessage.trim()} style={{ marginTop: 10, alignSelf: 'stretch' }} />
+          </View>
+        )}
 
         <View style={{ height: 20 }} />
       </ScrollView>
@@ -171,4 +206,9 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   formatSplitFillB: { backgroundColor: colors.teal },
   sectionLabel: { fontSize: 12, fontFamily: fonts.headingBold, color: colors.gray, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 },
   settingLabel: { fontSize: 14, color: colors.white },
+  contactBox: { marginTop: 12 },
+  contactInput: {
+    borderWidth: 1, borderColor: colors.divider, borderRadius: 10, padding: 12,
+    color: colors.white, fontSize: 14, minHeight: 70, textAlignVertical: 'top',
+  },
 });

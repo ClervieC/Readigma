@@ -6,6 +6,7 @@ import { fonts, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import * as feed from '../lib/feed';
 import * as friends from '../lib/friends';
+import { getCurrentUserId } from '../lib/supabase';
 import Screen from '../components/Screen';
 import Row from '../components/Row';
 
@@ -34,7 +35,15 @@ export default function NotificationsScreen() {
 
   useFocusEffect(useCallback(() => {
     friends.getPendingRequests().then(setPendingRequests).catch(() => {});
-    feed.getFeed().then(res => setFeedNotifs(res.map((item: any) => ({ ...item, message: getNotifMessage(item) })))).catch(() => {});
+    // get_feed() also returns the caller's own activity (that's by design for
+    // the main feed screen), but notifications should only ever be about
+    // what friends did — otherwise every action you take shows up as a
+    // "notification" about yourself.
+    getCurrentUserId().then(myId => {
+      feed.getFeed().then(res => setFeedNotifs(
+        res.filter((item: any) => item.user_id !== myId).map((item: any) => ({ ...item, message: getNotifMessage(item) }))
+      )).catch(() => {});
+    });
   }, []));
 
   const getNotifMessage = (item: any) => {

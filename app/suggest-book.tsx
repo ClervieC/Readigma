@@ -17,7 +17,7 @@ export default function SuggestBookScreen() {
   const [loading, setLoading] = useState(false);
 
   const submit = () => {
-    if (!book.title.trim()) { Alert.alert('Erreur', 'Le titre est requis'); return; }
+    if (!book.title.trim() || !book.author.trim()) { Alert.alert('Erreur', "Le titre et l'auteur sont requis"); return; }
     setLoading(true);
     submitSuggestion(book).then(() => {
       setLoading(false);
@@ -33,7 +33,7 @@ export default function SuggestBookScreen() {
         <Text style={styles.heroSub}>Remplis sa fiche et propose-la à l'admin pour qu'elle soit ajoutée à Readigma.</Text>
       </View>
 
-      <BookForm value={book} onChange={setBook} />
+      <BookForm value={book} onChange={setBook} requireAuthor />
 
       <Button label={loading ? 'Envoi...' : 'Envoyer la suggestion'} onPress={submit} disabled={loading} style={{ marginTop: 12 }} />
     </Screen>

@@ -125,7 +125,13 @@ export default function RootLayout() {
       meta.setAttribute('name', 'viewport');
       document.head.appendChild(meta);
     }
-    meta.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
+    // No viewport-fit=cover: it makes mobile Safari expose env(safe-area-inset-*),
+    // and that value jumps as Safari's own address bar collapses/expands on
+    // scroll, which made react-native-safe-area-context's top/bottom insets
+    // change mid-session — a big gap appearing at the top and a blank strip
+    // at the bottom. Desktop Safari/Chrome never had this since there's no
+    // such chrome to hide, which is why it only showed up on mobile.
+    meta.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no');
 
     const style = document.createElement('style');
     // `cursor: pointer` isn't about mouse cursors here — it's the classic

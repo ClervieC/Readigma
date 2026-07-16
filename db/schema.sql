@@ -20,6 +20,7 @@ create table profiles (
   role             varchar(20) not null default 'user', -- 'user' | 'admin'
   banned           boolean not null default false,
   onboarding_done  boolean not null default false,
+  library_view_mode varchar(10) not null default 'shelf', -- 'shelf' | 'grid'
   created_at       timestamptz not null default now()
 );
 
@@ -141,7 +142,9 @@ create table admin_messages (
   id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null references profiles(id) on delete cascade,
   message     text not null,
-  status      varchar(20) not null default 'unread', -- 'unread' | 'read'
+  status      varchar(20) not null default 'unread', -- 'unread' | 'read' | 'replied'
+  reply       text,
+  replied_at  timestamptz,
   created_at  timestamptz not null default now()
 );
 
