@@ -22,7 +22,7 @@ export default function OnboardingScreen() {
   const STEPS: { icon: keyof typeof Feather.glyphMap; iconColor: string; title: string; desc: string }[] = [
     { icon: 'feather', iconColor: colors.lavender, title: 'Bienvenue sur\nReadigma', desc: 'Ton compagnon de lecture. Suis ta progression, découvre de nouveaux livres et partage ton aventure littéraire.' },
     { icon: 'shuffle', iconColor: colors.teal, title: 'Découvre\nton prochain livre', desc: 'Tu ne sais pas quoi lire ? Readigma pioche dans ta pile "À lire" et te fait une suggestion au hasard.' },
-    { icon: 'book-open', iconColor: colors.lavender, title: 'Gère ta\nbibliothèque', desc: 'Organise tes livres par statut : À lire, En cours, Terminé ou Abandonné. Tout ton univers littéraire en un endroit.' },
+    { icon: 'book-open', iconColor: colors.lavender, title: 'Gère ta\nbibliothèque', desc: 'Organise tes livres par statut : À lire, En cours, Terminé ou Abandonné. Personnalise ton étagère en déplaçant tes livres et en y ajoutant des cadres photo.' },
     { icon: 'message-circle', iconColor: colors.pink, title: 'Réactions\nen temps réel', desc: 'Note tes émotions au fil de ta lecture avec des emojis et des notes. Crée ton journal de bord de lecteur.' },
     { icon: 'users', iconColor: colors.success, title: 'Lis avec\ntes amis', desc: 'Connecte-toi avec tes amis lecteurs, vois ce qu\'ils lisent et partage tes coups de cœur dans le fil d\'actualité.' },
   ];

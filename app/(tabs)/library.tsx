@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useFocusEffect, useRouter } from "expo-router";
-import { Feather } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import Animated, {
   FadeInDown,
   ZoomIn,
@@ -29,9 +29,11 @@ import { fonts, shadows, ColorPalette } from "../../theme";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import * as userBooks from "../../lib/userBooks";
+import * as shelfFrames from "../../lib/shelfFrames";
 import Pill from "../../components/Pill";
 import NotificationBell from "../../components/NotificationBell";
 import { onScrollToTop } from "../../lib/tabScrollEmitter";
+import * as ImagePicker from "expo-image-picker";
 
 // Spine (standing upright) vs stack (lying flat) dimensions — deliberately
 // unequal so mixed rows look like a real shelf instead of a uniform grid.
@@ -73,7 +75,31 @@ const STATUS_OPTIONS = [
 
 type Slot =
   | { type: "spine"; book: any; gapBefore: boolean; gapAfter: boolean }
-  | { type: "stack"; books: any[]; gapBefore: boolean; gapAfter: boolean };
+  | { type: "stack"; books: any[]; gapBefore: boolean; gapAfter: boolean }
+  | { type: "frame"; frame: any };
+// A frame takes the same shelf width as 3 standing spines (plus the gaps
+// between them), so it reads as "one furniture piece the size of 3 books"
+// rather than an arbitrary fixed size. A plant takes the same as 2.
+const FRAME_WIDTH = SPINE_WIDTH * 3 + SLOT_GAP * 2;
+const PLANT_WIDTH = SPINE_WIDTH * 2 + SLOT_GAP;
+const decorWidth = (kind: string) =>
+  kind === "plant" ? PLANT_WIDTH : FRAME_WIDTH;
+
+// User-supplied plant art (see assets/plants) — a stable hash-picked one per
+// frame id, same reasoning as spineTilt, so a given plant doesn't change
+// which image it shows on every re-render.
+const PLANT_IMAGES = [
+  require("../../assets/plants/plante1.png"),
+  require("../../assets/plants/plante2.png"),
+  require("../../assets/plants/plante3.png"),
+  require("../../assets/plants/plante4.png"),
+];
+function plantImageFor(frameId: string) {
+  const index = Math.floor(
+    hashRatio(`${frameId}_plant_art`) * PLANT_IMAGES.length,
+  );
+  return PLANT_IMAGES[Math.min(index, PLANT_IMAGES.length - 1)];
+}
 type Row =
   | { type: "books"; slots: Slot[] }
   | { type: "empty"; anchorId: string };
@@ -106,6 +132,17 @@ function spineTilt(book: any): number {
     : 0;
 }
 
+// A hung picture is never perfectly level — a small stable tilt (seeded by
+// id, same reasoning as spineTilt) sells the "leaning on the shelf" look,
+// unless the user picked one explicitly (see the tilt button in reorder
+// mode / cycleFrameTilt), which always wins.
+function frameTilt(frame: { id: string; manual_tilt?: number | null }): number {
+  if (frame.manual_tilt === -1) return -4;
+  if (frame.manual_tilt === 1) return 4;
+  if (frame.manual_tilt === 0) return 0;
+  return hashRatio(`${frame.id}_frame_tilt`) < 0.5 ? -3 : 3;
+}
+
 // Groups books into shelf rows, occasionally piling a few flat on their side
 // instead of standing every single one upright — a real shelf never lines
 // every book the same way. Once a user manually piles anything in a status
@@ -114,7 +151,11 @@ function spineTilt(book: any): number {
 // auto-piling mixed in, so the shelf matches what was actually arranged.
 // Until then, piling is automatic and randomized (seeded by book id, see
 // hashRatio) instead of on a fixed rhythm, purely for visual variety.
-function buildRows(books: any[], maxRowWidth: number): Row[] {
+function buildRows(
+  books: any[],
+  maxRowWidth: number,
+  frames: any[] = [],
+): Row[] {
   const rows: Row[] = [];
   let row: Slot[] = [];
   let rowWidth = 0;
@@ -125,13 +166,35 @@ function buildRows(books: any[], maxRowWidth: number): Row[] {
     rowWidth = 0;
   };
 
+  // A frame's `position` is a raw book count — "this many books come before
+  // it". Interleaved in as the main loop below processes books/piles, not
+  // appended after, so it can land between two books rather than always at
+  // the very end.
+  const sortedFrames = [...frames].sort((a, b) => a.position - b.position);
+  let frameIndex = 0;
+  let booksSoFar = 0;
+  const pushFramesUpTo = (bookCount: number) => {
+    while (
+      frameIndex < sortedFrames.length &&
+      sortedFrames[frameIndex].position <= bookCount
+    ) {
+      push(
+        { type: "frame", frame: sortedFrames[frameIndex] },
+        decorWidth(sortedFrames[frameIndex].kind),
+        null,
+      );
+      frameIndex++;
+    }
+  };
+
   const push = (slot: Slot, width: number, anchorBook: any) => {
     // shelf_break_before forces this book onto its own fresh row — the only
     // way to get a single book standing alone on a shelf — regardless of
     // whether the current row still has room left.
     if (
       row.length > 0 &&
-      (anchorBook?.shelf_break_before || rowWidth + SLOT_GAP + width > maxRowWidth)
+      (anchorBook?.shelf_break_before ||
+        rowWidth + SLOT_GAP + width > maxRowWidth)
     ) {
       flushRow();
     }
@@ -172,6 +235,7 @@ function buildRows(books: any[], maxRowWidth: number): Row[] {
         const gapWidth =
           (anchor.shelf_gap_before ? SHELF_GAP_SIZE : 0) +
           (anchor.shelf_gap_after ? SHELF_GAP_SIZE : 0);
+        pushFramesUpTo(booksSoFar);
         push(
           {
             type: "stack",
@@ -182,9 +246,12 @@ function buildRows(books: any[], maxRowWidth: number): Row[] {
           STACK_WIDTH + gapWidth,
           anchor,
         );
+        booksSoFar += group.length;
       } else {
         used.add(book.book_id);
+        pushFramesUpTo(booksSoFar);
         pushSpine(book);
+        booksSoFar += 1;
       }
     }
   } else {
@@ -195,6 +262,7 @@ function buildRows(books: any[], maxRowWidth: number): Row[] {
         books.length - i >= 2 &&
         sinceStack >= 3 &&
         hashRatio(books[i].book_id) < 0.3;
+      pushFramesUpTo(i);
       if (canStack) {
         const stackBooks = books.slice(i, i + STACK_SIZE);
         const anchor = stackBooks[0];
@@ -219,7 +287,10 @@ function buildRows(books: any[], maxRowWidth: number): Row[] {
         sinceStack += 1;
       }
     }
+    booksSoFar = books.length;
   }
+  // Any frame positioned at/after the last book still needs pushing.
+  pushFramesUpTo(booksSoFar);
   flushRow();
   return rows;
 }
@@ -429,6 +500,7 @@ function DraggableShelfBook({
   onDragUpdateY,
   onDragUpdate,
   onDrop,
+  onDragEnd,
   onTap,
   style,
   children,
@@ -440,6 +512,15 @@ function DraggableShelfBook({
   onDragUpdateY: (absoluteY: number) => void;
   onDragUpdate: (bookId: string, x: number, y: number) => void;
   onDrop: (bookId: string, x: number, y: number) => void;
+  // Always called when the gesture ends, unlike onDrop above (which only
+  // fires past MIN_DRAG_DISTANCE) — cleanup that must never be skipped
+  // (stopping auto-scroll, the remeasure loop) goes here, not in onDrop. A
+  // drag that ends right as it crossed into the auto-scroll edge zone but
+  // before clearing that distance threshold used to leave the auto-scroll
+  // interval running forever, since onDrop (where stopAutoScroll lived)
+  // never fired — the page would keep getting yanked down/up with no way
+  // to stop it.
+  onDragEnd?: () => void;
   onTap?: () => void;
   style?: any;
   children: React.ReactNode;
@@ -481,6 +562,13 @@ function DraggableShelfBook({
       translateY.value = withSpring(0, { damping: 18 });
       scale.value = withSpring(1, { damping: 18 });
       dragging.value = false;
+    })
+    // Runs after onEnd on a normal release *and* on a cancelled/failed
+    // gesture (a notification pull-down, the OS stealing the touch, etc.) —
+    // onEnd alone can be skipped in those cases, which is exactly when this
+    // cleanup matters most.
+    .onFinalize(() => {
+      if (onDragEnd) runOnJS(onDragEnd)();
     });
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -523,6 +611,7 @@ function DraggableHandle({
   onDragUpdateY,
   onDragUpdate,
   onDrop,
+  onDragEnd,
   children,
 }: {
   groupIds: string[];
@@ -530,6 +619,9 @@ function DraggableHandle({
   onDragUpdateY: (absoluteY: number) => void;
   onDragUpdate: (groupIds: string[], x: number, y: number) => void;
   onDrop: (groupIds: string[], x: number, y: number) => void;
+  // Always called on gesture end — see the identical prop on
+  // DraggableShelfBook for why this can't just live inside onDrop.
+  onDragEnd?: () => void;
   children: React.ReactNode;
 }) {
   const translateX = useSharedValue(0);
@@ -567,6 +659,9 @@ function DraggableHandle({
       translateX.value = withSpring(0, { damping: 18 });
       translateY.value = withSpring(0, { damping: 18 });
       dragging.value = false;
+    })
+    .onFinalize(() => {
+      if (onDragEnd) runOnJS(onDragEnd)();
     });
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -754,7 +849,10 @@ function RoomView({
       <View style={styles.roomWall}>
         <View style={styles.roomUnitsRow}>
           {ROOM_SHELF_UNITS.map((sections) => (
-            <View key={sections.map((s) => s.status).join("-")} style={styles.roomUnit}>
+            <View
+              key={sections.map((s) => s.status).join("-")}
+              style={styles.roomUnit}
+            >
               <View style={styles.roomCabinet}>
                 {sections.map((shelf, i) => {
                   const count = counts[shelf.status] ?? 0;
@@ -781,7 +879,11 @@ function RoomView({
                         <ShelfRow n={topBars} colors={colors} styles={styles} />
                         <View style={styles.roomShelfBoard} />
                         {count > 0 ? (
-                          <ShelfRow n={bottomBars} colors={colors} styles={styles} />
+                          <ShelfRow
+                            n={bottomBars}
+                            colors={colors}
+                            styles={styles}
+                          />
                         ) : (
                           <View style={styles.roomCompartment}>
                             <Text style={styles.roomUnitEmpty}>Vide</Text>
@@ -813,6 +915,7 @@ export default function LibraryScreen() {
   const [activeTab, setActiveTab] = useState("to_read");
   const [query, setQuery] = useState("");
   const [allBooks, setAllBooks] = useState<any[]>([]);
+  const [allFrames, setAllFrames] = useState<shelfFrames.ShelfFrame[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedBook, setSelectedBook] = useState<any>(null);
   const [poppedBook, setPoppedBook] = useState<any>(null);
@@ -826,10 +929,29 @@ export default function LibraryScreen() {
   // Local/unpersisted: reopening the tab always starts back at the room,
   // not mid-zoom.
   const [roomZoomed, setRoomZoomed] = useState(false);
-  const [sortOrder, setSortOrder] = useState<"manual" | "asc" | "desc" | "author">(
-    "manual",
-  );
+  const [sortOrder, setSortOrder] = useState<
+    "manual" | "asc" | "desc" | "author"
+  >("manual");
   const [showSortSheet, setShowSortSheet] = useState(false);
+  // The frame picker flow: null (closed), a top-level sheet offering
+  // "choisir un livre" / "depuis ma galerie" / (when editing) "supprimer",
+  // or the book-cover sub-sheet once "choisir un livre" is picked.
+  const [framePicker, setFramePicker] = useState<
+    | null
+    | { step: "menu"; frame: shelfFrames.ShelfFrame | null }
+    | { step: "book"; frame: shelfFrames.ShelfFrame | null }
+  >(null);
+  // Tap-to-place flow for a brand new frame: a translucent, dashed "ghost"
+  // frame sits among the books at `position` (a raw book count) — books
+  // shift to make room for it, same as if it were really there — and
+  // dragging it (or tapping it) opens the content picker, which creates the
+  // real frame there. A plant has no content step, so it skips this
+  // entirely and is placed directly (see addPlantDirectly). An already-
+  // placed piece is repositioned by dragging it directly, same as a book
+  // (see handleFrameDragUpdate/handleFrameDrop) — no ghost needed.
+  const [framePlacement, setFramePlacement] = useState<{
+    position: number;
+  } | null>(null);
   const [reorderMode, setReorderMode] = useState(false);
   // While the FlatList re-settles onto the restored scroll offset (see the
   // reorderMode effect below), it's kept invisible instead of visibly
@@ -921,6 +1043,21 @@ export default function LibraryScreen() {
   const startDragRemeasure = () => {};
   const stopDragRemeasure = () => {};
 
+  // Always runs when a drag gesture ends, success or not — passed as
+  // onDragEnd to DraggableShelfBook/DraggableHandle, separate from onDrop
+  // (which only fires past MIN_DRAG_DISTANCE and does the actual reorder/
+  // persist). A drag that ends right after entering the auto-scroll edge
+  // zone but before clearing that distance threshold used to leave
+  // startAutoScroll's interval running forever — stopAutoScroll lived only
+  // inside onDrop, which never fired — scrolling the page on its own with
+  // no way to stop it.
+  const endDrag = () => {
+    stopAutoScroll();
+    stopDragRemeasure();
+    lastShelfTargetRef.current = null;
+    setStackTargetId(null);
+  };
+
   const listRef = useRef<FlatList>(null);
   const hasLoadedOnce = useRef(false);
 
@@ -930,6 +1067,7 @@ export default function LibraryScreen() {
         listRef.current?.scrollToOffset({ offset: 0, animated: false }),
       );
       loadBooks();
+      loadFrames();
     }, []),
   );
 
@@ -1007,6 +1145,236 @@ export default function LibraryScreen() {
       .catch(() => setLoading(false));
   };
 
+  const loadFrames = () => {
+    Promise.all(
+      TABS.map((t) => shelfFrames.getShelfFrames(t.value).catch(() => [])),
+    ).then((results) => setAllFrames(results.flat()));
+  };
+
+  // Content-only edit of an already-placed frame — its position doesn't
+  // change, just what it shows.
+  const openFramePicker = (frame: shelfFrames.ShelfFrame) =>
+    setFramePicker({ step: "menu", frame });
+
+  // Roughly "where the user currently is" — counts real books (spines=1,
+  // piles=all their books) across rows already scrolled past, using the
+  // same approximate row height the shelf actually renders at. Centered on
+  // the *middle* of the visible viewport, not its top edge — the top edge
+  // is often a row that's barely peeking into view (or already scrolled
+  // past), which read as placing things above where the user was actually
+  // looking.
+  const ROW_HEIGHT_ESTIMATE = SPINE_HEIGHT + 40;
+  const estimatePlacementPosition = () => {
+    const estimatedRowIndex = Math.max(
+      0,
+      Math.round((scrollOffsetRef.current + height / 2) / ROW_HEIGHT_ESTIMATE),
+    );
+    let position = 0;
+    for (let i = 0; i < Math.min(estimatedRowIndex, rows.length); i++) {
+      const row = rows[i];
+      if (row.type !== "books") continue;
+      for (const slot of row.slots) {
+        if (slot.type === "spine") position += 1;
+        else if (slot.type === "stack") position += slot.books.length;
+      }
+    }
+    return position;
+  };
+  const beginFramePlacement = () => {
+    setFramePlacement({ position: estimatePlacementPosition(), kind: "frame" });
+  };
+  // A plant has no content to pick afterward, so the ghost-then-confirm
+  // step (needed for a frame) is just friction — it's placed right away at
+  // the estimated spot, and can still be dragged to reposition once it's
+  // real, same as a frame.
+  const addPlantDirectly = () => {
+    placeFrame(estimatePlacementPosition(), "plant");
+  };
+
+  // Tapping/dropping the ghost places it — the piece is created right away
+  // (a plant needs nothing more; a frame starts empty). Choosing what a
+  // frame shows (book cover or photo) is a separate step, done afterward by
+  // tapping the now-real frame (see openFramePicker).
+  const placeFrame = (position: number, kind: shelfFrames.ShelfFrameKind) => {
+    setFramePlacement(null);
+    transferShelfBreak(filteredBooks[position]?.book_id, `frame:new`);
+    shelfFrames
+      .addShelfFrame(activeTab, position, kind)
+      .then((created) => setAllFrames((cur) => [...cur, created]))
+      .catch(() => Alert.alert("Erreur", "Impossible d'ajouter le cadre"));
+  };
+
+  const confirmFramePlacement = () => {
+    if (!framePlacement) return;
+    placeFrame(framePlacement.position, "frame");
+  };
+
+  const pickFrameImage = async (source: "camera" | "gallery") => {
+    const permission =
+      source === "camera"
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permission.status !== "granted") {
+      Alert.alert(
+        "Permission refusée",
+        source === "camera"
+          ? "L'accès à l'appareil photo est nécessaire."
+          : "L'accès à la galerie est nécessaire.",
+      );
+      return;
+    }
+    const options = {
+      allowsEditing: true,
+      aspect: [3, 4] as [number, number],
+      quality: 0.6,
+      base64: true,
+    };
+    const result =
+      source === "camera"
+        ? await ImagePicker.launchCameraAsync(options)
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ["images"],
+            ...options,
+          });
+    if (result.canceled || !result.assets[0].base64) return;
+    const imageUrl = `data:image/jpeg;base64,${result.assets[0].base64}`;
+    const editingFrame = framePicker?.frame;
+    setFramePicker(null);
+    if (!editingFrame) return;
+    setAllFrames((cur) =>
+      cur.map((f) =>
+        f.id === editingFrame.id
+          ? { ...f, image_url: imageUrl, book_id: null }
+          : f,
+      ),
+    );
+    shelfFrames
+      .setShelfFrameContent(editingFrame.id, { imageUrl })
+      .catch(() => Alert.alert("Erreur", "Impossible de modifier le cadre"));
+  };
+
+  const pickFrameBook = (book: any) => {
+    const editingFrame = framePicker?.frame;
+    setFramePicker(null);
+    if (!editingFrame) return;
+    setAllFrames((cur) =>
+      cur.map((f) =>
+        f.id === editingFrame.id
+          ? { ...f, book_id: book.book_id, image_url: null }
+          : f,
+      ),
+    );
+    shelfFrames
+      .setShelfFrameContent(editingFrame.id, { bookId: book.book_id })
+      .catch(() => Alert.alert("Erreur", "Impossible de modifier le cadre"));
+  };
+
+  const deleteFrame = (frame: shelfFrames.ShelfFrame) => {
+    setFramePicker(null);
+    setAllFrames((cur) => cur.filter((f) => f.id !== frame.id));
+    shelfFrames
+      .removeShelfFrame(frame.id)
+      .catch(() => Alert.alert("Erreur", "Impossible de retirer le cadre"));
+  };
+
+  const frameImageUri = (frame: shelfFrames.ShelfFrame) =>
+    frame.image_url ||
+    (frame.book_id
+      ? allBooks.find((b) => b.book_id === frame.book_id)?.cover_url
+      : null);
+
+  const renderFrameSlot = (
+    frame: shelfFrames.ShelfFrame & { __ghost?: boolean },
+  ) => {
+    // A plant is purely decorative — no content picker, no tilt (it just
+    // stands straight on the shelf), only move/delete like a frame.
+    if (frame.kind === "plant") {
+      return (
+        <View key={`frame-${frame.id}`} style={styles.plantWrap}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            style={styles.plantBox}
+            onPress={() => {
+              if (frame.__ghost) confirmFramePlacement();
+            }}
+          >
+            {frame.__ghost ? (
+              <Feather name="check" size={18} color={colors.purple} />
+            ) : (
+              <Image
+                source={plantImageFor(frame.id)}
+                style={styles.plantImage}
+                resizeMode="cover"
+              />
+            )}
+          </TouchableOpacity>
+          {reorderMode && !frame.__ghost ? (
+            <TouchableOpacity
+              style={styles.frameDeleteBtn}
+              hitSlop={8}
+              onPress={() => deleteFrame(frame)}
+            >
+              <Feather name="x" size={12} color="#FFFFFF" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      );
+    }
+    return (
+      <View key={`frame-${frame.id}`} style={styles.frameWrap}>
+        <View
+          style={[
+            styles.frameShadow,
+            { transform: [{ rotate: `${frameTilt(frame) * 1.4}deg` }] },
+          ]}
+        />
+        <TouchableOpacity
+          activeOpacity={0.85}
+          style={[
+            styles.frameBox,
+            { transform: [{ rotate: `${frameTilt(frame)}deg` }] },
+            frame.__ghost && styles.frameBoxGhost,
+          ]}
+          onPress={() => {
+            if (frame.__ghost) confirmFramePlacement();
+            else if (reorderMode) openFramePicker(frame);
+          }}
+        >
+          {frame.__ghost ? (
+            <Feather name="check" size={22} color={colors.purple} />
+          ) : frameImageUri(frame) ? (
+            <Image
+              source={{ uri: frameImageUri(frame)! }}
+              style={styles.frameImage}
+            />
+          ) : (
+            <View style={styles.frameEmpty}>
+              <Feather name="image" size={20} color={colors.gray} />
+            </View>
+          )}
+          {reorderMode && !frame.__ghost ? (
+            <TouchableOpacity
+              style={styles.tiltBtn}
+              hitSlop={8}
+              onPress={() => cycleFrameTilt(frame)}
+            >
+              <Feather name="rotate-cw" size={11} color="#FFFFFF" />
+            </TouchableOpacity>
+          ) : null}
+        </TouchableOpacity>
+        {reorderMode && !frame.__ghost ? (
+          <TouchableOpacity
+            style={styles.frameDeleteBtn}
+            hitSlop={8}
+            onPress={() => deleteFrame(frame)}
+          >
+            <Feather name="x" size={12} color="#FFFFFF" />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    );
+  };
+
   const q = query.trim().toLowerCase();
   const filteredBooks = allBooks
     .filter((b) => b.status === activeTab)
@@ -1044,22 +1412,45 @@ export default function LibraryScreen() {
     counts[b.status] = (counts[b.status] || 0) + 1;
   });
 
+  const activeFrames = useMemo(
+    () => allFrames.filter((f) => f.status === activeTab),
+    [allFrames, activeTab],
+  );
+  // While placing a brand new frame, a ghost stands in at the tentative
+  // position — buildRows treats it exactly like a real frame, so books
+  // shift for it.
+  const framesForRows = useMemo(() => {
+    if (!framePlacement) return activeFrames;
+    return [
+      ...activeFrames,
+      {
+        id: "__ghost__",
+        status: activeTab,
+        position: framePlacement.position,
+        kind: "frame",
+        book_id: null,
+        image_url: null,
+        __ghost: true,
+      } as any,
+    ];
+  }, [activeFrames, framePlacement, activeTab]);
   const rows = useMemo(
-    () => buildRows(filteredBooks, width - SCREEN_PADDING),
-    [filteredBooks, width],
+    () => buildRows(filteredBooks, width - SCREEN_PADDING, framesForRows),
+    [filteredBooks, width, framesForRows],
   );
   // The spacing popup (Gauche/Droite/Nouvelle ligne) floats above the
   // selected book, and the shelf's first row has no room above it for that
   // — so extra scroll padding is only reserved right when it's actually
-  // needed (a book in that first row is selected), not permanently.
+  // needed (a single book in that first row is selected), not permanently.
+  // Piles deliberately don't get this treatment — their popup just overlays
+  // freely like a single book's, no space reserved/calculated for it.
   const firstRow = rows[0];
   const spacingSelectedInFirstRow =
     !!spacingSelectedId &&
     firstRow?.type === "books" &&
-    firstRow.slots.some((slot) =>
-      slot.type === "spine"
-        ? slot.book.book_id === spacingSelectedId
-        : slot.books.some((b) => b.book_id === spacingSelectedId),
+    firstRow.slots.some(
+      (slot) =>
+        slot.type === "spine" && slot.book.book_id === spacingSelectedId,
     );
   const gridColumns = Math.max(
     3,
@@ -1215,9 +1606,7 @@ export default function LibraryScreen() {
     );
     userBooks
       .setShelfGap(book.book_id, side, value)
-      .catch(() =>
-        Alert.alert("Erreur", "Impossible de modifier cet espace"),
-      );
+      .catch(() => Alert.alert("Erreur", "Impossible de modifier cet espace"));
   };
 
   // Forces the selected book onto its own new shelf row, so it can stand
@@ -1236,9 +1625,7 @@ export default function LibraryScreen() {
     );
     userBooks
       .setShelfBreak(book.book_id, value)
-      .catch(() =>
-        Alert.alert("Erreur", "Impossible de modifier l'étagère"),
-      );
+      .catch(() => Alert.alert("Erreur", "Impossible de modifier l'étagère"));
   };
 
   // Cycles a spine's tilt: left → right → straight → left. Deliberately
@@ -1255,6 +1642,20 @@ export default function LibraryScreen() {
     );
     userBooks
       .setManualTilt(book.book_id, next)
+      .catch(() =>
+        Alert.alert("Erreur", "Impossible de changer l'inclinaison"),
+      );
+  };
+
+  // Same left/right/straight cycle as cycleTilt, for a frame.
+  const cycleFrameTilt = (frame: shelfFrames.ShelfFrame) => {
+    const next =
+      frame.manual_tilt === -1 ? 1 : frame.manual_tilt === 1 ? 0 : -1;
+    setAllFrames((cur) =>
+      cur.map((f) => (f.id === frame.id ? { ...f, manual_tilt: next } : f)),
+    );
+    shelfFrames
+      .setShelfFrameTilt(frame.id, next)
       .catch(() =>
         Alert.alert("Erreur", "Impossible de changer l'inclinaison"),
       );
@@ -1326,10 +1727,20 @@ export default function LibraryScreen() {
         return { type: "stack" as const, targetId: t.id };
       }
     }
+    // Frames are never a stack/merge target (checked above) — only ever an
+    // insertion point, so they only join the nearest-neighbor search below.
+    const frameTargets: { id: string; frame: Frame }[] = [];
+    for (const fr of activeFrames) {
+      const key = `frame:${fr.id}`;
+      if (excludeIds.has(key)) continue;
+      const f = frames[key];
+      if (!f) continue;
+      frameTargets.push({ id: key, frame: f });
+    }
     let nearestId: string | null = null;
     let nearestFrame: Frame | null = null;
     let nearestDist = Infinity;
-    for (const t of targets) {
+    for (const t of [...targets, ...frameTargets]) {
       const f = t.frame;
       const dist = Math.hypot(
         x - (f.x + f.width / 2),
@@ -1369,6 +1780,57 @@ export default function LibraryScreen() {
 
   const lastShelfTargetRef = useRef<string | null>(null);
 
+  // A frame's `position` IS a raw book-count index, so when the drop target
+  // is a frame (id prefixed "frame:"), that number already tells us where
+  // to insert within a flat book-id array — no `indexOf` needed (the frame
+  // isn't in that array at all).
+  const resolveTargetBookIndex = (targetId: string, bookIds: string[]) => {
+    if (targetId.startsWith("frame:")) {
+      const targetFrame = activeFrames.find(
+        (f) => `frame:${f.id}` === targetId,
+      );
+      return targetFrame ? targetFrame.position : bookIds.length;
+    }
+    const idx = bookIds.indexOf(targetId);
+    return idx === -1 ? bookIds.length : idx;
+  };
+
+  // "Nouvelle ligne" (shelf_break_before) forces one specific book to always
+  // start a fresh row — but if it stayed pinned to that exact book forever,
+  // nothing could ever land to its left again (any book/frame dropped there
+  // would keep getting bumped back to the previous row, since the flagged
+  // book would still force its own break right after it). Transferring the
+  // flag onto whichever book is now actually first at that spot keeps the
+  // row boundary in place while unblocking insertion to the left. Frames/
+  // plants can't carry the flag themselves (they're not part of this
+  // book-only break system — see buildRows), so a break just clears when
+  // one lands there instead of moving.
+  const transferShelfBreak = (
+    nextBookId: string | undefined,
+    newFirstId: string,
+  ) => {
+    if (!nextBookId) return;
+    const nextBook = filteredBooks.find((b) => b.book_id === nextBookId);
+    if (!nextBook?.shelf_break_before || nextBookId === newFirstId) return;
+    setAllBooks((cur) =>
+      cur.map((b) => {
+        if (b.book_id === nextBookId)
+          return { ...b, shelf_break_before: false };
+        if (b.book_id === newFirstId && !newFirstId.startsWith("frame:"))
+          return { ...b, shelf_break_before: true };
+        return b;
+      }),
+    );
+    userBooks
+      .setShelfBreak(nextBookId, false)
+      .catch(() => Alert.alert("Erreur", "Impossible de déplacer l'étagère"));
+    if (!newFirstId.startsWith("frame:")) {
+      userBooks
+        .setShelfBreak(newFirstId, true)
+        .catch(() => Alert.alert("Erreur", "Impossible de déplacer l'étagère"));
+    }
+  };
+
   // Live preview while still dragging: re-sorts the underlying list (local
   // state only, nothing persisted yet) every time the drop target actually
   // changes, so the other books visibly shift out of the way *before* the
@@ -1385,7 +1847,8 @@ export default function LibraryScreen() {
       return;
     }
     if (resolved.type === "stack") {
-      if (resolved.targetId !== stackTargetId) setStackTargetId(resolved.targetId);
+      if (resolved.targetId !== stackTargetId)
+        setStackTargetId(resolved.targetId);
       return;
     }
     if (stackTargetId) setStackTargetId(null);
@@ -1397,8 +1860,9 @@ export default function LibraryScreen() {
     const currentIndex = ids.indexOf(bookId);
     if (currentIndex === -1) return;
     ids.splice(currentIndex, 1);
-    let targetIndex = ids.indexOf(targetId);
+    let targetIndex = resolveTargetBookIndex(targetId, ids);
     if (resolved.type === "reorder" && resolved.after) targetIndex += 1;
+    targetIndex = Math.max(0, Math.min(ids.length, targetIndex));
     ids.splice(targetIndex, 0, bookId);
     setAllBooks((cur) =>
       cur.map((b) =>
@@ -1462,6 +1926,9 @@ export default function LibraryScreen() {
       userBooks
         .setShelfBreak(bookId, true)
         .catch(() => Alert.alert("Erreur", "Impossible de déplacer l'étagère"));
+    } else {
+      const idx = ids.indexOf(bookId);
+      transferShelfBreak(ids[idx + 1], bookId);
     }
     persistOrder(ids);
     if (dragged.pile_id) doUnstack(dragged);
@@ -1483,8 +1950,9 @@ export default function LibraryScreen() {
     lastShelfTargetRef.current = targetId;
     const ids = filteredBooks.map((b) => b.book_id);
     const remaining = ids.filter((id) => !excludeSet.has(id));
-    let targetIndex = remaining.indexOf(targetId);
+    let targetIndex = resolveTargetBookIndex(targetId, remaining);
     if (resolved.type === "reorder" && resolved.after) targetIndex += 1;
+    targetIndex = Math.max(0, Math.min(remaining.length, targetIndex));
     remaining.splice(targetIndex, 0, ...groupIds);
     setAllBooks((cur) =>
       cur.map((b) =>
@@ -1500,7 +1968,53 @@ export default function LibraryScreen() {
     stopDragRemeasure();
     lastShelfTargetRef.current = null;
     const ids = filteredBooks.map((b) => b.book_id);
+    const lastIdx = ids.indexOf(groupIds[groupIds.length - 1]);
+    transferShelfBreak(ids[lastIdx + 1], groupIds[0]);
     persistOrder(ids);
+  };
+
+  // A frame drags exactly like a single book — same resolveShelfDrop
+  // hit-testing — except what moves is its `position` (a book-count index)
+  // in local allFrames state, not a book's shelf_position.
+  const handleFrameDragUpdate = (frameKey: string, x: number, y: number) => {
+    const frameId = frameKey.slice("frame:".length);
+    const resolved = resolveShelfDrop(new Set([frameKey]), x, y);
+    if (!resolved) return;
+    const targetId =
+      resolved.type === "fill-empty" ? resolved.anchorId : resolved.targetId;
+    if (targetId === lastShelfTargetRef.current) return;
+    lastShelfTargetRef.current = targetId;
+    const ids = filteredBooks.map((b) => b.book_id);
+    let position = resolveTargetBookIndex(targetId, ids);
+    if (resolved.type === "reorder" && resolved.after) position += 1;
+    position = Math.max(0, Math.min(ids.length, position));
+    // The not-yet-created ghost isn't in allFrames — its tentative position
+    // lives in framePlacement instead.
+    if (frameId === "__ghost__") {
+      setFramePlacement((cur) => cur && { ...cur, position });
+    } else {
+      setAllFrames((cur) =>
+        cur.map((f) => (f.id === frameId ? { ...f, position } : f)),
+      );
+    }
+  };
+
+  const handleFrameDrop = (frameKey: string, _x: number, _y: number) => {
+    stopAutoScroll();
+    stopDragRemeasure();
+    lastShelfTargetRef.current = null;
+    const frameId = frameKey.slice("frame:".length);
+    // Dropping the ghost places it right away (empty) — see placeFrame.
+    if (frameId === "__ghost__") {
+      if (framePlacement) placeFrame(framePlacement.position, "frame");
+      return;
+    }
+    const frame = allFrames.find((f) => f.id === frameId);
+    if (!frame) return;
+    transferShelfBreak(filteredBooks[frame.position]?.book_id, frameKey);
+    shelfFrames
+      .setShelfFramePosition(frameId, frame.position)
+      .catch(() => Alert.alert("Erreur", "Impossible de déplacer le cadre"));
   };
 
   // Free drag-and-drop for the grid view: converts how far the book moved
@@ -1563,7 +2077,11 @@ export default function LibraryScreen() {
   // this in a TouchableOpacity (renderSpine, below); reorder mode instead
   // wraps it in DraggableShelfBook's GestureDetector, which needs to be the
   // only thing handling touches on that tile, not a second nested handler.
-  const renderSpineVisual = (book: any, gapBefore = false, gapAfter = false) => {
+  const renderSpineVisual = (
+    book: any,
+    gapBefore = false,
+    gapAfter = false,
+  ) => {
     const tilt = spineTilt(book);
     return (
       <View
@@ -1608,8 +2126,12 @@ export default function LibraryScreen() {
           style={[
             styles.spine,
             { backgroundColor: colors.card2 },
-            reorderMode && stackTargetId === book.book_id && styles.slotStackTarget,
-            reorderMode && spacingSelectedId === book.book_id && styles.slotStackTarget,
+            reorderMode &&
+              stackTargetId === book.book_id &&
+              styles.slotStackTarget,
+            reorderMode &&
+              spacingSelectedId === book.book_id &&
+              styles.slotStackTarget,
           ]}
         >
           <CoverSliver
@@ -1786,6 +2308,19 @@ export default function LibraryScreen() {
         </View>
       )}
 
+      {framePlacement && (
+        <View style={styles.reorderBanner}>
+          <Feather name="image" size={13} color={colors.purple} />
+          <Text style={styles.reorderBannerText}>
+            Glisse le cadre pour le positionner, puis dépose-le pour choisir son
+            contenu
+          </Text>
+          <TouchableOpacity onPress={() => setFramePlacement(null)}>
+            <Text style={styles.reorderBannerCancel}>Annuler</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {viewMode === "shelf" && !roomZoomed ? (
         <RoomView
           colors={colors}
@@ -1799,13 +2334,37 @@ export default function LibraryScreen() {
       ) : (
         <>
           {viewMode === "shelf" && roomZoomed && (
-            <TouchableOpacity
-              style={styles.backToRoomBtn}
-              onPress={() => setRoomZoomed(false)}
-            >
-              <Feather name="arrow-left" size={14} color={colors.white} />
-              <Text style={styles.backToRoomText}>Retour au salon</Text>
-            </TouchableOpacity>
+            <View style={styles.roomBackRow}>
+              <TouchableOpacity
+                style={styles.backToRoomBtn}
+                onPress={() => setRoomZoomed(false)}
+              >
+                <Feather name="arrow-left" size={14} color={colors.white} />
+                <Text style={styles.backToRoomText}>Retour au salon</Text>
+              </TouchableOpacity>
+              {reorderMode && !framePlacement ? (
+                <View style={styles.addDecorRow}>
+                  <TouchableOpacity
+                    style={styles.addFrameBtn}
+                    onPress={addPlantDirectly}
+                    hitSlop={6}
+                  >
+                    <MaterialCommunityIcons
+                      name="flower-tulip"
+                      size={17}
+                      color={colors.gray}
+                    />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.addFrameBtn}
+                    onPress={beginFramePlacement}
+                    hitSlop={6}
+                  >
+                    <Feather name="image" size={17} color={colors.gray} />
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+            </View>
           )}
 
           <View style={styles.searchBar}>
@@ -2117,79 +2676,133 @@ export default function LibraryScreen() {
                               onDragUpdateY={handleDragAutoScroll}
                               onDragUpdate={handleShelfDragUpdate}
                               onDrop={handleShelfDrop}
+                              onDragEnd={endDrag}
                               onTap={() =>
                                 setSpacingSelectedId((current) =>
-                                  current === slot.book.book_id ? null : slot.book.book_id
+                                  current === slot.book.book_id
+                                    ? null
+                                    : slot.book.book_id,
                                 )
                               }
                               style={[
-                                slot.gapBefore && { marginLeft: SHELF_GAP_SIZE },
-                                slot.gapAfter && { marginRight: SHELF_GAP_SIZE },
+                                slot.gapBefore && {
+                                  marginLeft: SHELF_GAP_SIZE,
+                                },
+                                slot.gapAfter && {
+                                  marginRight: SHELF_GAP_SIZE,
+                                },
                               ]}
                             >
                               {renderSpineVisual(slot.book)}
+                            </DraggableShelfBook>
+                          ) : slot.type === "frame" ? (
+                            <DraggableShelfBook
+                              key={`frame:${slot.frame.id}`}
+                              bookId={`frame:${slot.frame.id}`}
+                              disabled={false}
+                              registerRef={registerShelfRef}
+                              onDragStart={() => {
+                                lastShelfTargetRef.current = null;
+                                setStackTargetId(null);
+                                remeasureShelfFrames();
+                                startDragRemeasure();
+                              }}
+                              onDragUpdateY={handleDragAutoScroll}
+                              onDragUpdate={handleFrameDragUpdate}
+                              onDrop={handleFrameDrop}
+                              onDragEnd={endDrag}
+                            >
+                              {renderFrameSlot(slot.frame)}
                             </DraggableShelfBook>
                           ) : (
                             <View
                               key={slot.books.map((b) => b.book_id).join("-")}
                               style={[
-                                slot.gapBefore && { marginLeft: SHELF_GAP_SIZE },
-                                slot.gapAfter && { marginRight: SHELF_GAP_SIZE },
+                                slot.gapBefore && {
+                                  marginLeft: SHELF_GAP_SIZE,
+                                },
+                                slot.gapAfter && {
+                                  marginRight: SHELF_GAP_SIZE,
+                                },
                               ]}
                             >
-                              {spacingSelectedId === slot.books[0].book_id ? (
-                                <View style={styles.stackSpacingBookActions}>
-                                  <TouchableOpacity
-                                    style={styles.spacingBookActionBtn}
-                                    onPress={() => toggleShelfGap("before")}
-                                  >
-                                    <Feather name="chevron-left" size={14} color="#FFFFFF" />
-                                    <Text style={styles.spacingBookActionText}>Gauche</Text>
-                                  </TouchableOpacity>
-                                  <TouchableOpacity
-                                    style={styles.spacingBookActionBtn}
-                                    onPress={() => toggleShelfGap("after")}
-                                  >
-                                    <Text style={styles.spacingBookActionText}>Droite</Text>
-                                    <Feather name="chevron-right" size={14} color="#FFFFFF" />
-                                  </TouchableOpacity>
-                                  <TouchableOpacity
-                                    style={[
-                                      styles.spacingBookActionBtn,
-                                      slot.books[0].shelf_break_before &&
-                                        styles.spacingBookActionBtnActive,
-                                    ]}
-                                    onPress={toggleShelfBreak}
-                                  >
-                                    <Feather name="corner-down-left" size={14} color="#FFFFFF" />
-                                    <Text style={styles.spacingBookActionText}>Nouvelle ligne</Text>
-                                  </TouchableOpacity>
+                              <DraggableHandle
+                                groupIds={slot.books.map((b) => b.book_id)}
+                                onDragStart={() => {
+                                  lastShelfTargetRef.current = null;
+                                  remeasureShelfFrames();
+                                  startDragRemeasure();
+                                }}
+                                onDragUpdateY={handleDragAutoScroll}
+                                onDragUpdate={handleGroupDragUpdate}
+                                onDrop={handleGroupDrop}
+                                onDragEnd={endDrag}
+                              >
+                                <View style={styles.pileGrip}>
+                                  <Feather
+                                    name="menu"
+                                    size={12}
+                                    color="#FFFFFF"
+                                  />
+                                  <Text style={styles.pileGripText}>
+                                    Déplacer la pile
+                                  </Text>
                                 </View>
-                              ) : (
-                                <DraggableHandle
-                                  groupIds={slot.books.map((b) => b.book_id)}
-                                  onDragStart={() => {
-                                    lastShelfTargetRef.current = null;
-                                    remeasureShelfFrames();
-                                    startDragRemeasure();
-                                  }}
-                                  onDragUpdateY={handleDragAutoScroll}
-                                  onDragUpdate={handleGroupDragUpdate}
-                                  onDrop={handleGroupDrop}
-                                >
-                                  <View style={styles.pileGrip}>
-                                    <Feather
-                                      name="menu"
-                                      size={12}
-                                      color="#FFFFFF"
-                                    />
-                                    <Text style={styles.pileGripText}>
-                                      Déplacer la pile
-                                    </Text>
-                                  </View>
-                                </DraggableHandle>
-                              )}
+                              </DraggableHandle>
                               <View style={styles.stackWrap}>
+                                {spacingSelectedId === slot.books[0].book_id ? (
+                                  <View style={styles.stackSpacingBookActions}>
+                                    <TouchableOpacity
+                                      style={styles.spacingBookActionBtn}
+                                      onPress={() => toggleShelfGap("before")}
+                                    >
+                                      <Feather
+                                        name="chevron-left"
+                                        size={14}
+                                        color="#FFFFFF"
+                                      />
+                                      <Text
+                                        style={styles.spacingBookActionText}
+                                      >
+                                        Gauche
+                                      </Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                      style={styles.spacingBookActionBtn}
+                                      onPress={() => toggleShelfGap("after")}
+                                    >
+                                      <Text
+                                        style={styles.spacingBookActionText}
+                                      >
+                                        Droite
+                                      </Text>
+                                      <Feather
+                                        name="chevron-right"
+                                        size={14}
+                                        color="#FFFFFF"
+                                      />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                      style={[
+                                        styles.spacingBookActionBtn,
+                                        slot.books[0].shelf_break_before &&
+                                          styles.spacingBookActionBtnActive,
+                                      ]}
+                                      onPress={toggleShelfBreak}
+                                    >
+                                      <Feather
+                                        name="corner-down-left"
+                                        size={14}
+                                        color="#FFFFFF"
+                                      />
+                                      <Text
+                                        style={styles.spacingBookActionText}
+                                      >
+                                        Nouvelle ligne
+                                      </Text>
+                                    </TouchableOpacity>
+                                  </View>
+                                ) : null}
                                 {slot.books.map((book, i) => (
                                   <DraggableShelfBook
                                     key={book.book_id}
@@ -2205,23 +2818,28 @@ export default function LibraryScreen() {
                                     onDragUpdateY={handleDragAutoScroll}
                                     onDragUpdate={handleShelfDragUpdate}
                                     onDrop={handleShelfDrop}
+                                    onDragEnd={endDrag}
                                     onTap={() =>
                                       setSpacingSelectedId((current) =>
-                                        current === slot.books[0].book_id ? null : slot.books[0].book_id
+                                        current === slot.books[0].book_id
+                                          ? null
+                                          : slot.books[0].book_id,
                                       )
                                     }
                                   >
-                                      <View
+                                    <View
                                       style={[
                                         styles.stackBar,
                                         {
                                           backgroundColor: colors.card2,
                                           zIndex: slot.books.length - i,
                                         },
-                                        stackTargetId === slot.books[0].book_id &&
+                                        stackTargetId ===
+                                          slot.books[0].book_id &&
                                           styles.slotStackTarget,
                                         i === 0 &&
-                                          spacingSelectedId === slot.books[0].book_id &&
+                                          spacingSelectedId ===
+                                            slot.books[0].book_id &&
                                           styles.slotStackTarget,
                                       ]}
                                     >
@@ -2326,7 +2944,13 @@ export default function LibraryScreen() {
                     {row.slots.map((slot: Slot) =>
                       slot.type === "spine"
                         ? renderSpine(slot.book, slot.gapBefore, slot.gapAfter)
-                        : renderStack(slot.books, slot.gapBefore, slot.gapAfter),
+                        : slot.type === "frame"
+                          ? renderFrameSlot(slot.frame)
+                          : renderStack(
+                              slot.books,
+                              slot.gapBefore,
+                              slot.gapAfter,
+                            ),
                     )}
                   </Animated.View>
                 )
@@ -2506,6 +3130,97 @@ export default function LibraryScreen() {
         </TouchableOpacity>
       )}
 
+      {framePicker?.step === "menu" && (
+        <TouchableOpacity
+          style={styles.overlay}
+          onPress={() => setFramePicker(null)}
+          activeOpacity={1}
+        >
+          <TouchableOpacity style={styles.bottomSheet} activeOpacity={1}>
+            <View style={styles.handle} />
+            <Text style={styles.sheetTitle}>
+              {framePicker.frame ? "Modifier le cadre" : "Ajouter un cadre"}
+            </Text>
+            <TouchableOpacity
+              style={[styles.sheetRow, styles.sheetDivider]}
+              onPress={() =>
+                setFramePicker({ step: "book", frame: framePicker.frame })
+              }
+            >
+              <Feather name="book" size={16} color={colors.white} />
+              <Text style={styles.sheetBtnText}>Choisir un livre</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.sheetRow, styles.sheetDivider]}
+              onPress={() => pickFrameImage("camera")}
+            >
+              <Feather name="camera" size={16} color={colors.white} />
+              <Text style={styles.sheetBtnText}>Prendre une photo</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.sheetRow,
+                framePicker.frame && styles.sheetDivider,
+              ]}
+              onPress={() => pickFrameImage("gallery")}
+            >
+              <Feather name="image" size={16} color={colors.white} />
+              <Text style={styles.sheetBtnText}>Depuis ma galerie</Text>
+            </TouchableOpacity>
+            {framePicker.frame ? (
+              <TouchableOpacity
+                style={styles.sheetRow}
+                onPress={() => deleteFrame(framePicker.frame!)}
+              >
+                <Feather name="trash-2" size={16} color={colors.error} />
+                <Text style={styles.sheetBtnDangerText}>Retirer le cadre</Text>
+              </TouchableOpacity>
+            ) : null}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      )}
+
+      {framePicker?.step === "book" && (
+        <TouchableOpacity
+          style={styles.overlay}
+          onPress={() => setFramePicker(null)}
+          activeOpacity={1}
+        >
+          <TouchableOpacity style={styles.bottomSheet} activeOpacity={1}>
+            <View style={styles.handle} />
+            <Text style={styles.sheetTitle}>Choisir un livre</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.framePickerBookRow}
+            >
+              {filteredBooks.map((book) => (
+                <TouchableOpacity
+                  key={book.book_id}
+                  onPress={() => pickFrameBook(book)}
+                >
+                  {book.cover_url ? (
+                    <Image
+                      source={{ uri: book.cover_url }}
+                      style={styles.framePickerBookCover}
+                    />
+                  ) : (
+                    <View
+                      style={[
+                        styles.framePickerBookCover,
+                        styles.framePickerBookCoverEmpty,
+                      ]}
+                    >
+                      <Feather name="book" size={18} color={colors.purple} />
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      )}
+
       {selectedBook && (
         <TouchableOpacity
           style={styles.overlay}
@@ -2589,6 +3304,11 @@ const makeStyles = (colors: ColorPalette, isDark: boolean) => {
       marginBottom: 10,
     },
     reorderBannerText: { fontSize: 12, color: colors.lavender, flex: 1 },
+    reorderBannerCancel: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: colors.purple,
+    },
     spacingBookActions: {
       position: "absolute",
       zIndex: 30,
@@ -2616,15 +3336,25 @@ const makeStyles = (colors: ColorPalette, isDark: boolean) => {
       backgroundColor: colors.purple,
     },
     spacingBookActionBtnActive: { backgroundColor: colors.lavender },
-    spacingBookActionText: { color: "#FFFFFF", fontSize: 10, fontWeight: "700" },
+    spacingBookActionText: {
+      color: "#FFFFFF",
+      fontSize: 10,
+      fontWeight: "700",
+    },
+    // Nested inside stackWrap and anchored off *its* top, exactly mirroring
+    // spacingBookActions inside spineWrap — no scroll space reserved for it,
+    // so it can render clipped past the top on the shelf's first row
+    // (acceptable trade-off for keeping this simple, same as the spine).
     stackSpacingBookActions: {
-      alignSelf: "flex-start",
-      flexDirection: "row",
-      flexWrap: "wrap",
-      alignItems: "center",
-      width: 130,
+      position: "absolute",
+      zIndex: 30,
+      bottom: STACK_BAR_HEIGHT + 88,
+      left: STACK_WIDTH / 2,
+      transform: [{ translateX: -37 }],
+      width: 74,
+      flexDirection: "column",
+      alignItems: "stretch",
       gap: 4,
-      marginBottom: 6,
       padding: 4,
       borderRadius: 12,
       backgroundColor: colors.card2,
@@ -2724,7 +3454,111 @@ const makeStyles = (colors: ColorPalette, isDark: boolean) => {
       marginHorizontal: 8,
     },
 
-    // Standing spine — the book's actual thin edge, most of the shelf.
+    // A photo frame dropped into the shelf — as wide as 3 standing spines
+    // (see FRAME_WIDTH), styled to look like a hung picture rather than a
+    // book.
+    frameWrap: { width: FRAME_WIDTH, position: "relative" },
+    // A soft dark shape sitting slightly behind/below the frame (offset,
+    // tilted a touch more than the frame itself) — reads as a cast shadow
+    // against the shelf, on top of the frame's own drop shadow, so it feels
+    // like it's actually leaning off the wall rather than flat against it.
+    frameShadow: {
+      position: "absolute",
+      top: 6,
+      left: 4,
+      width: FRAME_WIDTH,
+      height: SPINE_HEIGHT,
+      borderRadius: 6,
+      backgroundColor: "rgba(0,0,0,0.35)",
+    },
+    frameBox: {
+      width: FRAME_WIDTH,
+      height: SPINE_HEIGHT,
+      borderRadius: 6,
+      borderWidth: 6,
+      borderColor: "#8C6C48",
+      backgroundColor: colors.card2,
+      overflow: "hidden",
+      alignItems: "center",
+      justifyContent: "center",
+      shadowColor: "#000000",
+      shadowOffset: { width: 3, height: 5 },
+      shadowOpacity: 0.35,
+      shadowRadius: 6,
+      elevation: 6,
+    },
+    frameImage: { width: "100%", height: "100%" },
+    frameEmpty: { alignItems: "center", justifyContent: "center" },
+    // The tap-to-place ghost — dashed border, translucent, so it clearly
+    // reads as "not really there yet" while still showing exactly how much
+    // room it'll take.
+    frameBoxGhost: {
+      borderStyle: "dashed",
+      borderColor: colors.purple,
+      backgroundColor: colors.purpleGlow,
+      opacity: 0.85,
+    },
+    frameDeleteBtn: {
+      position: "absolute",
+      top: -8,
+      right: -8,
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      backgroundColor: "rgba(0,0,0,0.6)",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 5,
+    },
+    frameMoveBtn: {
+      position: "absolute",
+      top: -8,
+      left: -8,
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      backgroundColor: colors.purple,
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 5,
+    },
+    // A potted plant dropped into the shelf — narrower than a frame, no
+    // border/background of its own (just the plant art standing on the
+    // shelf baseline like a book would).
+    plantWrap: { width: PLANT_WIDTH, position: "relative" },
+    // overflow: hidden + the image pushed below the box's own bottom edge
+    // (see plantImage) crops off the sliver of transparent padding most
+    // background-removed PNGs leave under the pot — without it the plant
+    // "floats" a few px above the shelf line instead of standing on it.
+    plantBox: {
+      width: PLANT_WIDTH,
+      height: SPINE_HEIGHT,
+      alignItems: "center",
+      justifyContent: "center",
+      overflow: "hidden",
+    },
+    // A fixed, modest size (not stretched/zoomed to fill the tall narrow
+    // tile) pinned to the bottom — "cover" or a tall percentage both ended
+    // up blowing the plant up way past book scale.
+    plantImage: {
+      position: "absolute",
+      bottom: 0,
+      alignSelf: "center",
+      width: "96%",
+      height: 108,
+    },
+    framePickerBookRow: { gap: 10, paddingVertical: 4 },
+    framePickerBookCover: {
+      width: 64,
+      height: 96,
+      borderRadius: 6,
+      backgroundColor: colors.card2,
+    },
+    framePickerBookCoverEmpty: {
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
     spineWrap: { width: SPINE_WIDTH },
     spine: {
       width: SPINE_WIDTH,
@@ -3140,17 +3974,30 @@ const makeStyles = (colors: ColorPalette, isDark: boolean) => {
       opacity: 0.5,
     },
 
+    roomBackRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginHorizontal: 20,
+      marginBottom: 10,
+    },
     backToRoomBtn: {
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
-      alignSelf: "flex-start",
       backgroundColor: colors.card2,
       borderRadius: 999,
       paddingHorizontal: 14,
       paddingVertical: 8,
-      marginHorizontal: 20,
-      marginBottom: 10,
+    },
+    addDecorRow: { flexDirection: "row", gap: 8 },
+    addFrameBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.card2,
+      alignItems: "center",
+      justifyContent: "center",
     },
     backToRoomText: { fontSize: 12, fontWeight: "600", color: colors.white },
 

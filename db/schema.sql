@@ -93,6 +93,23 @@ create table user_books (
   constraint rating_range check (rating is null or (rating >= 0 and rating <= 5))
 );
 
+-- A decorative piece dropped into a status's shelf alongside its books —
+-- see migrations 029-031. `position` shares user_books.shelf_position's
+-- ordering space for that status so it can sit between books. `kind` 'frame'
+-- shows a book cover or photo (book_id/image_url); 'plant' is purely
+-- decorative and never sets either.
+create table shelf_frames (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid not null references profiles(id) on delete cascade,
+  status        varchar(20) not null,
+  position      int not null default 0,
+  kind          varchar(10) not null default 'frame', -- 'frame' | 'plant'
+  book_id       uuid references books(id) on delete set null,
+  image_url     text,
+  manual_tilt   smallint,     -- -1/0/1 = user-chosen tilt; null = automatic
+  created_at    timestamptz not null default now()
+);
+
 create table friendships (
   id            uuid primary key default gen_random_uuid(),
   requester_id  uuid not null references profiles(id) on delete cascade,
@@ -336,6 +353,7 @@ alter table profiles enable row level security;
 alter table push_tokens enable row level security;
 alter table books enable row level security;
 alter table user_books enable row level security;
+alter table shelf_frames enable row level security;
 alter table friendships enable row level security;
 alter table reading_reactions enable row level security;
 alter table activity_feed enable row level security;
@@ -387,6 +405,8 @@ create policy books_update_any on books for update
 -- that cross-user visibility is implemented in the `security definer`
 -- functions below, never by relaxing these table policies.
 create policy user_books_owner on user_books for all
+  to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy shelf_frames_owner on shelf_frames for all
   to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 create policy reading_reactions_owner on reading_reactions for all
   to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
