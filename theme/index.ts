@@ -1,21 +1,27 @@
 export const darkColors = {
-  bg: '#16140F',
-  card: '#211E17',
-  card2: '#2B2620',
-  purple: '#6B3F73',
-  purpleGlow: 'rgba(107,63,115,0.18)',
-  lavender: '#C296CE',
-  pink: '#C97B8C',
-  cyan: '#D6A857',
-  teal: '#D6A857',
-  white: '#F3EEE3',
-  muted: '#948C7C',
-  gray: '#7A7266',
-  success: '#6B9E7D',
-  error: '#D97567',
-  warning: '#D6A857',
-  divider: 'rgba(243,238,227,0.10)',
-  border: 'rgba(194,150,206,0.22)',
+  // A near-black bg (#16140F) with card/card2 only a few RGB steps above it
+  // read as flat and low-contrast everywhere — every surface, divider and
+  // muted label blurred together. Rebuilt as a lighter warm charcoal with
+  // three clearly stepped surface tones and brighter text/accent colors.
+  bg: '#221D16',
+  card: '#3C3325',
+  card2: '#524635',
+  purple: '#8C5A98',
+  purpleGlow: 'rgba(140,90,152,0.24)',
+  lavender: '#DBB2E4',
+  pink: '#DD93A3',
+  // cyan and teal used to be the exact same hex — any UI cycling through
+  // the two (spine colors, category tags) silently collapsed to one color.
+  cyan: '#82C2B8',
+  teal: '#E8BE6C',
+  white: '#FBF7EF',
+  muted: '#B0A692',
+  gray: '#C4BAA4',
+  success: '#89C298',
+  error: '#E6907F',
+  warning: '#E8BE6C',
+  divider: 'rgba(251,247,239,0.16)',
+  border: 'rgba(219,178,228,0.34)',
 };
 
 export const lightColors = {
@@ -26,7 +32,7 @@ export const lightColors = {
   purpleGlow: 'rgba(91,58,99,0.08)',
   lavender: '#7A4F84',
   pink: '#B5677A',
-  cyan: '#B98A3F',
+  cyan: '#4F8B83',
   teal: '#B98A3F',
   white: '#1E1B15',
   muted: '#6B6459',

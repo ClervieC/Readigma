@@ -126,14 +126,14 @@ function buildRows(books: any[], maxRowWidth: number): Row[] {
   };
 
   const push = (slot: Slot, width: number, anchorBook: any) => {
-    if (row.length === 0 && anchorBook?.shelf_break_before && rows.length > 0) {
-      rows.push({ type: "empty", anchorId: anchorBook.book_id });
-    }
-    if (row.length > 0 && rowWidth + SLOT_GAP + width > maxRowWidth) {
+    // shelf_break_before forces this book onto its own fresh row — the only
+    // way to get a single book standing alone on a shelf — regardless of
+    // whether the current row still has room left.
+    if (
+      row.length > 0 &&
+      (anchorBook?.shelf_break_before || rowWidth + SLOT_GAP + width > maxRowWidth)
+    ) {
       flushRow();
-      if (anchorBook?.shelf_break_before) {
-        rows.push({ type: "empty", anchorId: anchorBook.book_id });
-      }
     }
     row.push(slot);
     rowWidth += (row.length > 1 ? SLOT_GAP : 0) + width;
@@ -537,13 +537,17 @@ function DraggableHandle({
   const dragging = useSharedValue(false);
 
   const pan = Gesture.Pan()
-    // Same activation offset as DraggableShelfBook — without it this grip
-    // (a small icon sitting on top of the pile's other per-book drag
-    // handlers) claims every touch immediately, which made it too easy to
-    // accidentally "grab" the pile-move handle instead of a book underneath,
-    // or vice versa, since both gesture arenas were racing from pixel zero.
-    .activeOffsetX([-10, 10])
-    .activeOffsetY([-10, 10])
+    // Was activeOffsetX/Y([-10,10]) — that pairing requires the movement to
+    // exceed both axes' ranges, which in practice needed a diagonal drag to
+    // activate (see the identical fix/comment on DraggableShelfBook's own
+    // pan above). A pure vertical drag — exactly what moving a pile to
+    // another shelf row needs — lost the gesture arena to the parent
+    // ScrollView's scroll instead of activating, so the pile followed the
+    // finger via onUpdate but onEnd saw a cancelled/near-zero translation
+    // and never persisted, snapping back to its old spot. minDistance
+    // activates on movement in any direction, matching what already works
+    // for single-book drags.
+    .minDistance(10)
     .onStart(() => {
       dragging.value = true;
       runOnJS(onDragStart)();
@@ -584,15 +588,22 @@ function DraggableHandle({
   );
 }
 
-const ROOM_SHELVES: {
+// Two physical bookshelf units, each holding two statuses as its own
+// labeled section (upper/lower), rather than one small cabinet per status —
+// purely a visual regrouping, each section still opens its own status list.
+const ROOM_SHELF_UNITS: {
   status: string;
   label: string;
   icon: keyof typeof Feather.glyphMap;
-}[] = [
-  { status: "to_read", label: "À lire", icon: "bookmark" },
-  { status: "reading", label: "En cours", icon: "book-open" },
-  { status: "done", label: "Lus", icon: "check-circle" },
-  { status: "dnf", label: "Pas fini", icon: "x-circle" },
+}[][] = [
+  [
+    { status: "to_read", label: "À lire", icon: "bookmark" },
+    { status: "dnf", label: "Pas fini", icon: "x-circle" },
+  ],
+  [
+    { status: "reading", label: "En cours", icon: "book-open" },
+    { status: "done", label: "Lus", icon: "check-circle" },
+  ],
 ];
 
 // Splits a pile of "bars" (one per book, capped) into two shelf
@@ -622,7 +633,7 @@ function ShelfRow({
           style={[
             styles.roomBar,
             {
-              height: 22 + ((i * 29) % 16),
+              height: 36 + ((i * 29) % 24),
               backgroundColor: [
                 colors.purple,
                 colors.teal,
@@ -742,45 +753,51 @@ function RoomView({
 
       <View style={styles.roomWall}>
         <View style={styles.roomUnitsRow}>
-          {ROOM_SHELVES.map((shelf) => {
-            const count = counts[shelf.status] ?? 0;
-            const [topBars, bottomBars] = splitBars(count);
-            return (
-              <TouchableOpacity
-                key={shelf.status}
-                style={styles.roomUnit}
-                activeOpacity={0.85}
-                onPress={() => onOpenShelf(shelf.status)}
-              >
-                <View style={styles.roomUnitHeader}>
-                  <Feather
-                    name={shelf.icon}
-                    size={12}
-                    color={colors.lavender}
-                  />
-                  <Text style={styles.roomUnitLabel} numberOfLines={1}>
-                    {shelf.label}
-                  </Text>
-                  <Text style={styles.roomUnitCount}>{count}</Text>
-                </View>
-                <View style={styles.roomCabinet}>
-                  <ShelfRow n={topBars} colors={colors} styles={styles} />
-                  <View style={styles.roomShelfBoard} />
-                  {count > 0 ? (
-                    <ShelfRow n={bottomBars} colors={colors} styles={styles} />
-                  ) : (
-                    <View style={styles.roomCompartment}>
-                      <Text style={styles.roomUnitEmpty}>Vide</Text>
+          {ROOM_SHELF_UNITS.map((sections) => (
+            <View key={sections.map((s) => s.status).join("-")} style={styles.roomUnit}>
+              <View style={styles.roomCabinet}>
+                {sections.map((shelf, i) => {
+                  const count = counts[shelf.status] ?? 0;
+                  const [topBars, bottomBars] = splitBars(count);
+                  return (
+                    <View key={shelf.status}>
+                      {i > 0 && <View style={styles.roomShelfBoard} />}
+                      <TouchableOpacity
+                        style={styles.roomUnitSection}
+                        activeOpacity={0.85}
+                        onPress={() => onOpenShelf(shelf.status)}
+                      >
+                        <View style={styles.roomUnitHeader}>
+                          <Feather
+                            name={shelf.icon}
+                            size={12}
+                            color={colors.lavender}
+                          />
+                          <Text style={styles.roomUnitLabel} numberOfLines={1}>
+                            {shelf.label}
+                          </Text>
+                          <Text style={styles.roomUnitCount}>{count}</Text>
+                        </View>
+                        <ShelfRow n={topBars} colors={colors} styles={styles} />
+                        <View style={styles.roomShelfBoard} />
+                        {count > 0 ? (
+                          <ShelfRow n={bottomBars} colors={colors} styles={styles} />
+                        ) : (
+                          <View style={styles.roomCompartment}>
+                            <Text style={styles.roomUnitEmpty}>Vide</Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
                     </View>
-                  )}
-                </View>
-                <View style={styles.roomCabinetLegs}>
-                  <View style={styles.roomLeg} />
-                  <View style={styles.roomLeg} />
-                </View>
-              </TouchableOpacity>
-            );
-          })}
+                  );
+                })}
+              </View>
+              <View style={styles.roomCabinetLegs}>
+                <View style={styles.roomLeg} />
+                <View style={styles.roomLeg} />
+              </View>
+            </View>
+          ))}
         </View>
       </View>
     </ScrollView>
@@ -788,10 +805,10 @@ function RoomView({
 }
 
 export default function LibraryScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const { profile, setLibraryViewMode } = useAuth();
   const router = useRouter();
-  const styles = makeStyles(colors);
+  const styles = makeStyles(colors, isDark);
   const { width, height } = useWindowDimensions();
   const [activeTab, setActiveTab] = useState("to_read");
   const [query, setQuery] = useState("");
@@ -809,7 +826,7 @@ export default function LibraryScreen() {
   // Local/unpersisted: reopening the tab always starts back at the room,
   // not mid-zoom.
   const [roomZoomed, setRoomZoomed] = useState(false);
-  const [sortOrder, setSortOrder] = useState<"manual" | "asc" | "desc">(
+  const [sortOrder, setSortOrder] = useState<"manual" | "asc" | "desc" | "author">(
     "manual",
   );
   const [showSortSheet, setShowSortSheet] = useState(false);
@@ -894,6 +911,15 @@ export default function LibraryScreen() {
     else stopAutoScroll();
   };
   useEffect(() => stopAutoScroll, []);
+
+  // A continuous remeasure loop here (independent of auto-scroll) was tried
+  // to keep frames fresh through the live-preview reflow, but it raced with
+  // that same reflow's own layout animations often enough to break ordinary
+  // drags (a book would visibly follow the finger and then snap back with
+  // nothing persisted) — reverted. Frames are refreshed at drag-start and on
+  // every auto-scroll tick (see startAutoScroll above), same as before.
+  const startDragRemeasure = () => {};
+  const stopDragRemeasure = () => {};
 
   const listRef = useRef<FlatList>(null);
   const hasLoadedOnce = useRef(false);
@@ -1006,6 +1032,9 @@ export default function LibraryScreen() {
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
       }
+      if (sortOrder === "author") {
+        return (a.author || "").localeCompare(b.author || "");
+      }
       const diff =
         new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
       return sortOrder === "asc" ? diff : -diff;
@@ -1019,6 +1048,19 @@ export default function LibraryScreen() {
     () => buildRows(filteredBooks, width - SCREEN_PADDING),
     [filteredBooks, width],
   );
+  // The spacing popup (Gauche/Droite/Nouvelle ligne) floats above the
+  // selected book, and the shelf's first row has no room above it for that
+  // — so extra scroll padding is only reserved right when it's actually
+  // needed (a book in that first row is selected), not permanently.
+  const firstRow = rows[0];
+  const spacingSelectedInFirstRow =
+    !!spacingSelectedId &&
+    firstRow?.type === "books" &&
+    firstRow.slots.some((slot) =>
+      slot.type === "spine"
+        ? slot.book.book_id === spacingSelectedId
+        : slot.books.some((b) => b.book_id === spacingSelectedId),
+    );
   const gridColumns = Math.max(
     3,
     Math.floor((width - SCREEN_PADDING + GRID_GAP) / (COVER_WIDTH + GRID_GAP)),
@@ -1148,9 +1190,7 @@ export default function LibraryScreen() {
       .catch(() => Alert.alert("Erreur", "Impossible de désempiler ce livre"));
   };
 
-  // Clears a manually-added empty shelf (see the "x" on it in reorder mode).
-  // There's no more UI to create one (removed per user request), but this
-  // still lets anyone who already has one clean it up.
+  // Clears a book's forced line break — see toggleShelfBreak.
   const removeShelfBreak = (anchorId: string) => {
     setAllBooks((cur) =>
       cur.map((b) =>
@@ -1177,6 +1217,27 @@ export default function LibraryScreen() {
       .setShelfGap(book.book_id, side, value)
       .catch(() =>
         Alert.alert("Erreur", "Impossible de modifier cet espace"),
+      );
+  };
+
+  // Forces the selected book onto its own new shelf row, so it can stand
+  // alone instead of packing next to whatever fits before it.
+  const toggleShelfBreak = () => {
+    if (!spacingSelectedId) return;
+    const book = allBooks.find((item) => item.book_id === spacingSelectedId);
+    if (!book) return;
+    const value = !book.shelf_break_before;
+    setAllBooks((current) =>
+      current.map((item) =>
+        item.book_id === book.book_id
+          ? { ...item, shelf_break_before: value }
+          : item,
+      ),
+    );
+    userBooks
+      .setShelfBreak(book.book_id, value)
+      .catch(() =>
+        Alert.alert("Erreur", "Impossible de modifier l'étagère"),
       );
   };
 
@@ -1357,6 +1418,7 @@ export default function LibraryScreen() {
   // already showing.
   const handleShelfDrop = (bookId: string, x: number, y: number) => {
     stopAutoScroll();
+    stopDragRemeasure();
     lastShelfTargetRef.current = null;
     setStackTargetId(null);
     const dragged = filteredBooks.find((b) => b.book_id === bookId);
@@ -1435,6 +1497,7 @@ export default function LibraryScreen() {
 
   const handleGroupDrop = (groupIds: string[], _x: number, _y: number) => {
     stopAutoScroll();
+    stopDragRemeasure();
     lastShelfTargetRef.current = null;
     const ids = filteredBooks.map((b) => b.book_id);
     persistOrder(ids);
@@ -1519,7 +1582,7 @@ export default function LibraryScreen() {
               style={styles.spacingBookActionBtn}
               onPress={() => toggleShelfGap("before")}
             >
-              <Feather name="chevron-left" size={14} color={colors.white} />
+              <Feather name="chevron-left" size={14} color="#FFFFFF" />
               <Text style={styles.spacingBookActionText}>Gauche</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -1527,7 +1590,17 @@ export default function LibraryScreen() {
               onPress={() => toggleShelfGap("after")}
             >
               <Text style={styles.spacingBookActionText}>Droite</Text>
-              <Feather name="chevron-right" size={14} color={colors.white} />
+              <Feather name="chevron-right" size={14} color="#FFFFFF" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.spacingBookActionBtn,
+                book.shelf_break_before && styles.spacingBookActionBtnActive,
+              ]}
+              onPress={toggleShelfBreak}
+            >
+              <Feather name="corner-down-left" size={14} color="#FFFFFF" />
+              <Text style={styles.spacingBookActionText}>Nouvelle ligne</Text>
             </TouchableOpacity>
           </View>
         ) : null}
@@ -1536,6 +1609,7 @@ export default function LibraryScreen() {
             styles.spine,
             { backgroundColor: colors.card2 },
             reorderMode && stackTargetId === book.book_id && styles.slotStackTarget,
+            reorderMode && spacingSelectedId === book.book_id && styles.slotStackTarget,
           ]}
         >
           <CoverSliver
@@ -1684,6 +1758,12 @@ export default function LibraryScreen() {
               setPoppedBook(null);
             }}
             hitSlop={6}
+            style={[
+              styles.editToggle,
+              reorderMode && {
+                backgroundColor: colors.purpleGlow,
+              },
+            ]}
           >
             <Feather
               name="edit-2"
@@ -1970,7 +2050,14 @@ export default function LibraryScreen() {
             <ScrollView
               ref={reorderScrollRef}
               style={styles.scroll}
-              contentContainerStyle={{ paddingBottom: 20 }}
+              // Extra top padding, reserved only while it's actually needed
+              // — the spacing popup (Gauche/Droite/Nouvelle ligne) floats
+              // above the selected book, and the shelf's first row has no
+              // room above it for that.
+              contentContainerStyle={{
+                paddingTop: spacingSelectedInFirstRow ? 120 : 0,
+                paddingBottom: 20,
+              }}
               showsVerticalScrollIndicator={false}
               scrollEventThrottle={16}
               onScroll={(e) => {
@@ -2025,11 +2112,16 @@ export default function LibraryScreen() {
                                 lastShelfTargetRef.current = null;
                                 setStackTargetId(null);
                                 remeasureShelfFrames();
+                                startDragRemeasure();
                               }}
                               onDragUpdateY={handleDragAutoScroll}
                               onDragUpdate={handleShelfDragUpdate}
                               onDrop={handleShelfDrop}
-                              onTap={() => setSpacingSelectedId(slot.book.book_id)}
+                              onTap={() =>
+                                setSpacingSelectedId((current) =>
+                                  current === slot.book.book_id ? null : slot.book.book_id
+                                )
+                              }
                               style={[
                                 slot.gapBefore && { marginLeft: SHELF_GAP_SIZE },
                                 slot.gapAfter && { marginRight: SHELF_GAP_SIZE },
@@ -2045,27 +2137,58 @@ export default function LibraryScreen() {
                                 slot.gapAfter && { marginRight: SHELF_GAP_SIZE },
                               ]}
                             >
-                              <DraggableHandle
-                                groupIds={slot.books.map((b) => b.book_id)}
-                                onDragStart={() => {
-                                  lastShelfTargetRef.current = null;
-                                  remeasureShelfFrames();
-                                }}
-                                onDragUpdateY={handleDragAutoScroll}
-                                onDragUpdate={handleGroupDragUpdate}
-                                onDrop={handleGroupDrop}
-                              >
-                                <View style={styles.pileGrip}>
-                                  <Feather
-                                    name="menu"
-                                    size={12}
-                                    color="#FFFFFF"
-                                  />
-                                  <Text style={styles.pileGripText}>
-                                    Déplacer la pile
-                                  </Text>
+                              {spacingSelectedId === slot.books[0].book_id ? (
+                                <View style={styles.stackSpacingBookActions}>
+                                  <TouchableOpacity
+                                    style={styles.spacingBookActionBtn}
+                                    onPress={() => toggleShelfGap("before")}
+                                  >
+                                    <Feather name="chevron-left" size={14} color="#FFFFFF" />
+                                    <Text style={styles.spacingBookActionText}>Gauche</Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    style={styles.spacingBookActionBtn}
+                                    onPress={() => toggleShelfGap("after")}
+                                  >
+                                    <Text style={styles.spacingBookActionText}>Droite</Text>
+                                    <Feather name="chevron-right" size={14} color="#FFFFFF" />
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    style={[
+                                      styles.spacingBookActionBtn,
+                                      slot.books[0].shelf_break_before &&
+                                        styles.spacingBookActionBtnActive,
+                                    ]}
+                                    onPress={toggleShelfBreak}
+                                  >
+                                    <Feather name="corner-down-left" size={14} color="#FFFFFF" />
+                                    <Text style={styles.spacingBookActionText}>Nouvelle ligne</Text>
+                                  </TouchableOpacity>
                                 </View>
-                              </DraggableHandle>
+                              ) : (
+                                <DraggableHandle
+                                  groupIds={slot.books.map((b) => b.book_id)}
+                                  onDragStart={() => {
+                                    lastShelfTargetRef.current = null;
+                                    remeasureShelfFrames();
+                                    startDragRemeasure();
+                                  }}
+                                  onDragUpdateY={handleDragAutoScroll}
+                                  onDragUpdate={handleGroupDragUpdate}
+                                  onDrop={handleGroupDrop}
+                                >
+                                  <View style={styles.pileGrip}>
+                                    <Feather
+                                      name="menu"
+                                      size={12}
+                                      color="#FFFFFF"
+                                    />
+                                    <Text style={styles.pileGripText}>
+                                      Déplacer la pile
+                                    </Text>
+                                  </View>
+                                </DraggableHandle>
+                              )}
                               <View style={styles.stackWrap}>
                                 {slot.books.map((book, i) => (
                                   <DraggableShelfBook
@@ -2077,32 +2200,18 @@ export default function LibraryScreen() {
                                       lastShelfTargetRef.current = null;
                                       setStackTargetId(null);
                                       remeasureShelfFrames();
+                                      startDragRemeasure();
                                     }}
                                     onDragUpdateY={handleDragAutoScroll}
                                     onDragUpdate={handleShelfDragUpdate}
                                     onDrop={handleShelfDrop}
-                                    onTap={() => setSpacingSelectedId(slot.books[0].book_id)}
+                                    onTap={() =>
+                                      setSpacingSelectedId((current) =>
+                                        current === slot.books[0].book_id ? null : slot.books[0].book_id
+                                      )
+                                    }
                                   >
-                                    {i === 0 &&
-                                    spacingSelectedId === slot.books[0].book_id ? (
-                                      <View style={styles.stackSpacingBookActions}>
-                                        <TouchableOpacity
-                                          style={styles.spacingBookActionBtn}
-                                          onPress={() => toggleShelfGap("before")}
-                                        >
-                                          <Feather name="chevron-left" size={14} color={colors.white} />
-                                          <Text style={styles.spacingBookActionText}>Gauche</Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity
-                                          style={styles.spacingBookActionBtn}
-                                          onPress={() => toggleShelfGap("after")}
-                                        >
-                                          <Text style={styles.spacingBookActionText}>Droite</Text>
-                                          <Feather name="chevron-right" size={14} color={colors.white} />
-                                        </TouchableOpacity>
-                                      </View>
-                                    ) : null}
-                                    <View
+                                      <View
                                       style={[
                                         styles.stackBar,
                                         {
@@ -2110,6 +2219,9 @@ export default function LibraryScreen() {
                                           zIndex: slot.books.length - i,
                                         },
                                         stackTargetId === slot.books[0].book_id &&
+                                          styles.slotStackTarget,
+                                        i === 0 &&
+                                          spacingSelectedId === slot.books[0].book_id &&
                                           styles.slotStackTarget,
                                       ]}
                                     >
@@ -2353,7 +2465,7 @@ export default function LibraryScreen() {
               )}
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.sheetRow}
+              style={[styles.sheetRow, styles.sheetDivider]}
               onPress={() => {
                 setSortOrder("desc");
                 setShowSortSheet(false);
@@ -2364,6 +2476,24 @@ export default function LibraryScreen() {
                 Plus récent ajouté d'abord
               </Text>
               {sortOrder === "desc" && (
+                <Feather
+                  name="check"
+                  size={16}
+                  color={colors.purple}
+                  style={{ marginLeft: "auto" }}
+                />
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.sheetRow}
+              onPress={() => {
+                setSortOrder("author");
+                setShowSortSheet(false);
+              }}
+            >
+              <Feather name="user" size={16} color={colors.white} />
+              <Text style={styles.sheetBtnText}>Auteur (A-Z)</Text>
+              {sortOrder === "author" && (
                 <Feather
                   name="check"
                   size={16}
@@ -2409,8 +2539,27 @@ export default function LibraryScreen() {
   );
 }
 
-const makeStyles = (colors: ColorPalette) =>
-  StyleSheet.create({
+const makeStyles = (colors: ColorPalette, isDark: boolean) => {
+  const wood = isDark
+    ? {
+        wall: "#332A1E",
+        border: "#8C6C48",
+        frame: "#5E4732",
+        text: "#FBF7EF",
+        emptyText: "#D4C4A8",
+        windowGlass: "#22423C",
+        windowFrameBg: "#33281A",
+      }
+    : {
+        wall: "#f3e6d5",
+        border: "#5c4632",
+        frame: "#c9a876",
+        text: "#3a2e22",
+        emptyText: "#5c4632",
+        windowGlass: "#cfe3e0",
+        windowFrameBg: "#e9dcc4",
+      };
+  return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.bg },
     header: {
       flexDirection: "row",
@@ -2421,6 +2570,13 @@ const makeStyles = (colors: ColorPalette) =>
       paddingBottom: 8,
     },
     title: { fontSize: 19, fontFamily: fonts.headingBold, color: colors.white },
+    editToggle: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      alignItems: "center",
+      justifyContent: "center",
+    },
     reorderBanner: {
       flexDirection: "row",
       alignItems: "center",
@@ -2437,12 +2593,14 @@ const makeStyles = (colors: ColorPalette) =>
       position: "absolute",
       zIndex: 30,
       bottom: SPINE_HEIGHT + 8,
-      left: -18,
-      flexDirection: "row",
-      alignItems: "center",
+      left: SPINE_WIDTH / 2,
+      transform: [{ translateX: -37 }],
+      width: 74,
+      flexDirection: "column",
+      alignItems: "stretch",
       gap: 4,
       padding: 4,
-      borderRadius: 999,
+      borderRadius: 12,
       backgroundColor: colors.card2,
       borderWidth: 1,
       borderColor: colors.purple,
@@ -2457,17 +2615,18 @@ const makeStyles = (colors: ColorPalette) =>
       borderRadius: 999,
       backgroundColor: colors.purple,
     },
-    spacingBookActionText: { color: colors.white, fontSize: 10, fontWeight: "700" },
+    spacingBookActionBtnActive: { backgroundColor: colors.lavender },
+    spacingBookActionText: { color: "#FFFFFF", fontSize: 10, fontWeight: "700" },
     stackSpacingBookActions: {
-      position: "absolute",
-      zIndex: 30,
-      bottom: STACK_BAR_HEIGHT + 8,
-      left: 0,
+      alignSelf: "flex-start",
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
+      width: 130,
       gap: 4,
+      marginBottom: 6,
       padding: 4,
-      borderRadius: 999,
+      borderRadius: 12,
       backgroundColor: colors.card2,
       borderWidth: 1,
       borderColor: colors.purple,
@@ -2572,7 +2731,11 @@ const makeStyles = (colors: ColorPalette) =>
       height: SPINE_HEIGHT,
       borderRadius: 3,
       overflow: "hidden",
-      borderWidth: 1,
+      // Border width stays fixed (only color/shadow change on selection, see
+      // slotStackTarget) — changing width here would resize the tile and
+      // re-trigger DraggableShelfBook's layout spring on every toggle,
+      // making the highlight look sluggish to turn on/off.
+      borderWidth: 3,
       borderColor: "rgba(0,0,0,0.15)",
       ...shadows.card,
     },
@@ -2613,7 +2776,10 @@ const makeStyles = (colors: ColorPalette) =>
     },
 
     // Lying-flat pile — a few books stacked on their side, seen edge-on.
-    stackWrap: { width: STACK_WIDTH },
+    // zIndex above the pile-drag grip's own wrapper (20) so the spacing
+    // popup nested at the end of this stack — see stackSpacingBookActions —
+    // isn't trapped under it by that wrapper's stacking context.
+    stackWrap: { width: STACK_WIDTH, zIndex: 25 },
     // The whole-pile drag grip — deliberately *not* overlaid on top of the
     // pile anymore (it used to sit absolutely positioned over the front
     // cover, sharing screen space with that cover's own per-book drag
@@ -2668,7 +2834,8 @@ const makeStyles = (colors: ColorPalette) =>
       height: STACK_BAR_HEIGHT,
       borderRadius: 4,
       overflow: "hidden",
-      borderWidth: 1,
+      // Fixed width — see spine's identical comment on slotStackTarget.
+      borderWidth: 3,
       borderColor: "rgba(0,0,0,0.15)",
       ...shadows.card,
       flexDirection: "row",
@@ -2702,7 +2869,6 @@ const makeStyles = (colors: ColorPalette) =>
     // it's obvious which one will move when you tap a second book.
     slotSelected: { borderWidth: 2, borderColor: colors.purple },
     slotStackTarget: {
-      borderWidth: 3,
       borderColor: colors.purple,
       shadowColor: colors.purple,
       shadowOpacity: 0.7,
@@ -2732,7 +2898,7 @@ const makeStyles = (colors: ColorPalette) =>
     // room's wall-then-furniture layout instead of just a colored strip.
     roomWall: {
       marginHorizontal: 16,
-      backgroundColor: "#f3e6d5",
+      backgroundColor: wood.wall,
       borderTopLeftRadius: 14,
       borderTopRightRadius: 14,
       paddingHorizontal: 16,
@@ -2819,73 +2985,72 @@ const makeStyles = (colors: ColorPalette) =>
       height: 40,
       flexDirection: "row",
       flexWrap: "wrap",
-      backgroundColor: "#e9dcc4",
+      backgroundColor: wood.windowFrameBg,
       borderWidth: 3,
-      borderColor: "#c9a876",
+      borderColor: wood.frame,
       borderRadius: 2,
     },
     roomWindowPane: {
       width: "48%",
       height: "48%",
       margin: "1%",
-      backgroundColor: "#cfe3e0",
+      backgroundColor: wood.windowGlass,
     },
     roomWindowSill: {
       width: 46,
       height: 4,
       marginTop: 2,
-      backgroundColor: "#c9a876",
+      backgroundColor: wood.frame,
       borderRadius: 1,
     },
     roomUnitsRow: {
       flexDirection: "row",
-      flexWrap: "wrap",
-      justifyContent: "space-between",
-      rowGap: 16,
     },
     roomUnit: {
-      width: "48%",
-      backgroundColor: "#f0e4d3",
-      borderRadius: 8,
-      padding: 10,
-      ...shadows.card,
+      width: "50%",
+    },
+    // One status's slice of a shared two-section cabinet — its own tap
+    // target and header, sitting directly on the wood background.
+    roomUnitSection: {
+      paddingHorizontal: 5,
+      paddingTop: 6,
     },
     roomUnitHeader: {
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
-      marginBottom: 8,
+      marginBottom: 4,
     },
     roomUnitLabel: {
       flex: 1,
       fontSize: 12,
       fontWeight: "700",
-      color: "#3a2e22",
+      color: wood.text,
     },
     roomUnitCount: { fontSize: 11, color: colors.purple, fontWeight: "700" },
     // The cabinet itself: two shelf compartments separated by a solid board,
     // framed by the outer wood tone so it reads as one piece of furniture.
     roomCabinet: {
-      backgroundColor: "#c9a876",
+      backgroundColor: wood.frame,
       borderRadius: 4,
       borderWidth: 2,
-      borderColor: "#5c4632",
+      borderColor: wood.border,
       overflow: "hidden",
     },
     roomCompartment: {
       flexDirection: "row",
       alignItems: "flex-end",
       gap: 3,
-      minHeight: 40,
+      minHeight: 64,
       paddingHorizontal: 5,
       paddingTop: 4,
       paddingBottom: 3,
     },
-    roomShelfBoard: { height: 5, backgroundColor: "#5c4632" },
+    roomShelfBoard: { height: 5, backgroundColor: wood.border },
     roomBar: { width: 7, borderRadius: 2, opacity: 0.92 },
     roomUnitEmpty: {
       fontSize: 10,
-      color: "#5c4632",
+      color: wood.emptyText,
       fontStyle: "italic",
       paddingBottom: 6,
     },
@@ -2897,7 +3062,7 @@ const makeStyles = (colors: ColorPalette) =>
     roomLeg: {
       width: 5,
       height: 6,
-      backgroundColor: "#5c4632",
+      backgroundColor: wood.border,
       borderRadius: 1,
     },
     // The tall potted plant standing on the floor row (see roomFloorRow) —
@@ -3059,6 +3224,9 @@ const makeStyles = (colors: ColorPalette) =>
       justifyContent: "center",
       padding: 8,
       gap: 8,
+      // A touch lighter than the card2 slot behind it, so a coverless book
+      // still reads as its own tile instead of blending into the background.
+      backgroundColor: "rgba(255,255,255,0.06)",
     },
     bookCoverFallbackTitle: {
       fontSize: 10,
@@ -3148,3 +3316,4 @@ const makeStyles = (colors: ColorPalette) =>
       fontWeight: "500",
     },
   });
+};

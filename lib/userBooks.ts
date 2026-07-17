@@ -110,10 +110,9 @@ export async function setManualTilt(bookId: string, tilt: -1 | 0 | 1 | null) {
   if (error) throw new Error(error.message);
 }
 
-// Marks/clears bookId as the anchor of an empty shelf inserted just before
-// its row — see the "+" divider between shelf rows in reorder mode
-// (app/(tabs)/library.tsx). Dropping a book into that empty shelf clears the
-// flag on the old anchor since the shelf isn't empty anymore.
+// Forces bookId to start a new shelf row, even if the previous row still had
+// room — the only way to get a single book standing alone on a shelf. See
+// toggleShelfBreak in app/(tabs)/library.tsx.
 export async function setShelfBreak(bookId: string, value: boolean | null) {
   const userId = await requireUserId();
   const { error } = await supabase
