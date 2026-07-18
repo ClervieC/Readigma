@@ -30,6 +30,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import * as userBooks from "../../lib/userBooks";
 import * as shelfFrames from "../../lib/shelfFrames";
+import * as badges from "../../lib/badges";
 import Pill from "../../components/Pill";
 import NotificationBell from "../../components/NotificationBell";
 import { onScrollToTop } from "../../lib/tabScrollEmitter";
@@ -79,11 +80,13 @@ type Slot =
   | { type: "frame"; frame: any };
 // A frame takes the same shelf width as 3 standing spines (plus the gaps
 // between them), so it reads as "one furniture piece the size of 3 books"
-// rather than an arbitrary fixed size. A plant takes the same as 2.
+// rather than an arbitrary fixed size. A plant takes the same as 2, a clock
+// (small, round) takes barely more than a single book.
 const FRAME_WIDTH = SPINE_WIDTH * 3 + SLOT_GAP * 2;
 const PLANT_WIDTH = SPINE_WIDTH * 2 + SLOT_GAP;
+const CLOCK_WIDTH = SPINE_WIDTH + 20;
 const decorWidth = (kind: string) =>
-  kind === "plant" ? PLANT_WIDTH : FRAME_WIDTH;
+  kind === "plant" ? PLANT_WIDTH : kind === "clock" ? CLOCK_WIDTH : FRAME_WIDTH;
 
 // User-supplied plant art (see assets/plants) — a stable hash-picked one per
 // frame id, same reasoning as spineTilt, so a given plant doesn't change
@@ -99,6 +102,32 @@ function plantImageFor(frameId: string) {
     hashRatio(`${frameId}_plant_art`) * PLANT_IMAGES.length,
   );
   return PLANT_IMAGES[Math.min(index, PLANT_IMAGES.length - 1)];
+}
+
+// A real, ticking clock (not a static graphic) — its own tiny component,
+// not state hoisted onto LibraryScreen, so its interval only re-renders
+// this clock face rather than the entire shelf on every tick.
+function LiveClockFace({
+  colors,
+  styles,
+}: {
+  colors: ColorPalette;
+  styles: any;
+}) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(id);
+  }, []);
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  return (
+    <View style={styles.clockRing}>
+      <Text style={styles.clockDigits}>
+        {hh}:{mm}
+      </Text>
+    </View>
+  );
 }
 type Row =
   | { type: "books"; slots: Slot[] }
@@ -356,7 +385,10 @@ function DraggableGridBook({
   onDragMove,
   onDragUpdateY,
   onDrop,
+  onDragEnd,
   onTap,
+  edgeZoneTop,
+  edgeZoneBottom,
   children,
 }: {
   index: number;
@@ -367,13 +399,23 @@ function DraggableGridBook({
   onDragMove: (fromIndex: number, deltaCols: number, deltaRows: number) => void;
   onDragUpdateY: (absoluteY: number) => void;
   onDrop: () => void;
+  // Same reasoning as DraggableShelfBook's onDragEnd (see its own doc
+  // comment) — always runs, even on a cancelled/interrupted gesture where
+  // onEnd is skipped, so auto-scroll can never get stuck running forever.
+  onDragEnd?: () => void;
   onTap: () => void;
+  // Absolute-Y thresholds for the auto-scroll edge zones (top/bottom), so
+  // onDragUpdateY only crosses the JS bridge when the finger actually
+  // transitions between zones rather than on every single move frame.
+  edgeZoneTop: number;
+  edgeZoneBottom: number;
   children: React.ReactNode;
 }) {
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const dragging = useSharedValue(false);
   const scale = useSharedValue(1);
+  const lastZone = useSharedValue<0 | 1 | -1>(0);
   // The book's own live index, and the delta already reported for the
   // current drag — both as shared values (not plain closures) because this
   // component doesn't unmount/remount as the list reorders around it (same
@@ -415,6 +457,7 @@ function DraggableGridBook({
       lastDeltaRows.value = 0;
       compensateX.value = 0;
       compensateY.value = 0;
+      lastZone.value = 0;
     })
     .onUpdate((e) => {
       translateX.value = e.translationX + compensateX.value;
@@ -433,7 +476,12 @@ function DraggableGridBook({
         lastDeltaRows.value = deltaRows;
         runOnJS(onDragMove)(startIndexSV.value, deltaCols, deltaRows);
       }
-      runOnJS(onDragUpdateY)(e.absoluteY);
+      const zone =
+        e.absoluteY < edgeZoneTop ? -1 : e.absoluteY > edgeZoneBottom ? 1 : 0;
+      if (zone !== lastZone.value) {
+        lastZone.value = zone;
+        runOnJS(onDragUpdateY)(e.absoluteY);
+      }
     })
     .onEnd(() => {
       runOnJS(onDrop)();
@@ -441,6 +489,12 @@ function DraggableGridBook({
       translateY.value = withSpring(0, { damping: 18 });
       scale.value = withSpring(1, { damping: 18 });
       dragging.value = false;
+    })
+    // Same reasoning as DraggableShelfBook's onFinalize — always runs, even
+    // when onEnd is skipped by a cancelled/interrupted gesture, so
+    // auto-scroll can never get stuck running forever.
+    .onFinalize(() => {
+      if (onDragEnd) runOnJS(onDragEnd)();
     });
 
   const tap = Gesture.Tap().onEnd(() => runOnJS(onTap)());
@@ -503,6 +557,8 @@ function DraggableShelfBook({
   onDragEnd,
   onTap,
   style,
+  edgeZoneTop,
+  edgeZoneBottom,
   children,
 }: {
   bookId: string;
@@ -523,12 +579,18 @@ function DraggableShelfBook({
   onDragEnd?: () => void;
   onTap?: () => void;
   style?: any;
+  // Absolute-Y thresholds for the auto-scroll edge zones (top/bottom), so
+  // onDragUpdateY only crosses the JS bridge when the finger actually
+  // transitions between zones rather than on every single move frame.
+  edgeZoneTop: number;
+  edgeZoneBottom: number;
   children: React.ReactNode;
 }) {
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const dragging = useSharedValue(false);
   const scale = useSharedValue(1);
+  const lastZone = useSharedValue<0 | 1 | -1>(0);
 
   const pan = Gesture.Pan()
     .enabled(!disabled)
@@ -544,12 +606,18 @@ function DraggableShelfBook({
     .onStart(() => {
       dragging.value = true;
       scale.value = withSpring(1.04, { damping: 18 });
+      lastZone.value = 0;
       runOnJS(onDragStart)();
     })
     .onUpdate((e) => {
       translateX.value = e.translationX;
       translateY.value = e.translationY;
-      runOnJS(onDragUpdateY)(e.absoluteY);
+      const zone =
+        e.absoluteY < edgeZoneTop ? -1 : e.absoluteY > edgeZoneBottom ? 1 : 0;
+      if (zone !== lastZone.value) {
+        lastZone.value = zone;
+        runOnJS(onDragUpdateY)(e.absoluteY);
+      }
       if (Math.hypot(e.translationX, e.translationY) >= MIN_DRAG_DISTANCE) {
         runOnJS(onDragUpdate)(bookId, e.absoluteX, e.absoluteY);
       }
@@ -612,6 +680,8 @@ function DraggableHandle({
   onDragUpdate,
   onDrop,
   onDragEnd,
+  edgeZoneTop,
+  edgeZoneBottom,
   children,
 }: {
   groupIds: string[];
@@ -622,11 +692,17 @@ function DraggableHandle({
   // Always called on gesture end — see the identical prop on
   // DraggableShelfBook for why this can't just live inside onDrop.
   onDragEnd?: () => void;
+  // Absolute-Y thresholds for the auto-scroll edge zones (top/bottom), so
+  // onDragUpdateY only crosses the JS bridge when the finger actually
+  // transitions between zones rather than on every single move frame.
+  edgeZoneTop: number;
+  edgeZoneBottom: number;
   children: React.ReactNode;
 }) {
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const dragging = useSharedValue(false);
+  const lastZone = useSharedValue<0 | 1 | -1>(0);
 
   const pan = Gesture.Pan()
     // Was activeOffsetX/Y([-10,10]) — that pairing requires the movement to
@@ -642,12 +718,18 @@ function DraggableHandle({
     .minDistance(10)
     .onStart(() => {
       dragging.value = true;
+      lastZone.value = 0;
       runOnJS(onDragStart)();
     })
     .onUpdate((e) => {
       translateX.value = e.translationX;
       translateY.value = e.translationY;
-      runOnJS(onDragUpdateY)(e.absoluteY);
+      const zone =
+        e.absoluteY < edgeZoneTop ? -1 : e.absoluteY > edgeZoneBottom ? 1 : 0;
+      if (zone !== lastZone.value) {
+        lastZone.value = zone;
+        runOnJS(onDragUpdateY)(e.absoluteY);
+      }
       if (Math.hypot(e.translationX, e.translationY) >= MIN_DRAG_DISTANCE) {
         runOnJS(onDragUpdate)(groupIds, e.absoluteX, e.absoluteY);
       }
@@ -916,6 +998,11 @@ export default function LibraryScreen() {
   const [query, setQuery] = useState("");
   const [allBooks, setAllBooks] = useState<any[]>([]);
   const [allFrames, setAllFrames] = useState<shelfFrames.ShelfFrame[]>([]);
+  // How many decoration slots (frame/plant/clock) badges have unlocked so
+  // far — see lib/badges.ts's syncDecorationUnlocks. Placing a new one is
+  // gated on allFrames.length < decorationsUnlocked (see
+  // requireDecorationSlot below).
+  const [decorationsUnlocked, setDecorationsUnlocked] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedBook, setSelectedBook] = useState<any>(null);
   const [poppedBook, setPoppedBook] = useState<any>(null);
@@ -999,8 +1086,14 @@ export default function LibraryScreen() {
     null,
   );
   const EDGE_ZONE = 90;
+  // Counts auto-scroll ticks so remeasureShelfFrames (one measureInWindow
+  // bridge call per mounted tile) only runs every 3rd tick instead of every
+  // 16ms — on a long shelf with 50+ tiles, remeasuring on every tick was
+  // saturating the native bridge and made the auto-scroll itself stutter.
+  const autoScrollTickRef = useRef(0);
   const stopAutoScroll = () => {
     autoScrollDirRef.current = 0;
+    autoScrollTickRef.current = 0;
     if (autoScrollIntervalRef.current) {
       clearInterval(autoScrollIntervalRef.current);
       autoScrollIntervalRef.current = null;
@@ -1023,8 +1116,10 @@ export default function LibraryScreen() {
       // frames go stale immediately and every subsequent hit-test (live
       // preview *and* the final drop) lands against the pre-scroll
       // positions, which reads as random/wrong drop targets. Re-measuring on
-      // every scroll tick keeps them live for the rest of the drag.
-      remeasureShelfFrames();
+      // every scroll tick keeps them live for the rest of the drag — but not
+      // literally every tick (see autoScrollTickRef above).
+      autoScrollTickRef.current += 1;
+      if (autoScrollTickRef.current % 3 === 0) remeasureShelfFrames();
     }, 16);
   };
   const handleDragAutoScroll = (absoluteY: number) => {
@@ -1060,6 +1155,12 @@ export default function LibraryScreen() {
 
   const listRef = useRef<FlatList>(null);
   const hasLoadedOnce = useRef(false);
+  // Counts in-flight order/stack saves (persistOrder, doStack, doUnstack) —
+  // loadBooks skips overwriting local state while any of these are still
+  // pending, since a fast refocus-triggered read can otherwise resolve
+  // before a slower write actually commits and silently revert a reorder
+  // the user just made.
+  const pendingWritesRef = useRef(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -1068,6 +1169,7 @@ export default function LibraryScreen() {
       );
       loadBooks();
       loadFrames();
+      badges.syncDecorationUnlocks().then(setDecorationsUnlocked).catch(() => {});
     }, []),
   );
 
@@ -1139,7 +1241,11 @@ export default function LibraryScreen() {
       .getMyBooks()
       .then((res) => {
         hasLoadedOnce.current = true;
-        setAllBooks(res);
+        // A write still in flight (reorder/stack/unstack) may not be
+        // reflected in this read yet — applying it now would clobber the
+        // optimistic local state with stale server data. The next focus
+        // event, once the write has settled, will pick up the real order.
+        if (pendingWritesRef.current === 0) setAllBooks(res);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -1180,15 +1286,43 @@ export default function LibraryScreen() {
     }
     return position;
   };
+  // Placing a new decoration is gated on having an unused badge-earned slot
+  // — see lib/badges.ts's syncDecorationUnlocks. Blocks and explains (with a
+  // shortcut to the badges screen) instead of silently doing nothing.
+  const requireDecorationSlot = () => {
+    if (allFrames.length >= decorationsUnlocked) {
+      Alert.alert(
+        "Plus de décoration disponible",
+        decorationsUnlocked === 0
+          ? "Débloque ta première décoration en obtenant un badge (livres lus, série de lecture...)."
+          : `Tu as débloqué ${decorationsUnlocked} décoration${decorationsUnlocked > 1 ? "s" : ""} grâce à tes badges. Gagne-en d'autres pour en débloquer plus.`,
+        [
+          { text: "Voir mes badges", onPress: () => router.push("/badges") },
+          { text: "OK", style: "cancel" },
+        ],
+      );
+      return false;
+    }
+    return true;
+  };
+
   const beginFramePlacement = () => {
-    setFramePlacement({ position: estimatePlacementPosition(), kind: "frame" });
+    if (!requireDecorationSlot()) return;
+    setFramePlacement({ position: estimatePlacementPosition() });
   };
   // A plant has no content to pick afterward, so the ghost-then-confirm
   // step (needed for a frame) is just friction — it's placed right away at
   // the estimated spot, and can still be dragged to reposition once it's
   // real, same as a frame.
   const addPlantDirectly = () => {
+    if (!requireDecorationSlot()) return;
     placeFrame(estimatePlacementPosition(), "plant");
+  };
+  // Same reasoning as the plant — a clock has nothing to configure, so it's
+  // placed directly rather than going through the ghost/confirm flow.
+  const addClockDirectly = () => {
+    if (!requireDecorationSlot()) return;
+    placeFrame(estimatePlacementPosition(), "clock");
   };
 
   // Tapping/dropping the ghost places it — the piece is created right away
@@ -1320,6 +1454,25 @@ export default function LibraryScreen() {
         </View>
       );
     }
+    // A clock is purely decorative too, and (unlike a frame) is never a
+    // ghost — it's placed directly (see addClockDirectly) since there's
+    // nothing to configure afterward.
+    if (frame.kind === "clock") {
+      return (
+        <View key={`frame-${frame.id}`} style={styles.clockWrap}>
+          <LiveClockFace colors={colors} styles={styles} />
+          {reorderMode ? (
+            <TouchableOpacity
+              style={styles.frameDeleteBtn}
+              hitSlop={8}
+              onPress={() => deleteFrame(frame)}
+            >
+              <Feather name="x" size={12} color="#FFFFFF" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      );
+    }
     return (
       <View key={`frame-${frame.id}`} style={styles.frameWrap}>
         <View
@@ -1376,37 +1529,49 @@ export default function LibraryScreen() {
   };
 
   const q = query.trim().toLowerCase();
-  const filteredBooks = allBooks
-    .filter((b) => b.status === activeTab)
-    .filter(
-      (b) =>
-        !q ||
-        b.title?.toLowerCase().includes(q) ||
-        b.author?.toLowerCase().includes(q),
-    )
-    // "manual" (the default) shows your own arrangement — manually placed
-    // books (shelf_position, via reorder mode) first in their saved order,
-    // anything never placed falling back to date added. Explicitly picking
-    // "asc"/"desc" from the sort sheet instead sorts *everything* by date,
-    // ignoring shelf_position for the view — but never touches or clears
-    // it, so switching back to "Mon organisation" restores it exactly.
-    .sort((a, b) => {
-      if (sortOrder === "manual") {
-        if (a.shelf_position != null && b.shelf_position != null)
-          return a.shelf_position - b.shelf_position;
-        if (a.shelf_position != null) return -1;
-        if (b.shelf_position != null) return 1;
-        return (
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        );
-      }
-      if (sortOrder === "author") {
-        return (a.author || "").localeCompare(b.author || "");
-      }
-      const diff =
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-      return sortOrder === "asc" ? diff : -diff;
-    });
+  // Memoized so its array identity only changes when one of its actual
+  // inputs does — without this, buildRows's row-packing/pile-grouping pass
+  // (via the `rows` useMemo below, keyed on filteredBooks) re-ran on every
+  // single render, including every drag-preview tick, since a fresh
+  // `.filter().sort()` array defeats a useMemo dependency check even when
+  // its contents are equivalent.
+  const filteredBooks = useMemo(
+    () =>
+      allBooks
+        .filter((b) => b.status === activeTab)
+        .filter(
+          (b) =>
+            !q ||
+            b.title?.toLowerCase().includes(q) ||
+            b.author?.toLowerCase().includes(q),
+        )
+        // "manual" (the default) shows your own arrangement — manually placed
+        // books (shelf_position, via reorder mode) first in their saved order,
+        // anything never placed falling back to date added. Explicitly picking
+        // "asc"/"desc" from the sort sheet instead sorts *everything* by date,
+        // ignoring shelf_position for the view — but never touches or clears
+        // it, so switching back to "Mon organisation" restores it exactly.
+        .sort((a, b) => {
+          if (sortOrder === "manual") {
+            if (a.shelf_position != null && b.shelf_position != null)
+              return a.shelf_position - b.shelf_position;
+            if (a.shelf_position != null) return -1;
+            if (b.shelf_position != null) return 1;
+            return (
+              new Date(b.created_at).getTime() -
+              new Date(a.created_at).getTime()
+            );
+          }
+          if (sortOrder === "author") {
+            return (a.author || "").localeCompare(b.author || "");
+          }
+          const diff =
+            new Date(a.created_at).getTime() -
+            new Date(b.created_at).getTime();
+          return sortOrder === "asc" ? diff : -diff;
+        }),
+    [allBooks, activeTab, q, sortOrder],
+  );
   const counts: any = {};
   allBooks.forEach((b) => {
     counts[b.status] = (counts[b.status] || 0) + 1;
@@ -1496,9 +1661,13 @@ export default function LibraryScreen() {
           : b,
       ),
     );
+    pendingWritesRef.current++;
     userBooks
       .saveShelfOrder(ids)
-      .catch(() => Alert.alert("Erreur", "Impossible d'enregistrer l'ordre"));
+      .catch(() => Alert.alert("Erreur", "Impossible d'enregistrer l'ordre"))
+      .finally(() => {
+        pendingWritesRef.current--;
+      });
   };
 
   // Grid-only tap-to-swap: first tap picks a book up, a second tap on a
@@ -1553,21 +1722,34 @@ export default function LibraryScreen() {
       : moveBookInit.pile_id
         ? [targetBookInit, moveBookInit]
         : [moveBookInit, targetBookInit];
+    pendingWritesRef.current++;
     userBooks
       .stackBooks(moveBook.book_id, targetBook.book_id, existingPileId)
       .then(() => {
         const pileId = existingPileId ?? targetBook.book_id;
         setAllBooks((cur) =>
           cur.map((x) => {
-            if (x.book_id === moveBook.book_id)
+            // Guard against a stale write: if this book's pile_id has
+            // already changed since this call was issued (e.g. it was
+            // dragged elsewhere and unstacked before this network request
+            // resolved), applying this pileId now would silently snap it
+            // back into a pile it no longer belongs to.
+            if (x.book_id === moveBook.book_id) {
+              if (x.pile_id !== moveBook.pile_id) return x;
               return { ...x, pile_id: pileId };
-            if (!existingPileId && x.book_id === targetBook.book_id)
+            }
+            if (!existingPileId && x.book_id === targetBook.book_id) {
+              if (x.pile_id !== targetBook.pile_id) return x;
               return { ...x, pile_id: pileId };
+            }
             return x;
           }),
         );
       })
-      .catch(() => Alert.alert("Erreur", "Impossible d'empiler ces livres"));
+      .catch(() => Alert.alert("Erreur", "Impossible d'empiler ces livres"))
+      .finally(() => {
+        pendingWritesRef.current--;
+      });
   };
 
   const doUnstack = (book: any) => {
@@ -1576,9 +1758,13 @@ export default function LibraryScreen() {
         x.book_id === book.book_id ? { ...x, pile_id: null } : x,
       ),
     );
+    pendingWritesRef.current++;
     userBooks
       .unstackBook(book.book_id)
-      .catch(() => Alert.alert("Erreur", "Impossible de désempiler ce livre"));
+      .catch(() => Alert.alert("Erreur", "Impossible de désempiler ce livre"))
+      .finally(() => {
+        pendingWritesRef.current--;
+      });
   };
 
   // Clears a book's forced line break — see toggleShelfBreak.
@@ -1779,17 +1965,42 @@ export default function LibraryScreen() {
   };
 
   const lastShelfTargetRef = useRef<string | null>(null);
+  // Snapshot of a book's neighbor right before a drag starts — the live
+  // preview reorders filteredBooks continuously as the drag moves, so by
+  // drop time the book's OLD neighbor (needed to hand off shelf_break_before
+  // to whichever book is now first in the row the dragged book vacated) can
+  // no longer be recovered from filteredBooks itself. See handleShelfDrop's
+  // plain-reorder branch.
+  const dragOriginRef = useRef<{
+    bookId: string;
+    nextId: string | null;
+    index: number;
+  } | null>(null);
 
   // A frame's `position` IS a raw book-count index, so when the drop target
   // is a frame (id prefixed "frame:"), that number already tells us where
   // to insert within a flat book-id array — no `indexOf` needed (the frame
   // isn't in that array at all).
-  const resolveTargetBookIndex = (targetId: string, bookIds: string[]) => {
+  // `fullIds` is the id list BEFORE the dragged book/group was spliced out —
+  // a frame's `position` is a raw count against that original list, so if
+  // any of the removed ids used to sit before the frame, the raw count now
+  // overshoots by that many slots against the already-shrunk `bookIds`.
+  // Defaults to `bookIds` itself for callers that never remove anything
+  // (dragging a frame doesn't remove a book from the list).
+  const resolveTargetBookIndex = (
+    targetId: string,
+    bookIds: string[],
+    fullIds: string[] = bookIds,
+  ) => {
     if (targetId.startsWith("frame:")) {
       const targetFrame = activeFrames.find(
         (f) => `frame:${f.id}` === targetId,
       );
-      return targetFrame ? targetFrame.position : bookIds.length;
+      if (!targetFrame) return bookIds.length;
+      const removedBefore = fullIds
+        .slice(0, targetFrame.position)
+        .filter((id) => !bookIds.includes(id)).length;
+      return targetFrame.position - removedBefore;
     }
     const idx = bookIds.indexOf(targetId);
     return idx === -1 ? bookIds.length : idx;
@@ -1856,18 +2067,20 @@ export default function LibraryScreen() {
       resolved.type === "fill-empty" ? resolved.anchorId : resolved.targetId;
     if (targetId === lastShelfTargetRef.current) return;
     lastShelfTargetRef.current = targetId;
-    const ids = filteredBooks.map((b) => b.book_id);
+    const fullIds = filteredBooks.map((b) => b.book_id);
+    const ids = fullIds.slice();
     const currentIndex = ids.indexOf(bookId);
     if (currentIndex === -1) return;
     ids.splice(currentIndex, 1);
-    let targetIndex = resolveTargetBookIndex(targetId, ids);
+    let targetIndex = resolveTargetBookIndex(targetId, ids, fullIds);
     if (resolved.type === "reorder" && resolved.after) targetIndex += 1;
     targetIndex = Math.max(0, Math.min(ids.length, targetIndex));
     ids.splice(targetIndex, 0, bookId);
+    const posById = new Map(ids.map((id, i) => [id, i]));
     setAllBooks((cur) =>
       cur.map((b) =>
         b.status === activeTab
-          ? { ...b, shelf_position: ids.indexOf(b.book_id) }
+          ? { ...b, shelf_position: posById.get(b.book_id) ?? b.shelf_position }
           : b,
       ),
     );
@@ -1889,6 +2102,26 @@ export default function LibraryScreen() {
     if (!dragged) return;
     const resolved = resolveShelfDrop(new Set([bookId]), x, y);
     if (resolved?.type === "stack") {
+      // Reject before touching anything if the target pile is already at
+      // capacity — doStack (below) rejects too, but only after the reorder/
+      // persist below already ran, which used to leave the book visibly and
+      // permanently moved next to a pile it never actually joined.
+      const targetBook = filteredBooks.find(
+        (b) => b.book_id === resolved.targetId,
+      );
+      const existingPileId = targetBook?.pile_id ?? dragged.pile_id ?? null;
+      if (existingPileId) {
+        const pileSize = filteredBooks.filter(
+          (b) => b.pile_id === existingPileId,
+        ).length;
+        if (pileSize >= STACK_SIZE) {
+          Alert.alert(
+            "Pile pleine",
+            `Une pile ne peut pas dépasser ${STACK_SIZE} livres.`,
+          );
+          return;
+        }
+      }
       // Move the dragged book beside its target first. This makes the newly
       // created pile appear where it was dropped (rather than back at the
       // book's old location) and saves that order at the same time.
@@ -1929,7 +2162,22 @@ export default function LibraryScreen() {
     } else {
       const idx = ids.indexOf(bookId);
       transferShelfBreak(ids[idx + 1], bookId);
+      // The book's own drag may also have vacated a row-starting spot it
+      // used to force via shelf_break_before — hand that off to whichever
+      // book is now first there, using the pre-drag neighbor snapshotted at
+      // drag-start (filteredBooks has already been reordered by now, so its
+      // current neighbor is the NEW one, not the vacated one).
+      const origin = dragOriginRef.current;
+      if (
+        origin &&
+        origin.bookId === bookId &&
+        origin.nextId &&
+        idx !== origin.index
+      ) {
+        transferShelfBreak(bookId, origin.nextId);
+      }
     }
+    dragOriginRef.current = null;
     persistOrder(ids);
     if (dragged.pile_id) doUnstack(dragged);
   };
@@ -1950,14 +2198,23 @@ export default function LibraryScreen() {
     lastShelfTargetRef.current = targetId;
     const ids = filteredBooks.map((b) => b.book_id);
     const remaining = ids.filter((id) => !excludeSet.has(id));
-    let targetIndex = resolveTargetBookIndex(targetId, remaining);
+    let targetIndex = resolveTargetBookIndex(targetId, remaining, ids);
     if (resolved.type === "reorder" && resolved.after) targetIndex += 1;
+    else if (resolved.type === "stack") {
+      // "stack" carries no left/right info by itself — approximate it from
+      // the target pile/book's own bounding box the same way "reorder" does,
+      // so dropping on the right half of a pile doesn't always insert the
+      // group immediately before it regardless of which side was dropped on.
+      const f = shelfFramesRef.current[resolved.targetId];
+      if (f && x > f.x + f.width / 2) targetIndex += 1;
+    }
     targetIndex = Math.max(0, Math.min(remaining.length, targetIndex));
     remaining.splice(targetIndex, 0, ...groupIds);
+    const posById = new Map(remaining.map((id, i) => [id, i]));
     setAllBooks((cur) =>
       cur.map((b) =>
         b.status === activeTab
-          ? { ...b, shelf_position: remaining.indexOf(b.book_id) }
+          ? { ...b, shelf_position: posById.get(b.book_id) ?? b.shelf_position }
           : b,
       ),
     );
@@ -2042,10 +2299,11 @@ export default function LibraryScreen() {
     if (currentIndex === -1 || currentIndex === targetIndex) return;
     ids.splice(currentIndex, 1);
     ids.splice(targetIndex, 0, bookId);
+    const posById = new Map(ids.map((id, i) => [id, i]));
     setAllBooks((cur) =>
       cur.map((b) =>
         b.status === activeTab
-          ? { ...b, shelf_position: ids.indexOf(b.book_id) }
+          ? { ...b, shelf_position: posById.get(b.book_id) ?? b.shelf_position }
           : b,
       ),
     );
@@ -2344,6 +2602,9 @@ export default function LibraryScreen() {
               </TouchableOpacity>
               {reorderMode && !framePlacement ? (
                 <View style={styles.addDecorRow}>
+                  <Text style={styles.decorCounter}>
+                    {allFrames.length}/{decorationsUnlocked}
+                  </Text>
                   <TouchableOpacity
                     style={styles.addFrameBtn}
                     onPress={addPlantDirectly}
@@ -2354,6 +2615,13 @@ export default function LibraryScreen() {
                       size={17}
                       color={colors.gray}
                     />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.addFrameBtn}
+                    onPress={addClockDirectly}
+                    hitSlop={6}
+                  >
+                    <Feather name="clock" size={17} color={colors.gray} />
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.addFrameBtn}
@@ -2459,7 +2727,10 @@ export default function LibraryScreen() {
                     }
                     onDragUpdateY={handleDragAutoScroll}
                     onDrop={handleGridDrop}
+                    onDragEnd={endDrag}
                     onTap={() => swapBooks(book)}
+                    edgeZoneTop={EDGE_ZONE}
+                    edgeZoneBottom={height - EDGE_ZONE}
                   >
                     <View style={styles.gridSlot}>
                       <View
@@ -2672,11 +2943,25 @@ export default function LibraryScreen() {
                                 setStackTargetId(null);
                                 remeasureShelfFrames();
                                 startDragRemeasure();
+                                const ids0 = filteredBooks.map(
+                                  (b) => b.book_id,
+                                );
+                                const i0 = ids0.indexOf(slot.book.book_id);
+                                dragOriginRef.current =
+                                  i0 === -1
+                                    ? null
+                                    : {
+                                        bookId: slot.book.book_id,
+                                        nextId: ids0[i0 + 1] ?? null,
+                                        index: i0,
+                                      };
                               }}
                               onDragUpdateY={handleDragAutoScroll}
                               onDragUpdate={handleShelfDragUpdate}
                               onDrop={handleShelfDrop}
                               onDragEnd={endDrag}
+                              edgeZoneTop={EDGE_ZONE}
+                              edgeZoneBottom={height - EDGE_ZONE}
                               onTap={() =>
                                 setSpacingSelectedId((current) =>
                                   current === slot.book.book_id
@@ -2711,6 +2996,8 @@ export default function LibraryScreen() {
                               onDragUpdate={handleFrameDragUpdate}
                               onDrop={handleFrameDrop}
                               onDragEnd={endDrag}
+                              edgeZoneTop={EDGE_ZONE}
+                              edgeZoneBottom={height - EDGE_ZONE}
                             >
                               {renderFrameSlot(slot.frame)}
                             </DraggableShelfBook>
@@ -2737,6 +3024,8 @@ export default function LibraryScreen() {
                                 onDragUpdate={handleGroupDragUpdate}
                                 onDrop={handleGroupDrop}
                                 onDragEnd={endDrag}
+                                edgeZoneTop={EDGE_ZONE}
+                                edgeZoneBottom={height - EDGE_ZONE}
                               >
                                 <View style={styles.pileGrip}>
                                   <Feather
@@ -2819,6 +3108,8 @@ export default function LibraryScreen() {
                                     onDragUpdate={handleShelfDragUpdate}
                                     onDrop={handleShelfDrop}
                                     onDragEnd={endDrag}
+                                    edgeZoneTop={EDGE_ZONE}
+                                    edgeZoneBottom={height - EDGE_ZONE}
                                     onTap={() =>
                                       setSpacingSelectedId((current) =>
                                         current === slot.books[0].book_id
@@ -3547,6 +3838,38 @@ const makeStyles = (colors: ColorPalette, isDark: boolean) => {
       width: "96%",
       height: 108,
     },
+    // A small standing clock — round face on the shelf baseline, like a
+    // desk/mantel clock rather than a wall-hung one (no tilt, same as the
+    // plant).
+    clockWrap: {
+      width: CLOCK_WIDTH,
+      height: SPINE_HEIGHT,
+      position: "relative",
+      alignItems: "center",
+      justifyContent: "flex-end",
+    },
+    clockRing: {
+      width: CLOCK_WIDTH - 8,
+      height: CLOCK_WIDTH - 8,
+      borderRadius: (CLOCK_WIDTH - 8) / 2,
+      borderWidth: 5,
+      borderColor: "#8C6C48",
+      backgroundColor: colors.card2,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 4,
+      shadowColor: "#000000",
+      shadowOffset: { width: 2, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 5,
+      elevation: 5,
+    },
+    clockDigits: {
+      fontSize: 12,
+      fontFamily: fonts.headingBold,
+      color: colors.white,
+      letterSpacing: 0.3,
+    },
     framePickerBookRow: { gap: 10, paddingVertical: 4 },
     framePickerBookCover: {
       width: 64,
@@ -3990,7 +4313,13 @@ const makeStyles = (colors: ColorPalette, isDark: boolean) => {
       paddingHorizontal: 14,
       paddingVertical: 8,
     },
-    addDecorRow: { flexDirection: "row", gap: 8 },
+    addDecorRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    decorCounter: {
+      fontSize: 11,
+      fontWeight: "600",
+      color: colors.gray,
+      marginRight: 2,
+    },
     addFrameBtn: {
       width: 32,
       height: 32,

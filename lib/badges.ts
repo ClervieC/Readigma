@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, getCurrentUserId } from './supabase';
 
 export type BadgeStats = {
   done_count: number;
@@ -150,4 +150,36 @@ export function computeBadgeProgress(stats: BadgeStats): BadgeProgress[] {
       : 1;
     return { category, value, earnedTierIndex, nextTier, progressToNext };
   });
+}
+
+// Every individual badge tier reached (not just one per category) unlocks
+// one shelf decoration credit — so going from "Petit lecteur" to "Lecteur
+// régulier" earns a second one, not just the first tier in that category.
+export function countEarnedTiers(progress: BadgeProgress[]): number {
+  return progress.reduce((sum, p) => sum + (p.earnedTierIndex + 1), 0);
+}
+
+// Ratchets profiles.decorations_unlocked up to the number of badge tiers
+// currently earned, never down — some of the underlying stats (reading
+// streak, "pile à lire" count) can legitimately decrease, but a decoration
+// the user already unlocked (and may have already placed on their shelf)
+// must never be revoked. Call this whenever the library screen loads;
+// returns the resulting (possibly unchanged) unlocked count.
+export async function syncDecorationUnlocks(): Promise<number> {
+  const userId = await getCurrentUserId();
+  if (!userId) return 0;
+  const [stats, { data: profileRow, error: profileError }] = await Promise.all([
+    getBadgeStats(),
+    supabase.from('profiles').select('decorations_unlocked').eq('id', userId).single(),
+  ]);
+  if (profileError) throw new Error(profileError.message);
+  const current = profileRow?.decorations_unlocked ?? 0;
+  const earned = countEarnedTiers(computeBadgeProgress(stats));
+  if (earned <= current) return current;
+  const { error } = await supabase
+    .from('profiles')
+    .update({ decorations_unlocked: earned })
+    .eq('id', userId);
+  if (error) throw new Error(error.message);
+  return earned;
 }

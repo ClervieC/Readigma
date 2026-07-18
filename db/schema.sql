@@ -21,6 +21,12 @@ create table profiles (
   banned           boolean not null default false,
   onboarding_done  boolean not null default false,
   library_view_mode varchar(10) not null default 'shelf', -- 'shelf' | 'grid'
+  decorations_unlocked int not null default 0, -- decoration credits earned via
+                                                 -- badges (see lib/badges.ts) —
+                                                 -- a high-water mark that only
+                                                 -- ever goes up, even if the
+                                                 -- underlying badge stat later
+                                                 -- drops (e.g. a broken streak)
   created_at       timestamptz not null default now()
 );
 

@@ -1,6 +1,6 @@
 import { supabase, getCurrentUserId } from './supabase';
 
-export type ShelfFrameKind = 'frame' | 'plant';
+export type ShelfFrameKind = 'frame' | 'plant' | 'clock';
 
 export type ShelfFrame = {
   id: string;
