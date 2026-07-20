@@ -9,7 +9,7 @@ test.describe('Feed (Fil)', () => {
 
     await login(page);
     await page.getByText('Fil', { exact: true }).click();
-    await expect(page.getByText('Activités de tes amis')).toBeVisible();
+    await expect(page.getByText('Activités des lecteurs que tu suis')).toBeVisible();
     await page.waitForTimeout(1500);
 
     expect(errors, `Console errors: ${errors.join('\n')}`).toEqual([]);

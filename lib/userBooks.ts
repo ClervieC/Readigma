@@ -4,7 +4,7 @@ export type UserBook = {
   book_id: string;
   external_id: string;
   status: 'to_read' | 'reading' | 'done' | 'dnf';
-  format: 'physical' | 'ereader' | null;
+  formats: ('physical' | 'ereader' | 'audiobook')[];
   rating: number | null;
   comment: string | null;
   current_page: number;
@@ -27,6 +27,8 @@ export type UserBook = {
   genres: string[];
   tropes: string[];
   published_year: number | null;
+  series: string | null;
+  series_index: number | null;
 };
 
 async function requireUserId() {
@@ -44,7 +46,7 @@ export async function getMyBooks(status?: string): Promise<UserBook[]> {
   const userId = await requireUserId();
   let q = supabase
     .from('user_books')
-    .select('*,book:books(external_id,title,author,cover_url,description,genres,tropes,published_year)')
+    .select('*,book:books(external_id,title,author,cover_url,description,genres,tropes,published_year,series,series_index)')
     .eq('user_id', userId)
     // Manually placed books (see saveShelfOrder, app/(tabs)/library.tsx's
     // reorder mode) come first in their saved order; anything never
@@ -149,9 +151,74 @@ export async function addBook(bookId: string, status = 'to_read') {
   if (error) throw new Error(error.message);
 }
 
+// Each search provider (Open Library/BnF/Google Books, see lib/books.ts)
+// mints its own external_id for the same real-world book, so the same title
+// can land in `books` as more than one row. Matching on title+author is the
+// only cross-provider signal available — exported so search.tsx can use the
+// exact same key to flag a result as already-owned.
+export function bookKey(title?: string | null, author?: string | null): string {
+  return `${(title ?? '').trim().toLowerCase()}|${(author ?? '').trim().toLowerCase()}`;
+}
+
+const STATUS_RANK: Record<string, number> = { done: 3, reading: 2, dnf: 1, to_read: 0 };
+
+// Adds a book the way search results need to: if the reader's library
+// already has a *different* `books` row for the same title+author, reuses
+// that existing user_books entry — set to whichever status was just
+// explicitly requested (search.tsx's status buttons) — instead of inserting
+// a second row. addBook's own upsert only catches an exact bookId match,
+// not this cross-source duplicate case.
+export async function addBookSmart(bookId: string, status: string, title: string, author: string | null) {
+  const all = await getMyBooks();
+  const key = bookKey(title, author);
+  const existing = all.find((b) => b.book_id !== bookId && bookKey(b.title, b.author) === key);
+  if (existing) {
+    if (existing.status !== status) await updateBook(existing.book_id, { status });
+    return existing.book_id;
+  }
+  await addBook(bookId, status);
+  return bookId;
+}
+
+// Collapses any existing title+author duplicates in the caller's library
+// into a single row — keeps the most "advanced" status (done > reading >
+// dnf > to_read) and backfills whatever the keeper is missing from the rows
+// being dropped, then deletes those rows. Run opportunistically (see
+// app/(tabs)/library.tsx) to clean up anything added before addBookSmart
+// started preventing new duplicates.
+export async function mergeDuplicates(): Promise<number> {
+  const all = await getMyBooks();
+  const groups = new Map<string, UserBook[]>();
+  for (const b of all) {
+    const key = bookKey(b.title, b.author);
+    if (key === '|') continue;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(b);
+  }
+  let mergedCount = 0;
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const [keeper, ...dupes] = [...group].sort(
+      (a, b) => (STATUS_RANK[b.status] ?? 0) - (STATUS_RANK[a.status] ?? 0),
+    );
+    const patch: { rating?: number; comment?: string; formats?: ('physical' | 'ereader' | 'audiobook')[] } = {};
+    for (const d of dupes) {
+      if (keeper.rating == null && d.rating != null) patch.rating = d.rating;
+      if (!keeper.comment && d.comment) patch.comment = d.comment;
+      if ((keeper.formats?.length ?? 0) === 0 && d.formats?.length) patch.formats = d.formats;
+    }
+    if (Object.keys(patch).length > 0) await updateBook(keeper.book_id, patch);
+    for (const d of dupes) {
+      await removeBook(d.book_id);
+      mergedCount++;
+    }
+  }
+  return mergedCount;
+}
+
 export async function updateBook(
   bookId: string,
-  patch: { status?: string; rating?: number; comment?: string; format?: 'physical' | 'ereader'; progress_mode?: 'pages' | 'percent' }
+  patch: { status?: string; rating?: number; comment?: string; formats?: ('physical' | 'ereader' | 'audiobook')[]; progress_mode?: 'pages' | 'percent' }
 ) {
   const userId = await requireUserId();
   const { data, error } = await supabase
@@ -254,7 +321,7 @@ export async function getBookDetail(bookId: string) {
     series: book?.series ?? null,
     series_index: book?.series_index ?? null,
     status: userBook?.status,
-    format: userBook?.format ?? null,
+    formats: userBook?.formats ?? [],
     rating: userBook?.rating,
     comment: userBook?.comment,
     current_page: userBook?.current_page ?? 0,
@@ -264,11 +331,15 @@ export async function getBookDetail(bookId: string) {
   };
 }
 
-export async function getFormatStats(): Promise<{ physical_count: number; ereader_count: number }> {
+export async function getFormatStats(): Promise<{ physical_count: number; ereader_count: number; audiobook_count: number }> {
   const { data, error } = await supabase.rpc('format_stats');
   if (error) throw new Error(error.message);
   const row = data?.[0];
-  return { physical_count: row?.physical_count ?? 0, ereader_count: row?.ereader_count ?? 0 };
+  return {
+    physical_count: row?.physical_count ?? 0,
+    ereader_count: row?.ereader_count ?? 0,
+    audiobook_count: row?.audiobook_count ?? 0,
+  };
 }
 
 export async function getReactions(bookId: string) {
@@ -286,7 +357,7 @@ export async function getReactions(bookId: string) {
 // Community rating average + individual reviews for a book — crosses user
 // boundaries (any reader who finished the book, not just the caller), so
 // this goes through security-definer RPCs rather than a direct table read,
-// same pattern as friend_profile()/popular_books().
+// same pattern as get_user_profile()/popular_books().
 export async function getBookRatingStats(bookId: string): Promise<{ avg_rating: number | null; ratings_count: number }> {
   const { data, error } = await supabase.rpc('book_rating_stats', { p_book_id: bookId });
   if (error) throw new Error(error.message);

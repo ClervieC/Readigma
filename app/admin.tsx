@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Image, Platform } from 'react-native';
 import { useFocusEffect, useRouter, Redirect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { fonts, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -16,23 +17,26 @@ import Button from '../components/Button';
 import BookForm, { BookFormFields, EMPTY_BOOK_FORM } from '../components/BookForm';
 
 const TABS = [
-  { label: 'Utilisateurs', value: 'users' },
-  { label: 'Messages', value: 'messages' },
-  { label: 'Signalements', value: 'reports' },
-  { label: 'Suggestions', value: 'suggestions' },
-  { label: 'Modifications', value: 'edits' },
-  { label: 'Ajouter un livre', value: 'add' },
+  { labelKey: 'admin.tabs.users', value: 'users' },
+  { labelKey: 'admin.tabs.messages', value: 'messages' },
+  { labelKey: 'admin.tabs.reports', value: 'reports' },
+  { labelKey: 'admin.tabs.suggestions', value: 'suggestions' },
+  { labelKey: 'admin.tabs.edits', value: 'edits' },
+  { labelKey: 'admin.tabs.add', value: 'add' },
 ] as const;
 
-function timeAgo(dateStr: string) {
+// Mirrors app/notifications.tsx's timeAgo — a plain function, not a
+// component, so it takes `t` as a parameter instead of calling
+// useTranslation() itself.
+function timeAgo(dateStr: string, t: (key: string, opts?: any) => string) {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
   const days = Math.floor(diff / 86400000);
-  if (mins < 1) return "À l'instant";
-  if (mins < 60) return `Il y a ${mins}min`;
-  if (hours < 24) return `Il y a ${hours}h`;
-  return `Il y a ${days}j`;
+  if (mins < 1) return t('feed.timeJustNow');
+  if (mins < 60) return t('feed.timeMinutes', { count: mins });
+  if (hours < 24) return t('feed.timeHours', { count: hours });
+  return t('feed.timeDays', { count: days });
 }
 
 export default function AdminScreen() {
@@ -40,6 +44,7 @@ export default function AdminScreen() {
   const { profile } = useAuth();
   const router = useRouter();
   const styles = makeStyles(colors);
+  const { t } = useTranslation();
   const [tab, setTab] = useState<typeof TABS[number]['value']>('users');
   const [threads, setThreads] = useState<supportChat.ThreadSummary[]>([]);
   const [suggestions, setSuggestions] = useState<admin.BookSuggestion[]>([]);
@@ -68,7 +73,7 @@ export default function AdminScreen() {
   const quickApprove = (s: admin.BookSuggestion) => {
     admin.approveSuggestion(s)
       .then(() => setSuggestions(cur => cur.map(x => x.id === s.id ? { ...x, status: 'approved' } : x)))
-      .catch((e) => Alert.alert('Erreur', e.message || "Impossible d'ajouter ce livre"));
+      .catch((e) => Alert.alert(t('common.error'), e.message || t('admin.errors.addBookFailed')));
   };
 
   const reject = (s: admin.BookSuggestion) => {
@@ -86,7 +91,7 @@ export default function AdminScreen() {
     const apply = () => {
       admin.setUserBanned(u.id, next)
         .then(() => setUsers(cur => cur.map(x => x.id === u.id ? { ...x, banned: next } : x)))
-        .catch(() => Alert.alert('Erreur', "Impossible de mettre à jour cet utilisateur"));
+        .catch(() => Alert.alert(t('common.error'), t('admin.errors.updateUserFailed')));
     };
     if (!next) { apply(); return; }
     // RN Web's Alert.alert only ever renders a single-button window.alert —
@@ -94,12 +99,12 @@ export default function AdminScreen() {
     // dropped there, so a real confirm() is needed on web (same fix as
     // library.tsx's remove-book confirm).
     if (Platform.OS === 'web') {
-      if (window.confirm(`Bannir @${u.username} ? Il ne pourra plus se connecter.`)) apply();
+      if (window.confirm(t('admin.banConfirmWeb', { username: u.username }))) apply();
       return;
     }
-    Alert.alert('Bannir cet utilisateur ?', `@${u.username} ne pourra plus se connecter à Readigma.`, [
-      { text: 'Annuler', style: 'cancel' },
-      { text: 'Bannir', style: 'destructive', onPress: apply },
+    Alert.alert(t('admin.banConfirmTitle'), t('admin.banConfirmMessage', { username: u.username }), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('admin.ban'), style: 'destructive', onPress: apply },
     ]);
   };
 
@@ -107,7 +112,7 @@ export default function AdminScreen() {
     const nextRole = u.role === 'admin' ? 'user' : 'admin';
     admin.setUserRole(u.id, nextRole)
       .then(() => setUsers(cur => cur.map(x => x.id === u.id ? { ...x, role: nextRole } : x)))
-      .catch(() => Alert.alert('Erreur', "Impossible de mettre à jour cet utilisateur"));
+      .catch(() => Alert.alert(t('common.error'), t('admin.errors.updateUserFailed')));
   };
 
   const filteredUsers = users.filter(u => u.username.toLowerCase().includes(userQuery.trim().toLowerCase()));
@@ -115,19 +120,19 @@ export default function AdminScreen() {
   const resolveReport = (r: reports.Report) => {
     reports.markReportReviewed(r.id)
       .then(() => setUserReports(cur => cur.map(x => x.id === r.id ? { ...x, status: 'reviewed' } : x)))
-      .catch(() => Alert.alert('Erreur', "Impossible de mettre à jour le signalement"));
+      .catch(() => Alert.alert(t('common.error'), t('admin.errors.updateReportFailed')));
   };
 
   const approveEdit = (e: bookEdits.BookEditSuggestion) => {
     bookEdits.approveBookEdit(e)
       .then(() => setBookEditList(cur => cur.map(x => x.id === e.id ? { ...x, status: 'approved' } : x)))
-      .catch(() => Alert.alert('Erreur', "Impossible d'appliquer cette modification"));
+      .catch(() => Alert.alert(t('common.error'), t('admin.errors.applyEditFailed')));
   };
 
   const rejectEdit = (e: bookEdits.BookEditSuggestion) => {
     bookEdits.rejectBookEdit(e.id)
       .then(() => setBookEditList(cur => cur.map(x => x.id === e.id ? { ...x, status: 'rejected' } : x)))
-      .catch(() => Alert.alert('Erreur', "Impossible de refuser cette modification"));
+      .catch(() => Alert.alert(t('common.error'), t('admin.errors.rejectEditFailed')));
   };
 
   // One-time sweep over every book already in the catalog that's missing a
@@ -141,9 +146,9 @@ export default function AdminScreen() {
     books.backfillMissingCovers((done, total, updated) => setBackfillProgress({ done, total, updated }))
       .then(({ checked, updated }) => {
         setBackfilling(false);
-        Alert.alert('Terminé', `${updated} livre(s) complété(s) sur ${checked} qu'il manquait quelque chose (couverture, résumé ou genres).`);
+        Alert.alert(t('admin.backfillDoneTitle'), t('admin.backfillDone', { count: updated, total: checked }));
       })
-      .catch(() => { setBackfilling(false); Alert.alert('Erreur', 'Le balayage a échoué.'); });
+      .catch(() => { setBackfilling(false); Alert.alert(t('common.error'), t('admin.errors.backfillFailed')); });
   };
 
   // Unlike runCoverBackfill above, this touches every book — including ones
@@ -154,21 +159,21 @@ export default function AdminScreen() {
   // cover.
   const runCoverRepopulate = () => {
     Alert.alert(
-      'Repeupler tout le catalogue ?',
-      'Remplace la couverture de chaque livre (même ceux qui en ont déjà une) par celle trouvée en priorité via Hardcover, et complète résumé/genres manquants. Peut prendre du temps.',
+      t('admin.repopulateConfirmTitle'),
+      t('admin.repopulateConfirmMessage'),
       [
-        { text: 'Annuler', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Repeupler',
+          text: t('admin.repopulateConfirmAction'),
           onPress: () => {
             setBackfilling(true);
             setBackfillProgress({ done: 0, total: 0, updated: 0 });
             books.repopulateAllCovers((done, total, updated) => setBackfillProgress({ done, total, updated }))
               .then(({ checked, updated }) => {
                 setBackfilling(false);
-                Alert.alert('Terminé', `${updated} livre(s) mis à jour sur ${checked} au total.`);
+                Alert.alert(t('admin.backfillDoneTitle'), t('admin.repopulateDone', { count: updated, total: checked }));
               })
-              .catch(() => { setBackfilling(false); Alert.alert('Erreur', 'Le repeuplement a échoué.'); });
+              .catch(() => { setBackfilling(false); Alert.alert(t('common.error'), t('admin.errors.repopulateFailed')); });
           },
         },
       ],
@@ -176,7 +181,7 @@ export default function AdminScreen() {
   };
 
   const saveBook = () => {
-    if (!book.title.trim()) { Alert.alert('Erreur', 'Le titre est requis'); return; }
+    if (!book.title.trim()) { Alert.alert(t('common.error'), t('admin.errors.titleRequired')); return; }
     setSaving(true);
     admin.addBookManually(book).then(async () => {
       if (editingSuggestionId) {
@@ -186,15 +191,15 @@ export default function AdminScreen() {
       }
       setSaving(false);
       setBook(EMPTY_BOOK_FORM);
-      Alert.alert('Ajouté', `"${book.title}" a été ajouté au catalogue.`);
-    }).catch((e) => { setSaving(false); Alert.alert('Erreur', e.message || "Impossible d'ajouter ce livre"); });
+      Alert.alert(t('admin.bookAddedTitle'), t('admin.bookAddedMessage', { title: book.title }));
+    }).catch((e) => { setSaving(false); Alert.alert(t('common.error'), e.message || t('admin.errors.addBookFailed')); });
   };
 
   return (
-    <Screen back title="Administration" scroll={false}>
+    <Screen back title={t('admin.title')} scroll={false}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs} contentContainerStyle={{ gap: 8 }}>
-        {TABS.map(t => (
-          <Pill key={t.value} active={tab === t.value} onPress={() => setTab(t.value)} label={t.label} />
+        {TABS.map(tabOpt => (
+          <Pill key={tabOpt.value} active={tab === tabOpt.value} onPress={() => setTab(tabOpt.value)} label={t(tabOpt.labelKey)} />
         ))}
       </ScrollView>
 
@@ -207,13 +212,13 @@ export default function AdminScreen() {
                 style={styles.userSearchInput}
                 value={userQuery}
                 onChangeText={setUserQuery}
-                placeholder="Chercher un utilisateur..."
+                placeholder={t('admin.searchUsersPlaceholder')}
                 placeholderTextColor={colors.gray}
                 autoCapitalize="none"
               />
             </View>
-            {loading ? <Text style={styles.emptyText}>Chargement...</Text> :
-            filteredUsers.length === 0 ? <Text style={styles.emptyText}>Aucun utilisateur.</Text> :
+            {loading ? <Text style={styles.emptyText}>{t('admin.loading')}</Text> :
+            filteredUsers.length === 0 ? <Text style={styles.emptyText}>{t('admin.noUsers')}</Text> :
             filteredUsers.map((u, i) => (
               <View key={u.id} style={[styles.card, i < filteredUsers.length - 1 && styles.cardDivider]}>
                 <View style={styles.userRow}>
@@ -223,8 +228,8 @@ export default function AdminScreen() {
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       <Text style={styles.cardUser}>@{u.username}</Text>
-                      {u.role === 'admin' && <View style={styles.roleBadge}><Text style={styles.roleBadgeText}>Admin</Text></View>}
-                      {u.banned && <View style={styles.bannedBadge}><Text style={styles.bannedBadgeText}>Banni</Text></View>}
+                      {u.role === 'admin' && <View style={styles.roleBadge}><Text style={styles.roleBadgeText}>{t('admin.roleAdmin')}</Text></View>}
+                      {u.banned && <View style={styles.bannedBadge}><Text style={styles.bannedBadgeText}>{t('admin.bannedBadge')}</Text></View>}
                     </View>
                   </View>
                 </View>
@@ -232,13 +237,13 @@ export default function AdminScreen() {
                   <TouchableOpacity style={styles.actionBtn} onPress={() => toggleRole(u)} disabled={u.id === profile?.id}>
                     <Feather name="shield" size={13} color={u.id === profile?.id ? colors.gray : colors.purple} />
                     <Text style={[styles.actionText, u.id === profile?.id && { color: colors.gray }]}>
-                      {u.role === 'admin' ? 'Rétrograder' : 'Promouvoir admin'}
+                      {u.role === 'admin' ? t('admin.demote') : t('admin.promote')}
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.actionBtn} onPress={() => toggleBan(u)} disabled={u.id === profile?.id}>
                     <Feather name={u.banned ? 'user-check' : 'slash'} size={13} color={u.id === profile?.id ? colors.gray : colors.error} />
                     <Text style={[styles.actionText, { color: u.id === profile?.id ? colors.gray : colors.error }]}>
-                      {u.banned ? 'Débannir' : 'Bannir'}
+                      {u.banned ? t('admin.unban') : t('admin.ban')}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -248,26 +253,26 @@ export default function AdminScreen() {
         )}
 
         {tab === 'messages' && (
-          loading ? <Text style={styles.emptyText}>Chargement...</Text> :
-          threads.length === 0 ? <Text style={styles.emptyText}>Aucun message.</Text> :
-          threads.map((t, i) => (
-            <TouchableOpacity key={t.user_id} style={[styles.card, i < threads.length - 1 && styles.cardDivider]} activeOpacity={0.75}
-              onPress={() => router.push({ pathname: '/admin-thread', params: { userId: t.user_id, username: t.username ?? '?' } })}>
+          loading ? <Text style={styles.emptyText}>{t('admin.loading')}</Text> :
+          threads.length === 0 ? <Text style={styles.emptyText}>{t('admin.noMessages')}</Text> :
+          threads.map((th, i) => (
+            <TouchableOpacity key={th.user_id} style={[styles.card, i < threads.length - 1 && styles.cardDivider]} activeOpacity={0.75}
+              onPress={() => router.push({ pathname: '/admin-thread', params: { userId: th.user_id, username: th.username ?? '?' } })}>
               <View style={styles.cardHeader}>
-                <Text style={styles.cardUser}>@{t.username ?? '?'}</Text>
-                {t.last_sender === 'user' && <View style={styles.unreadDot} />}
-                <Text style={styles.cardTime}>{timeAgo(t.last_at)}</Text>
+                <Text style={styles.cardUser}>@{th.username ?? '?'}</Text>
+                {th.last_sender === 'user' && <View style={styles.unreadDot} />}
+                <Text style={styles.cardTime}>{timeAgo(th.last_at, t)}</Text>
               </View>
               <Text style={styles.cardBody} numberOfLines={2}>
-                {t.last_sender === 'admin' ? 'Toi : ' : ''}{t.last_body}
+                {th.last_sender === 'admin' ? t('admin.youPrefix') : ''}{th.last_body}
               </Text>
             </TouchableOpacity>
           ))
         )}
 
         {tab === 'suggestions' && (
-          loading ? <Text style={styles.emptyText}>Chargement...</Text> :
-          suggestions.length === 0 ? <Text style={styles.emptyText}>Aucune suggestion.</Text> :
+          loading ? <Text style={styles.emptyText}>{t('admin.loading')}</Text> :
+          suggestions.length === 0 ? <Text style={styles.emptyText}>{t('admin.noSuggestions')}</Text> :
           suggestions.map((s, i) => (
             <View key={s.id} style={[styles.card, i < suggestions.length - 1 && styles.cardDivider]}>
               <View style={styles.suggestionBook}>
@@ -278,13 +283,13 @@ export default function AdminScreen() {
                   <View style={styles.cardHeader}>
                     <Text style={styles.cardUser}>@{s.username ?? '?'}</Text>
                     <Text style={[styles.statusBadge, s.status === 'approved' && styles.statusApproved, s.status === 'rejected' && styles.statusRejected]}>
-                      {s.status === 'pending' ? 'En attente' : s.status === 'approved' ? 'Approuvé' : 'Refusé'}
+                      {s.status === 'pending' ? t('admin.statusPending') : s.status === 'approved' ? t('admin.statusApproved') : t('admin.statusRejected')}
                     </Text>
-                    <Text style={styles.cardTime}>{timeAgo(s.created_at)}</Text>
+                    <Text style={styles.cardTime}>{timeAgo(s.created_at, t)}</Text>
                   </View>
                   <Text style={styles.suggestionTitle}>{s.title}</Text>
                   {s.author ? <Text style={styles.suggestionAuthor}>{s.author}</Text> : null}
-                  {s.isbn ? <Text style={styles.suggestionAuthor}>ISBN {s.isbn}</Text> : null}
+                  {s.isbn ? <Text style={styles.suggestionAuthor}>{t('admin.isbnLabel', { isbn: s.isbn })}</Text> : null}
                 </View>
               </View>
               {s.description ? <Text style={styles.cardBody} numberOfLines={3}>{s.description}</Text> : null}
@@ -292,15 +297,15 @@ export default function AdminScreen() {
                 <View style={styles.suggestionActions}>
                   <TouchableOpacity style={styles.actionBtn} onPress={() => quickApprove(s)}>
                     <Feather name="check-circle" size={14} color={colors.teal} />
-                    <Text style={[styles.actionText, { color: colors.teal }]}>Approuver</Text>
+                    <Text style={[styles.actionText, { color: colors.teal }]}>{t('admin.approve')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.actionBtn} onPress={() => editThenApprove(s)}>
                     <Feather name="edit-2" size={14} color={colors.purple} />
-                    <Text style={styles.actionText}>Modifier</Text>
+                    <Text style={styles.actionText}>{t('admin.edit')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.actionBtn} onPress={() => reject(s)}>
                     <Feather name="x-circle" size={14} color={colors.error} />
-                    <Text style={[styles.actionText, { color: colors.error }]}>Refuser</Text>
+                    <Text style={[styles.actionText, { color: colors.error }]}>{t('admin.reject')}</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -309,25 +314,25 @@ export default function AdminScreen() {
         )}
 
         {tab === 'reports' && (
-          loading ? <Text style={styles.emptyText}>Chargement...</Text> :
-          userReports.length === 0 ? <Text style={styles.emptyText}>Aucun signalement.</Text> :
+          loading ? <Text style={styles.emptyText}>{t('admin.loading')}</Text> :
+          userReports.length === 0 ? <Text style={styles.emptyText}>{t('admin.noReports')}</Text> :
           userReports.map((r, i) => (
             <View key={r.id} style={[styles.card, i < userReports.length - 1 && styles.cardDivider]}>
               <View style={styles.cardHeader}>
                 <Feather name={r.target_type === 'book' ? 'book' : 'user'} size={13} color={colors.error} />
-                <Text style={styles.cardUser}>{r.target_label ?? '(introuvable)'}</Text>
+                <Text style={styles.cardUser}>{r.target_label ?? t('admin.notFound')}</Text>
                 <Text style={[styles.statusBadge, r.status === 'reviewed' && styles.statusApproved]}>
-                  {r.status === 'pending' ? 'En attente' : 'Traité'}
+                  {r.status === 'pending' ? t('admin.statusPending') : t('admin.statusTreated')}
                 </Text>
-                <Text style={styles.cardTime}>{timeAgo(r.created_at)}</Text>
+                <Text style={styles.cardTime}>{timeAgo(r.created_at, t)}</Text>
               </View>
-              <Text style={styles.suggestionAuthor}>Signalé par @{r.reporter_username ?? '?'} · {r.reason}</Text>
+              <Text style={styles.suggestionAuthor}>{t('admin.reportedBy', { username: r.reporter_username ?? '?', reason: r.reason })}</Text>
               {r.details ? <Text style={styles.cardBody}>{r.details}</Text> : null}
               {r.status === 'pending' && (
                 <View style={styles.suggestionActions}>
                   <TouchableOpacity style={styles.actionBtn} onPress={() => resolveReport(r)}>
                     <Feather name="check-circle" size={14} color={colors.teal} />
-                    <Text style={[styles.actionText, { color: colors.teal }]}>Marquer traité</Text>
+                    <Text style={[styles.actionText, { color: colors.teal }]}>{t('admin.markReviewed')}</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -336,8 +341,8 @@ export default function AdminScreen() {
         )}
 
         {tab === 'edits' && (
-          loading ? <Text style={styles.emptyText}>Chargement...</Text> :
-          bookEditList.length === 0 ? <Text style={styles.emptyText}>Aucune modification proposée.</Text> :
+          loading ? <Text style={styles.emptyText}>{t('admin.loading')}</Text> :
+          bookEditList.length === 0 ? <Text style={styles.emptyText}>{t('admin.noEdits')}</Text> :
           bookEditList.map((e, i) => (
             <View key={e.id} style={[styles.card, i < bookEditList.length - 1 && styles.cardDivider]}>
               <View style={styles.suggestionBook}>
@@ -348,27 +353,27 @@ export default function AdminScreen() {
                   <View style={styles.cardHeader}>
                     <Text style={styles.cardUser}>@{e.username ?? '?'}</Text>
                     <Text style={[styles.statusBadge, e.status === 'approved' && styles.statusApproved, e.status === 'rejected' && styles.statusRejected]}>
-                      {e.status === 'pending' ? 'En attente' : e.status === 'approved' ? 'Appliqué' : 'Refusé'}
+                      {e.status === 'pending' ? t('admin.statusPending') : e.status === 'approved' ? t('admin.statusApplied') : t('admin.statusRejected')}
                     </Text>
-                    <Text style={styles.cardTime}>{timeAgo(e.created_at)}</Text>
+                    <Text style={styles.cardTime}>{timeAgo(e.created_at, t)}</Text>
                   </View>
-                  <Text style={styles.suggestionTitle}>{e.book_title ?? '(livre introuvable)'}</Text>
+                  <Text style={styles.suggestionTitle}>{e.book_title ?? t('admin.bookNotFound')}</Text>
                 </View>
               </View>
-              {e.description ? <Text style={styles.cardBody} numberOfLines={3}>Résumé : {e.description}</Text> : null}
-              {e.genres && e.genres.length > 0 ? <Text style={styles.suggestionAuthor}>Genres : {e.genres.join(', ')}</Text> : null}
-              {e.series ? <Text style={styles.suggestionAuthor}>Série : {e.series}{e.series_index != null ? ` · Tome ${e.series_index}` : ''}</Text> : null}
-              {e.published_year ? <Text style={styles.suggestionAuthor}>Année : {e.published_year}</Text> : null}
-              {e.isbn ? <Text style={styles.suggestionAuthor}>ISBN : {e.isbn}</Text> : null}
+              {e.description ? <Text style={styles.cardBody} numberOfLines={3}>{t('admin.summaryLabel', { description: e.description })}</Text> : null}
+              {e.genres && e.genres.length > 0 ? <Text style={styles.suggestionAuthor}>{t('admin.genresLabel', { genres: e.genres.join(', ') })}</Text> : null}
+              {e.series ? <Text style={styles.suggestionAuthor}>{t('admin.seriesLabel', { series: e.series })}{e.series_index != null ? t('admin.tomeSuffix', { index: e.series_index }) : ''}</Text> : null}
+              {e.published_year ? <Text style={styles.suggestionAuthor}>{t('admin.yearLabel', { year: e.published_year })}</Text> : null}
+              {e.isbn ? <Text style={styles.suggestionAuthor}>{t('admin.isbnLabelColon', { isbn: e.isbn })}</Text> : null}
               {e.status === 'pending' && (
                 <View style={styles.suggestionActions}>
                   <TouchableOpacity style={styles.actionBtn} onPress={() => approveEdit(e)}>
                     <Feather name="check-circle" size={14} color={colors.teal} />
-                    <Text style={[styles.actionText, { color: colors.teal }]}>Appliquer</Text>
+                    <Text style={[styles.actionText, { color: colors.teal }]}>{t('admin.apply')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.actionBtn} onPress={() => rejectEdit(e)}>
                     <Feather name="x-circle" size={14} color={colors.error} />
-                    <Text style={[styles.actionText, { color: colors.error }]}>Refuser</Text>
+                    <Text style={[styles.actionText, { color: colors.error }]}>{t('admin.reject')}</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -379,26 +384,26 @@ export default function AdminScreen() {
         {tab === 'add' && (
           <View style={{ paddingBottom: 20 }}>
             <View style={styles.backfillCard}>
-              <Text style={styles.backfillTitle}>Infos manquantes</Text>
+              <Text style={styles.backfillTitle}>{t('admin.missingInfoTitle')}</Text>
               <Text style={styles.backfillSub}>
                 {backfilling && backfillProgress
-                  ? `Recherche... ${backfillProgress.done}/${backfillProgress.total} (${backfillProgress.updated} livre${backfillProgress.updated > 1 ? 's' : ''} complété${backfillProgress.updated > 1 ? 's' : ''})`
-                  : "Cherche couverture, résumé, genres et ISBN manquants (Hardcover, Open Library, Google Books, Wikidata) pour chaque livre du catalogue qui n'en a pas."}
+                  ? t('admin.backfillProgress', { done: backfillProgress.done, total: backfillProgress.total, count: backfillProgress.updated })
+                  : t('admin.missingInfoDesc')}
               </Text>
               <TouchableOpacity style={styles.actionBtn} onPress={runCoverBackfill} disabled={backfilling}>
                 <Feather name="image" size={14} color={backfilling ? colors.gray : colors.purple} />
                 <Text style={[styles.actionText, backfilling && { color: colors.gray }]}>
-                  {backfilling ? 'En cours...' : 'Compléter les infos manquantes'}
+                  {backfilling ? t('admin.inProgress') : t('admin.completeMissingInfo')}
                 </Text>
               </TouchableOpacity>
               <View style={styles.backfillDivider} />
               <Text style={styles.backfillSub}>
-                Repasse sur tout le catalogue : remplace la couverture par celle de Hardcover en priorité (même si le livre en a déjà une), et complète résumé/genres/ISBN seulement s'ils manquent.
+                {t('admin.repopulateDesc')}
               </Text>
               <TouchableOpacity style={styles.actionBtn} onPress={runCoverRepopulate} disabled={backfilling}>
                 <Feather name="refresh-cw" size={14} color={backfilling ? colors.gray : colors.error} />
                 <Text style={[styles.actionText, { color: backfilling ? colors.gray : colors.error }]}>
-                  {backfilling ? 'En cours...' : 'Repeupler tout le catalogue'}
+                  {backfilling ? t('admin.inProgress') : t('admin.repopulateCatalog')}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -406,11 +411,11 @@ export default function AdminScreen() {
             {editingSuggestionId ? (
               <View style={styles.editingBanner}>
                 <Feather name="edit-2" size={13} color={colors.purple} />
-                <Text style={styles.editingBannerText}>Tu modifies une suggestion — l'auteur sera notifié à l'ajout.</Text>
+                <Text style={styles.editingBannerText}>{t('admin.editingSuggestionBanner')}</Text>
               </View>
             ) : null}
             <BookForm value={book} onChange={setBook} />
-            <Button label={saving ? 'Ajout...' : 'Ajouter au catalogue'} onPress={saveBook} disabled={saving} style={{ marginTop: 12 }} />
+            <Button label={saving ? t('admin.saving') : t('admin.addToCatalog')} onPress={saveBook} disabled={saving} style={{ marginTop: 12 }} />
           </View>
         )}
 

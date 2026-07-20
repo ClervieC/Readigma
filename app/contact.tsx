@@ -6,16 +6,20 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { fonts, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import * as supportChat from '../lib/supportChat';
 
-function timeLabel(dateStr: string) {
+// `locale` is the current i18n language (see useTranslation()'s i18n.language
+// below), not hardcoded — this is what makes the timestamp itself (not just
+// the surrounding UI text) follow the user's chosen language.
+function timeLabel(dateStr: string, locale: string) {
   const d = new Date(dateStr);
   const now = new Date();
   const sameDay = d.toDateString() === now.toDateString();
-  const time = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  return sameDay ? time : `${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} ${time}`;
+  const time = d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+  return sameDay ? time : `${d.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' })} ${time}`;
 }
 
 // A real thread with the team instead of a one-shot contact form — every
@@ -27,6 +31,7 @@ export default function ContactScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const styles = makeStyles(colors);
+  const { t, i18n } = useTranslation();
   const [messages, setMessages] = useState<supportChat.ThreadMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
@@ -61,7 +66,7 @@ export default function ContactScreen() {
     }).catch(() => {
       setSending(false);
       setText(body);
-      Alert.alert('Erreur', "Impossible d'envoyer le message");
+      Alert.alert(t('common.error'), t('contact.errors.sendFailed'));
     });
   };
 
@@ -72,19 +77,19 @@ export default function ContactScreen() {
           <Feather name="arrow-left" size={20} color={colors.white} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={styles.title}>L'équipe Readigma</Text>
-          <Text style={styles.subtitle}>Répond généralement sous 48 h</Text>
+          <Text style={styles.title}>{t('contact.teamName')}</Text>
+          <Text style={styles.subtitle}>{t('contact.subtitle')}</Text>
         </View>
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={8}>
         {loading ? (
-          <Text style={styles.emptyText}>Chargement...</Text>
+          <Text style={styles.emptyText}>{t('contact.loading')}</Text>
         ) : messages.length === 0 ? (
           <View style={styles.emptyState}>
             <Feather name="message-circle" size={36} color={colors.gray} />
-            <Text style={styles.emptyTitle}>Aucun message pour l'instant</Text>
-            <Text style={styles.emptyText}>Écris à l'équipe, on te répond ici même.</Text>
+            <Text style={styles.emptyTitle}>{t('contact.noMessagesYet')}</Text>
+            <Text style={styles.emptyText}>{t('contact.writeToUsHint')}</Text>
           </View>
         ) : (
           <FlatList
@@ -98,7 +103,7 @@ export default function ContactScreen() {
                 <View style={[styles.bubble, item.sender === 'user' ? styles.bubbleMine : styles.bubbleTheirs]}>
                   <Text style={[styles.bubbleText, item.sender === 'user' && styles.bubbleTextMine]}>{item.body}</Text>
                 </View>
-                <Text style={[styles.bubbleTime, item.sender === 'user' && styles.bubbleTimeMine]}>{timeLabel(item.created_at)}</Text>
+                <Text style={[styles.bubbleTime, item.sender === 'user' && styles.bubbleTimeMine]}>{timeLabel(item.created_at, i18n.language)}</Text>
               </View>
             )}
           />
@@ -109,7 +114,7 @@ export default function ContactScreen() {
             style={styles.input}
             value={text}
             onChangeText={setText}
-            placeholder="Écrire un message..."
+            placeholder={t('contact.placeholder')}
             placeholderTextColor={colors.gray}
             multiline
             maxLength={1000}

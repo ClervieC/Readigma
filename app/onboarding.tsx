@@ -24,7 +24,7 @@ export default function OnboardingScreen() {
     { icon: 'shuffle', iconColor: colors.teal, title: 'Découvre\nton prochain livre', desc: 'Tu ne sais pas quoi lire ? Readigma pioche dans ta pile "À lire" et te fait une suggestion au hasard.' },
     { icon: 'book-open', iconColor: colors.lavender, title: 'Gère ta\nbibliothèque', desc: 'Organise tes livres par statut : À lire, En cours, Terminé ou Abandonné. Personnalise ton étagère en déplaçant tes livres et en y ajoutant des cadres photo.' },
     { icon: 'message-circle', iconColor: colors.pink, title: 'Réactions\nen temps réel', desc: 'Note tes émotions au fil de ta lecture avec des emojis et des notes. Crée ton journal de bord de lecteur.' },
-    { icon: 'users', iconColor: colors.success, title: 'Lis avec\ntes amis', desc: 'Connecte-toi avec tes amis lecteurs, vois ce qu\'ils lisent et partage tes coups de cœur dans le fil d\'actualité.' },
+    { icon: 'users', iconColor: colors.success, title: 'Suis d\'autres\nlecteurs', desc: 'Suis les lecteurs qui t\'intéressent, vois ce qu\'ils lisent et partage tes coups de cœur dans le fil d\'actualité.' },
   ];
 
   const [step, setStep] = useState(0);

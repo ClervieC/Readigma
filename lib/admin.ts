@@ -3,7 +3,7 @@ import { API_BASE } from './apiUrl';
 import { BookFormFields, EMPTY_BOOK_FORM } from '../components/BookForm';
 import { findCoverByIsbn } from './books';
 
-// Fire-and-forget, same pattern as lib/friends.ts's notify() — a missing/
+// Fire-and-forget, same pattern as lib/follows.ts's notify() — a missing/
 // stale push token shouldn't block the moderation action itself.
 function notify(toUserId: string, title: string, body: string) {
   fetch(`${API_BASE}/api/push/send`, {

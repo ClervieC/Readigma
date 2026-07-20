@@ -1,5 +1,6 @@
 import { XMLParser } from 'fast-xml-parser';
 import { supabase } from './supabase';
+import { API_BASE } from './apiUrl';
 
 // Open Library's API needs no key and sends `Access-Control-Allow-Origin: *`,
 // so — unlike a provider with a secret key — this can be called straight
@@ -42,9 +43,14 @@ function extractSeries(subjects: string[] | undefined): string | null {
 // rather than one tag per entry — stored as-is on `books.genres`, so any
 // screen rendering that array raw ends up showing overlapping, comma-stuffed
 // chips. This splits every entry on its commas and dedupes before display.
+// Google Books occasionally lists New York Times bestseller-list slugs
+// (e.g. "nyt:combined-print-and-e-book-fiction=2024-06-30") alongside real
+// subjects in the same `categories`/genres array — those are catalog
+// metadata, not genres, and read as garbage wherever tags are shown.
 export function normalizeTags(genres: string[] = [], limit = 4): string[] {
   const flat = genres.flatMap(g => g.split(',').map(s => s.trim())).filter(Boolean);
-  return Array.from(new Set(flat)).slice(0, limit);
+  const clean = flat.filter(g => !g.toLowerCase().startsWith('nyt:'));
+  return Array.from(new Set(clean)).slice(0, limit);
 }
 
 function workKeyToId(key: string) {
@@ -201,54 +207,39 @@ async function searchGoogleBooks(q: string): Promise<NormalizedBook[]> {
   }
 }
 
+type FoundBookInfo = {
+  cover_url: string | null;
+  description: string | null;
+  genres: string[] | null;
+  tropes?: string[] | null;
+  series?: string | null;
+  series_index?: number | null;
+  isbn?: string | null;
+};
+
 // Hardcover's GraphQL API is free but needs a personal API token (generated
-// from a Hardcover account at hardcover.app/account/api — same optional-key
-// pattern as Google Books, just skipped entirely when unset). It's a modern,
-// reader-focused catalog (closer in spirit to this app than a generic
-// library index), so it's tried right after the two biggest keyless sources.
-const HARDCOVER_API_URL = 'https://api.hardcover.app/v1/graphql';
-// Hardcover's account page shows the token already prefixed with "Bearer "
-// (ready to paste as-is into the header) — but it's easy to instead paste
-// just the raw token, so this strips an existing "Bearer " before re-adding
-// it below, working correctly either way.
-const HARDCOVER_API_TOKEN = process.env.EXPO_PUBLIC_HARDCOVER_API_TOKEN?.replace(/^Bearer\s+/i, '');
-
-type FoundBookInfo = { cover_url: string | null; description: string | null; genres: string[] | null; isbn?: string | null };
-
+// from a Hardcover account at hardcover.app/account/api) and — unlike Open
+// Library/Google Books — sends no Access-Control-Allow-Origin header, so a
+// browser blocks a direct call outright. Routed through our own
+// hardcover-lookup+api.ts server route instead, both to dodge that CORS
+// block and to keep the token itself server-only rather than in the client
+// bundle. It's a modern, reader-focused catalog (closer in spirit to this
+// app than a generic library index) and — unusually — separates "Genre"
+// from its other tag categories, so it's the only source trusted for the
+// genres/tropes split and for series/tome number.
 async function findInfoViaHardcover(isbn: string): Promise<FoundBookInfo | null> {
-  if (!HARDCOVER_API_TOKEN) return null;
-  const query = `
-    query FindInfo($isbn: String!) {
-      editions(where: { _or: [{ isbn_13: { _eq: $isbn } }, { isbn_10: { _eq: $isbn } }] }, limit: 1) {
-        image { url }
-        book { image { url } description cached_tags }
-      }
-    }
-  `;
-  const res = await fetch(HARDCOVER_API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${HARDCOVER_API_TOKEN}` },
-    body: JSON.stringify({ query, variables: { isbn } }),
-  });
-  if (!res.ok) return null;
-  const json = await res.json();
-  const edition = json.data?.editions?.[0];
-  if (!edition) return null;
-  // cached_tags is grouped by tag category (e.g. { Genre: [...], Mood: [...] });
-  // the shape of each entry isn't documented in detail, so this is
-  // deliberately defensive about whether an entry is a bare string or an
-  // object with a `tag` field.
-  let genres: string[] | null = null;
-  const genreTags = edition.book?.cached_tags?.Genre;
-  if (Array.isArray(genreTags)) {
-    const names = genreTags.map((t: any) => (typeof t === 'string' ? t : t?.tag)).filter(Boolean);
-    if (names.length) genres = names.slice(0, 5);
+  try {
+    const res = await fetch(`${API_BASE}/api/hardcover-lookup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isbn }),
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json.result ?? null;
+  } catch {
+    return null;
   }
-  return {
-    cover_url: edition.image?.url ?? edition.book?.image?.url ?? null,
-    description: edition.book?.description ?? null,
-    genres,
-  };
 }
 
 // Wikidata's SPARQL endpoint is free, keyless, and CORS-open — worth trying
@@ -284,13 +275,16 @@ async function findCoverViaWikidata(isbn: string): Promise<string | null> {
 // genre list even if an earlier one already supplied the cover.
 export async function findBookInfoByIsbn(isbn: string): Promise<FoundBookInfo> {
   const clean = isbn.replace(/[^0-9Xx]/g, '');
-  const result: FoundBookInfo = { cover_url: null, description: null, genres: null };
+  const result: FoundBookInfo = { cover_url: null, description: null, genres: null, tropes: null, series: null, series_index: null };
   if (!clean) return result;
 
   const merge = (partial: Partial<FoundBookInfo>) => {
     if (!result.cover_url && partial.cover_url) result.cover_url = partial.cover_url;
     if (!result.description && partial.description) result.description = partial.description;
     if (!result.genres && partial.genres && partial.genres.length) result.genres = partial.genres;
+    if (!result.tropes && partial.tropes && partial.tropes.length) result.tropes = partial.tropes;
+    if (!result.series && partial.series) result.series = partial.series;
+    if (result.series_index == null && partial.series_index != null) result.series_index = partial.series_index;
   };
 
   try {
@@ -364,11 +358,15 @@ export async function search(q: string): Promise<NormalizedBook[]> {
   return [...ol, ...bnf, ...gb];
 }
 
+// labelKey resolves against lib/locales/{fr,en}.json's "search.trending.*" —
+// getTrending() itself has no useTranslation() (it's a plain data-fetching
+// function, not a component), so the caller (app/(tabs)/search.tsx) is what
+// actually calls t() on these.
 const TRENDING_SUBJECTS = [
-  { label: '🐉 Fantasy incontournables', subject: 'fantasy' },
-  { label: '🔪 Thrillers du moment', subject: 'thriller' },
-  { label: '💕 Romance', subject: 'romance' },
-  { label: '🚀 Science-fiction', subject: 'science_fiction' },
+  { labelKey: 'search.trending.fantasy', subject: 'fantasy' },
+  { labelKey: 'search.trending.thriller', subject: 'thriller' },
+  { labelKey: 'search.trending.romance', subject: 'romance' },
+  { labelKey: 'search.trending.scifi', subject: 'science_fiction' },
 ];
 
 // Open Library's `published_in=YYYY-YYYY` filter on this endpoint doesn't
@@ -418,14 +416,14 @@ async function fetchFrenchBooks(): Promise<NormalizedBook[]> {
   return results.slice(0, 12);
 }
 
-export async function getTrending(): Promise<{ label: string; books: NormalizedBook[] }[]> {
+export async function getTrending(): Promise<{ labelKey: string; books: NormalizedBook[] }[]> {
   const results = await Promise.allSettled([
     ...TRENDING_SUBJECTS.map((c) => fetchSubject(c.subject)),
     fetchFrenchBooks(),
   ]);
-  const labels = [...TRENDING_SUBJECTS.map((c) => c.label), '🇫🇷 Auteurs français'];
-  return labels.map((label, i) => ({
-    label,
+  const labelKeys = [...TRENDING_SUBJECTS.map((c) => c.labelKey), 'search.trending.frenchAuthors'];
+  return labelKeys.map((labelKey, i) => ({
+    labelKey,
     books: results[i].status === 'fulfilled' ? (results[i] as PromiseFulfilledResult<NormalizedBook[]>).value : [],
   }));
 }
@@ -600,6 +598,9 @@ type CatalogRow = {
   cover_url: string | null;
   description: string | null;
   genres: string[] | null;
+  tropes: string[] | null;
+  series: string | null;
+  series_index: number | null;
 };
 
 // One-time catalog sweep (see app/admin.tsx's "Compléter les couvertures"
@@ -618,13 +619,13 @@ export async function getBooksMissingInfo(): Promise<CatalogRow[]> {
   // enough for the extra rows fetched here to matter.
   const { data, error } = await supabase
     .from('books')
-    .select('id,isbn,title,author,cover_url,description,genres');
+    .select('id,isbn,title,author,cover_url,description,genres,tropes,series,series_index');
   if (error) throw new Error(error.message);
   return (data ?? []).filter((b) => !b.cover_url || !b.description || !b.genres || b.genres.length === 0 || !b.isbn);
 }
 
 async function findInfoForBook(b: { isbn: string | null; title: string; author: string | null }): Promise<FoundBookInfo> {
-  let info: FoundBookInfo = { cover_url: null, description: null, genres: null, isbn: b.isbn ?? null };
+  let info: FoundBookInfo = { cover_url: null, description: null, genres: null, tropes: null, series: null, series_index: null, isbn: b.isbn ?? null };
   if (b.isbn) {
     try {
       const found = await findBookInfoByIsbn(b.isbn);
@@ -640,6 +641,11 @@ async function findInfoForBook(b: { isbn: string | null; title: string; author: 
           cover_url: info.cover_url ?? match.cover_url,
           description: info.description ?? match.description,
           genres: info.genres ?? (match.genres.length ? match.genres : null),
+          tropes: info.tropes,
+          // Open Library's `series:X` subject tag has no volume number, so
+          // this can only ever backfill the series name, never series_index.
+          series: info.series ?? match.series ?? null,
+          series_index: info.series_index,
           isbn: info.isbn ?? match.isbn ?? null,
         };
       }
@@ -649,14 +655,17 @@ async function findInfoForBook(b: { isbn: string | null; title: string; author: 
 }
 
 // Only ever fills in fields the row doesn't already have — never overwrites
-// an existing cover/description/genres/isbn, on either backfillMissingCovers
-// or repopulateAllCovers below (repopulate's "replace" behavior is
-// cover-only, see there).
+// an existing cover/description/genres/tropes/series/isbn, on either
+// backfillMissingCovers or repopulateAllCovers below (repopulate's "replace"
+// behavior is cover-only, see there).
 function buildFillPatch(row: CatalogRow, info: FoundBookInfo): Record<string, any> {
   const patch: Record<string, any> = {};
   if (!row.cover_url && info.cover_url) patch.cover_url = info.cover_url;
   if (!row.description && info.description) patch.description = info.description;
   if ((!row.genres || row.genres.length === 0) && info.genres && info.genres.length) patch.genres = info.genres;
+  if ((!row.tropes || row.tropes.length === 0) && info.tropes && info.tropes.length) patch.tropes = info.tropes;
+  if (!row.series && info.series) patch.series = info.series;
+  if (row.series_index == null && info.series_index != null) patch.series_index = info.series_index;
   if (!row.isbn && info.isbn) patch.isbn = info.isbn;
   return patch;
 }
@@ -692,7 +701,7 @@ export async function backfillMissingCovers(
 export async function repopulateAllCovers(
   onProgress?: (done: number, total: number, updated: number) => void
 ): Promise<{ checked: number; updated: number }> {
-  const { data, error } = await supabase.from('books').select('id,isbn,title,author,cover_url,description,genres');
+  const { data, error } = await supabase.from('books').select('id,isbn,title,author,cover_url,description,genres,tropes,series,series_index');
   if (error) throw new Error(error.message);
   const rows = data ?? [];
   let updated = 0;

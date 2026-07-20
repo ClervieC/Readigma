@@ -1,7 +1,7 @@
 
 - je veux pourvoir ajouter des elements de "decoration" comme des plantes, une petite horloge, des cadres ou je peux ajouter une image (de ma gallery ou bien une cover d'un livre dans ma pale, ou lu ou entrain de lire)
 - le edit dans le "salon" permet d'ajouter les elements a la piece 
-- ajoute une bougie ou une tasse de thé/café, un globe terrestre,une lampe de bureau, un cadre-citation (texte au lieu d'une photo) 
+- ajoute une tasse de thé/café, un globe terrestre, une lampe de bureau, un cadre-citation (texte au lieu d'une photo) 
 - autres idees?
 
 183*229
@@ -27,7 +27,8 @@
 - classer les livres par auteur
 - ajouter aussi la possibilite de mettre des elements dans la bibliotheque (cadre, petite plante)
 - revoir comment on ajoute la deco et comment on les "gagne" (rendre certains elements payant)
-
-
+- pouvoir mettre plusieurs reactions, et un bouton pour effacer tous les emojis
+- ajouter des bougies
+- traduire en anglais
 
 

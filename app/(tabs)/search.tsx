@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import {
   View, Text, TextInput, ScrollView, TouchableOpacity,
   StyleSheet, Image, ActivityIndicator, Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { radius, fonts, ColorPalette } from '../../theme';
 import { useTheme } from '../../context/ThemeContext';
 import * as books from '../../lib/books';
@@ -16,7 +17,20 @@ import Button from '../../components/Button';
 import NotificationBell from '../../components/NotificationBell';
 import { onScrollToTop } from '../../lib/tabScrollEmitter';
 
-const BookItem = ({ book, onPress, onTagPress, added, last, colors, styles }: { book: any; onPress: (book: any) => void; onTagPress: (tag: string) => void; added: boolean; last: boolean; colors: ColorPalette; styles: any }) => {
+// Tags here are display-only (not tappable, unlike the popup/detail
+// screens) — the result row is already a tap target for opening that popup,
+// so a tag press underneath it would fight for the same gesture. Capped at
+// TAG_LIMIT with a trailing "…" pill instead of letting the row grow past
+// the card and wrap awkwardly.
+const TAG_LIMIT = 2;
+
+const STATUS_OPTIONS: { status: string; labelKey: string }[] = [
+  { status: 'to_read', labelKey: 'search.addToToRead' },
+  { status: 'reading', labelKey: 'search.currentlyReading' },
+  { status: 'done', labelKey: 'search.alreadyRead' },
+];
+
+const BookItem = ({ book, onPress, added, last, colors, styles }: { book: any; onPress: (book: any) => void; added: boolean; last: boolean; colors: ColorPalette; styles: any }) => {
   const tags = books.normalizeTags(book.genres);
   return (
     <Row last={last} onPress={() => onPress(book)}
@@ -35,18 +49,17 @@ const BookItem = ({ book, onPress, onTagPress, added, last, colors, styles }: { 
       <Text style={styles.resultAuthor}>{book.author}</Text>
       {tags.length > 0 && (
         <View style={styles.tags}>
-          {tags.map((g: string, j: number) => (
-            <TouchableOpacity key={j} onPress={(e) => { e.stopPropagation(); onTagPress(g); }} hitSlop={4}>
-              <Text style={styles.tagText}>{g}</Text>
-            </TouchableOpacity>
+          {tags.slice(0, TAG_LIMIT).map((g: string, j: number) => (
+            <Pill key={j} label={g} />
           ))}
+          {tags.length > TAG_LIMIT && <Pill label="…" />}
         </View>
       )}
     </Row>
   );
 };
 
-const HorizontalBooks = ({ books, onPress, addedBooks, colors, styles }: { books: any[]; onPress: (book: any) => void; addedBooks: Set<string>; colors: ColorPalette; styles: any }) => (
+const HorizontalBooks = ({ books, onPress, isOwned, colors, styles }: { books: any[]; onPress: (book: any) => void; isOwned: (book: any) => boolean; colors: ColorPalette; styles: any }) => (
   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.hScroll} contentContainerStyle={{ gap: 12 }}>
     {books.map((book, i) => (
       <TouchableOpacity key={i} style={styles.hCard} onPress={() => onPress(book)}>
@@ -55,7 +68,7 @@ const HorizontalBooks = ({ books, onPress, addedBooks, colors, styles }: { books
         </View>
         <Text style={styles.hTitle} numberOfLines={2}>{book.title}</Text>
         <Text style={styles.hAuthor} numberOfLines={1}>{book.author?.split(' ').slice(-1)[0]}</Text>
-        {addedBooks.has(book.external_id) && <Feather name="check-circle" size={13} color={colors.teal} style={{ marginTop: 4 }} />}
+        {isOwned(book) && <Feather name="check-circle" size={13} color={colors.teal} style={{ marginTop: 4 }} />}
       </TouchableOpacity>
     ))}
   </ScrollView>
@@ -63,12 +76,19 @@ const HorizontalBooks = ({ books, onPress, addedBooks, colors, styles }: { books
 
 export default function SearchScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
   const styles = makeStyles(colors);
+  const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
-  const [addedBooks, setAddedBooks] = useState<Set<string>>(new Set());
+  // The reader's actual library (external_id + title/author, see
+  // userBooks.bookKey) — reloaded on focus and after every add, so a book
+  // added in a past session, or via a different search provider (Open
+  // Library vs. BnF vs. Google Books each mint their own external_id), still
+  // shows as owned, and the popup knows *which* status it already has.
+  const [libraryBooks, setLibraryBooks] = useState<userBooks.UserBook[]>([]);
   const [successMsg, setSuccessMsg] = useState('');
   const [trending, setTrending] = useState<any[]>([]);
   const [popular, setPopular] = useState<any[]>([]);
@@ -82,15 +102,15 @@ export default function SearchScreen() {
   useEffect(() => { loadTrending(); }, []);
   useEffect(() => onScrollToTop('search', () => scrollRef.current?.scrollTo({ y: 0, animated: true })), []);
 
+  // Deliberately doesn't clear query/results on blur — tapping a result's
+  // cover/title (openBookDetail) or "..." menu navigates away to a real
+  // route (not just the popup closing), and coming back via the tab/back
+  // button should land on the same search, not an empty one.
   useFocusEffect(
     useCallback(() => {
       requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: 0, animated: false }));
       loadRecommendations();
-      return () => {
-        setQuery('');
-        setResults([]);
-        setSearched(false);
-      };
+      loadLibrary();
     }, [])
   );
 
@@ -101,6 +121,18 @@ export default function SearchScreen() {
       return books.getRecommendations(all, excludeIds);
     }).then(res => { setRecommended(res); setLoadingRecs(false); }).catch(() => setLoadingRecs(false));
   };
+
+  const loadLibrary = () => {
+    userBooks.getMyBooks().then(setLibraryBooks).catch(() => {});
+  };
+
+  const findOwned = (book: any): userBooks.UserBook | undefined => {
+    if (!book) return undefined;
+    const key = userBooks.bookKey(book.title, book.author);
+    return libraryBooks.find(b => b.external_id === book.external_id || userBooks.bookKey(b.title, b.author) === key);
+  };
+
+  const isOwned = (book: any) => !!findOwned(book);
 
   const loadTrending = () => {
     setLoadingTrending(true);
@@ -153,27 +185,45 @@ export default function SearchScreen() {
     }).catch(() => {});
   };
 
-  const addBook = (book: any, status: string = 'to_read') => {
-    if (addedBooks.has(book.external_id)) return;
+  // Tapping the cover/title in the preview popup goes straight to the full
+  // detail page rather than staying in the lightweight sheet — addBookToDb
+  // only upserts the shared `books` catalog row (same as openSeriesBook in
+  // app/book/[id].tsx), it doesn't add anything to the reader's own list.
+  const openBookDetail = (book: any) => {
     books.addBookToDb(book).then(row => {
-      userBooks.addBook(row.id, status).then(() => {
-        setAddedBooks(new Set([...addedBooks, book.external_id]));
+      setShowDetail(false);
+      router.push(`/book/${row.id}`);
+    }).catch(() => showSuccess(t('search.addError')));
+  };
+
+  const STATUS_TOAST_KEY: Record<string, string> = {
+    to_read: 'search.addedToRead',
+    reading: 'search.addedToReading',
+    done: 'search.addedToDone',
+  };
+
+  const addBook = (book: any, status: string = 'to_read') => {
+    const existing = findOwned(book);
+    if (existing?.status === status) return;
+    books.addBookToDb(book).then(row => {
+      userBooks.addBookSmart(row.id, status, book.title, book.author).then(() => {
+        loadLibrary();
         setShowDetail(false);
-        showSuccess(status === 'done' ? `"${book.title}" ajouté aux lus` : `"${book.title}" ajouté à ta pile`);
+        showSuccess(t(STATUS_TOAST_KEY[status] ?? 'search.addedToRead', { title: book.title }));
       });
-    }).catch(() => showSuccess("Erreur lors de l'ajout"));
+    }).catch(() => showSuccess(t('search.addError')));
   };
 
   const showSuccess = (msg: string) => {
     setSuccessMsg(msg);
-    const t = setTimeout(() => setSuccessMsg(''), 3000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setSuccessMsg(''), 3000);
+    return () => clearTimeout(timer);
   };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>Chercher</Text>
+        <Text style={styles.title}>{t('search.title')}</Text>
         <NotificationBell />
       </View>
 
@@ -183,7 +233,7 @@ export default function SearchScreen() {
           style={styles.input}
           value={query}
           onChangeText={setQuery}
-          placeholder="Titre, auteur, ISBN..."
+          placeholder={t('search.placeholder')}
           placeholderTextColor={colors.gray}
           returnKeyType="search"
           onSubmitEditing={search}
@@ -201,9 +251,9 @@ export default function SearchScreen() {
 
         {!loading && results.length > 0 && (
           <>
-            <Text style={styles.resultsCount}>{results.length} résultats pour "{query}"</Text>
+            <Text style={styles.resultsCount}>{t('search.resultsCount', { count: results.length, query })}</Text>
             {results.map((book, i) => (
-              <BookItem key={i} book={book} onPress={openDetail} onTagPress={searchByTag} added={addedBooks.has(book.external_id)} last={i === results.length - 1} colors={colors} styles={styles} />
+              <BookItem key={i} book={book} onPress={openDetail} added={isOwned(book)} last={i === results.length - 1} colors={colors} styles={styles} />
             ))}
           </>
         )}
@@ -211,7 +261,7 @@ export default function SearchScreen() {
         {!loading && searched && results.length === 0 && (
           <View style={styles.emptyState}>
             <Feather name="search" size={36} color={colors.gray} />
-            <Text style={styles.emptyText}>Aucun résultat pour "{query}"</Text>
+            <Text style={styles.emptyText}>{t('search.noResults', { query })}</Text>
           </View>
         )}
 
@@ -219,8 +269,8 @@ export default function SearchScreen() {
           <>
             {!loadingRecs && recommended.length > 0 && (
               <View>
-                <Text style={styles.sectionLabel}>Pour toi</Text>
-                <HorizontalBooks books={recommended} onPress={openDetail} addedBooks={addedBooks} colors={colors} styles={styles} />
+                <Text style={styles.sectionLabel}>{t('search.forYou')}</Text>
+                <HorizontalBooks books={recommended} onPress={openDetail} isOwned={isOwned} colors={colors} styles={styles} />
               </View>
             )}
             {loadingTrending ? (
@@ -229,14 +279,14 @@ export default function SearchScreen() {
               <>
                 {popular.length > 0 && (
                   <View>
-                    <Text style={styles.sectionLabel}>Populaires sur Readigma</Text>
-                    <HorizontalBooks books={popular} onPress={openDetail} addedBooks={addedBooks} colors={colors} styles={styles} />
+                    <Text style={styles.sectionLabel}>{t('search.popularOnReadigma')}</Text>
+                    <HorizontalBooks books={popular} onPress={openDetail} isOwned={isOwned} colors={colors} styles={styles} />
                   </View>
                 )}
                 {trending.map((section, i) => (
                   <View key={i}>
-                    <Text style={styles.sectionLabel}>{section.label}</Text>
-                    <HorizontalBooks books={section.books} onPress={openDetail} addedBooks={addedBooks} colors={colors} styles={styles} />
+                    <Text style={styles.sectionLabel}>{t(section.labelKey)}</Text>
+                    <HorizontalBooks books={section.books} onPress={openDetail} isOwned={isOwned} colors={colors} styles={styles} />
                   </View>
                 ))}
               </>
@@ -260,12 +310,16 @@ export default function SearchScreen() {
             {selectedBook && (
               <>
                 <View style={styles.modalBook}>
-                  <View style={styles.modalCover}>
-                    {selectedBook.cover_url ? <Image source={{ uri: selectedBook.cover_url }} style={styles.modalCoverImg} /> : <Feather name="book" size={28} color={colors.purple} />}
-                  </View>
+                  <TouchableOpacity onPress={() => openBookDetail(selectedBook)}>
+                    <View style={styles.modalCover}>
+                      {selectedBook.cover_url ? <Image source={{ uri: selectedBook.cover_url }} style={styles.modalCoverImg} /> : <Feather name="book" size={28} color={colors.purple} />}
+                    </View>
+                  </TouchableOpacity>
                   <View style={styles.modalInfo}>
-                    <Text style={styles.modalTitle}>{selectedBook.title}</Text>
-                    <Text style={styles.modalAuthor}>{selectedBook.author}</Text>
+                    <TouchableOpacity onPress={() => openBookDetail(selectedBook)}>
+                      <Text style={styles.modalTitle}>{selectedBook.title}</Text>
+                      <Text style={styles.modalAuthor}>{selectedBook.author}</Text>
+                    </TouchableOpacity>
                     <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                       {selectedBook.published_year ? <Text style={styles.modalYear}>{selectedBook.published_year}</Text> : null}
                       {selectedBook.ratingStats?.ratings_count > 0 && (
@@ -290,7 +344,7 @@ export default function SearchScreen() {
                     {selectedBook.description ? <Text style={styles.modalDesc}>{selectedBook.description}</Text> : null}
                     {selectedBook.reviews?.length > 0 && (
                       <View style={{ marginTop: selectedBook.description ? 16 : 0 }}>
-                        <Text style={styles.reviewsHeader}>Avis des lecteurs</Text>
+                        <Text style={styles.reviewsHeader}>{t('search.reviewsHeader')}</Text>
                         {selectedBook.reviews.map((r: any, i: number) => (
                           <View key={i} style={[styles.reviewItem, i < selectedBook.reviews.length - 1 && styles.reviewDivider]}>
                             <View style={styles.reviewAvatar}>
@@ -310,25 +364,22 @@ export default function SearchScreen() {
                   </ScrollView>
                 ) : null}
 
-                <Text style={styles.addLabel}>Ajouter à ma liste</Text>
+                <Text style={styles.addLabel}>
+                  {findOwned(selectedBook) ? t('search.yourStatus') : t('search.addToList')}
+                </Text>
                 <View style={{ gap: 8 }}>
-                  <Button
-                    label={addedBooks.has(selectedBook.external_id) ? 'Déjà ajouté' : 'Ajouter à ma pile à lire'}
-                    onPress={() => addBook(selectedBook, 'to_read')}
-                    disabled={addedBooks.has(selectedBook.external_id)}
-                  />
-                  <Button
-                    label="Je suis en train de lire"
-                    variant="ghost"
-                    onPress={() => addBook(selectedBook, 'reading')}
-                    disabled={addedBooks.has(selectedBook.external_id)}
-                  />
-                  <Button
-                    label="Je l'ai déjà lu"
-                    variant="ghost"
-                    onPress={() => addBook(selectedBook, 'done')}
-                    disabled={addedBooks.has(selectedBook.external_id)}
-                  />
+                  {STATUS_OPTIONS.map((opt) => {
+                    const current = findOwned(selectedBook)?.status === opt.status;
+                    return (
+                      <Button
+                        key={opt.status}
+                        label={t(opt.labelKey)}
+                        variant={current ? 'primary' : 'ghost'}
+                        onPress={() => addBook(selectedBook, opt.status)}
+                        disabled={current}
+                      />
+                    );
+                  })}
                 </View>
               </>
             )}
@@ -358,8 +409,7 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   coverImg: { width: 44, height: 60 },
   resultTitle: { fontSize: 13, fontWeight: '700', color: colors.white },
   resultAuthor: { fontSize: 11, color: colors.gray, marginTop: 2 },
-  tags: { flexDirection: 'row', gap: 8, marginTop: 4 },
-  tagText: { fontSize: 10, color: colors.lavender },
+  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
   addBtn: {
     width: 32, height: 32, borderRadius: 16,
     borderWidth: 1, borderColor: colors.divider,

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, ActivityIndicator, ScrollView, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import * as books from '../lib/books';
@@ -27,6 +28,7 @@ export const EMPTY_BOOK_FORM: BookFormFields = {
 export default function BookForm({ value, onChange, requireAuthor }: { value: BookFormFields; onChange: (next: BookFormFields) => void; requireAuthor?: boolean }) {
   const { colors } = useTheme();
   const styles = makeStyles(colors);
+  const { t } = useTranslation();
   const [coverResults, setCoverResults] = useState<books.NormalizedBook[]>([]);
   const [searchingCover, setSearchingCover] = useState(false);
   const [searchingIsbnCover, setSearchingIsbnCover] = useState(false);
@@ -53,7 +55,7 @@ export default function BookForm({ value, onChange, requireAuthor }: { value: Bo
     books.findCoverByIsbn(value.isbn.trim()).then(url => {
       setSearchingIsbnCover(false);
       if (url) set({ cover_url: url });
-      else Alert.alert('Introuvable', "Aucune couverture trouvée pour cet ISBN.");
+      else Alert.alert(t('bookForm.notFound'), t('bookForm.noCoverFoundForIsbn'));
     }).catch(() => setSearchingIsbnCover(false));
   };
 
@@ -64,24 +66,24 @@ export default function BookForm({ value, onChange, requireAuthor }: { value: Bo
 
   return (
     <View>
-      <Text style={styles.label}>Titre *</Text>
-      <TextInput style={styles.input} value={value.title} onChangeText={t => set({ title: t })} placeholderTextColor={colors.gray} />
+      <Text style={styles.label}>{t('bookForm.titleLabel')}</Text>
+      <TextInput style={styles.input} value={value.title} onChangeText={v => set({ title: v })} placeholderTextColor={colors.gray} />
 
-      <Text style={styles.label}>Auteur{requireAuthor ? ' *' : ''}</Text>
-      <TextInput style={styles.input} value={value.author} onChangeText={t => set({ author: t })} placeholderTextColor={colors.gray} />
+      <Text style={styles.label}>{t('bookForm.authorLabel')}{requireAuthor ? ' *' : ''}</Text>
+      <TextInput style={styles.input} value={value.author} onChangeText={v => set({ author: v })} placeholderTextColor={colors.gray} />
 
-      <Text style={styles.label}>ISBN</Text>
-      <TextInput style={styles.input} value={value.isbn} onChangeText={t => set({ isbn: t })} placeholder="978-2-070..." placeholderTextColor={colors.gray} keyboardType="default" autoCapitalize="none" />
+      <Text style={styles.label}>{t('bookForm.isbnLabel')}</Text>
+      <TextInput style={styles.input} value={value.isbn} onChangeText={v => set({ isbn: v })} placeholder="978-2-070..." placeholderTextColor={colors.gray} keyboardType="default" autoCapitalize="none" />
 
       {value.isbn.trim() ? (
         <TouchableOpacity style={styles.coverSearchBtn} onPress={searchCoverByIsbn} disabled={searchingIsbnCover}>
           {searchingIsbnCover ? <ActivityIndicator size="small" color={colors.purple} /> : <Feather name="hash" size={14} color={colors.purple} />}
-          <Text style={styles.coverSearchText}>{searchingIsbnCover ? 'Recherche...' : 'Trouver la couverture via ISBN'}</Text>
+          <Text style={styles.coverSearchText}>{searchingIsbnCover ? t('bookForm.searching') : t('bookForm.findCoverByIsbn')}</Text>
         </TouchableOpacity>
       ) : null}
 
-      <Text style={styles.label}>URL de couverture</Text>
-      <TextInput style={styles.input} value={value.cover_url} onChangeText={t => set({ cover_url: t })} placeholder="https://..." placeholderTextColor={colors.gray} autoCapitalize="none" />
+      <Text style={styles.label}>{t('bookForm.coverUrlLabel')}</Text>
+      <TextInput style={styles.input} value={value.cover_url} onChangeText={v => set({ cover_url: v })} placeholder="https://..." placeholderTextColor={colors.gray} autoCapitalize="none" />
 
       {value.cover_url ? (
         <View style={styles.coverPreviewWrap}>
@@ -91,7 +93,7 @@ export default function BookForm({ value, onChange, requireAuthor }: { value: Bo
 
       <TouchableOpacity style={styles.coverSearchBtn} onPress={searchCover} disabled={searchingCover || !value.title.trim()}>
         {searchingCover ? <ActivityIndicator size="small" color={colors.purple} /> : <Feather name="search" size={14} color={colors.purple} />}
-        <Text style={styles.coverSearchText}>{searchingCover ? 'Recherche...' : 'Chercher une couverture'}</Text>
+        <Text style={styles.coverSearchText}>{searchingCover ? t('bookForm.searching') : t('bookForm.searchCover')}</Text>
       </TouchableOpacity>
 
       {coverResults.length > 0 && (
@@ -104,25 +106,25 @@ export default function BookForm({ value, onChange, requireAuthor }: { value: Bo
         </ScrollView>
       )}
 
-      <Text style={styles.label}>Description</Text>
-      <TextInput style={[styles.input, styles.textarea]} value={value.description} onChangeText={t => set({ description: t })} multiline placeholderTextColor={colors.gray} />
+      <Text style={styles.label}>{t('bookForm.descriptionLabel')}</Text>
+      <TextInput style={[styles.input, styles.textarea]} value={value.description} onChangeText={v => set({ description: v })} multiline placeholderTextColor={colors.gray} />
 
-      <Text style={styles.label}>Genres (séparés par des virgules)</Text>
-      <TextInput style={styles.input} value={value.genres} onChangeText={t => set({ genres: t })} placeholder="Fantasy, Thriller..." placeholderTextColor={colors.gray} />
+      <Text style={styles.label}>{t('bookForm.genresLabel')}</Text>
+      <TextInput style={styles.input} value={value.genres} onChangeText={v => set({ genres: v })} placeholder="Fantasy, Thriller..." placeholderTextColor={colors.gray} />
 
       <View style={styles.row}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.label}>Année</Text>
-          <TextInput style={styles.input} value={value.published_year} onChangeText={t => set({ published_year: t })} keyboardType="number-pad" placeholderTextColor={colors.gray} />
+          <Text style={styles.label}>{t('bookForm.yearLabel')}</Text>
+          <TextInput style={styles.input} value={value.published_year} onChangeText={v => set({ published_year: v })} keyboardType="number-pad" placeholderTextColor={colors.gray} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.label}>Tome</Text>
-          <TextInput style={styles.input} value={value.series_index} onChangeText={t => set({ series_index: t })} keyboardType="decimal-pad" placeholderTextColor={colors.gray} />
+          <Text style={styles.label}>{t('bookForm.tomeLabel')}</Text>
+          <TextInput style={styles.input} value={value.series_index} onChangeText={v => set({ series_index: v })} keyboardType="decimal-pad" placeholderTextColor={colors.gray} />
         </View>
       </View>
 
-      <Text style={styles.label}>Série</Text>
-      <TextInput style={styles.input} value={value.series} onChangeText={t => set({ series: t })} placeholderTextColor={colors.gray} />
+      <Text style={styles.label}>{t('bookForm.seriesLabel')}</Text>
+      <TextInput style={styles.input} value={value.series} onChangeText={v => set({ series: v })} placeholderTextColor={colors.gray} />
     </View>
   );
 }

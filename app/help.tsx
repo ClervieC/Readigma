@@ -2,36 +2,28 @@ import { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { fonts, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import Screen from '../components/Screen';
-
-const FAQ = [
-  { q: 'Comment ajouter un livre à ma bibliothèque ?', a: 'Dans "Découvrir" ou "Chercher", appuie sur un livre pour voir ses détails, puis choisis son statut : À lire, En cours ou Lu.' },
-  { q: 'Comment suivre ma progression de lecture ?', a: 'Ouvre un livre depuis ta bibliothèque, puis utilise le chrono ou le bouton "Mettre à jour" pour saisir ta page actuelle ou ton pourcentage.' },
-  { q: 'Comment ajouter des amis ?', a: 'Va dans Profil → Amis lecteurs → onglet "Chercher". Tape le nom d\'un utilisateur et envoie-lui une demande.' },
-  { q: 'Le fil d\'actualité est vide, pourquoi ?', a: 'Le feed affiche l\'activité de tes amis. Commence par en ajouter via la section "Amis lecteurs" dans ton profil.' },
-  { q: 'Comment définir un objectif de lecture ?', a: 'Profil → Reading Goal. Tu peux choisir un nombre de livres à lire sur l\'année et suivre ta progression mois par mois.' },
-  { q: 'Comment fonctionne "Choisir pour moi" ?', a: 'Dans l\'onglet Découvrir, ce bouton pioche au hasard un livre dans ta pile "À lire". Il faut avoir des livres dans cette liste.' },
-  { q: 'Comment réagir à ma lecture ?', a: 'Sur la page de détail d\'un livre, tu peux ajouter des réactions (emoji + note) à n\'importe quelle page. Elles apparaissent dans le feed de tes amis.' },
-  { q: 'Mes notifications ne fonctionnent pas.', a: 'Assure-toi d\'avoir autorisé les notifications pour Readigma dans les paramètres de ton téléphone. Les notifs push arrivent dès qu\'un ami t\'envoie une demande.' },
-];
 
 export default function HelpScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const styles = makeStyles(colors);
+  const { t } = useTranslation();
+  const FAQ = t('help.faq', { returnObjects: true }) as { q: string; a: string }[];
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   return (
-    <Screen back title="Aide">
+    <Screen back title={t('help.title')}>
       <View style={styles.hero}>
         <Feather name="help-circle" size={28} color={colors.purple} />
-        <Text style={styles.heroTitle}>Comment ça marche ?</Text>
-        <Text style={styles.heroSub}>Tout ce qu'il faut savoir pour bien utiliser Readigma.</Text>
+        <Text style={styles.heroTitle}>{t('help.heroTitle')}</Text>
+        <Text style={styles.heroSub}>{t('help.heroSub')}</Text>
       </View>
 
-      <Text style={styles.sectionTitle}>Questions fréquentes</Text>
+      <Text style={styles.sectionTitle}>{t('help.sectionTitle')}</Text>
       {FAQ.map((item, i) => (
         <TouchableOpacity key={i} style={[styles.faqItem, i < FAQ.length - 1 && styles.divider]} activeOpacity={0.7} onPress={() => setOpenIndex(openIndex === i ? null : i)}>
           <View style={styles.faqHeader}>
@@ -43,11 +35,11 @@ export default function HelpScreen() {
       ))}
 
       <View style={styles.contactCard}>
-        <Text style={styles.contactTitle}>Un problème non résolu ?</Text>
-        <Text style={styles.contactSub}>Écris-nous, notre équipe répond généralement sous 48 h.</Text>
+        <Text style={styles.contactTitle}>{t('help.contactTitle')}</Text>
+        <Text style={styles.contactSub}>{t('help.contactSub')}</Text>
         <TouchableOpacity style={styles.contactBtn} onPress={() => router.push('/contact')}>
           <Feather name="message-circle" size={16} color="#FFFFFF" />
-          <Text style={styles.contactBtnText}>Contacter l'équipe</Text>
+          <Text style={styles.contactBtnText}>{t('help.contactBtn')}</Text>
         </TouchableOpacity>
       </View>
     </Screen>

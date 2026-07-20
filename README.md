@@ -51,12 +51,12 @@ readigma/
 │   ├── (auth)/          login, register
 │   ├── (tabs)/           Découvrir, Feed, Bibliothèque, Chercher, Profil
 │   ├── book/[id].tsx     book detail (status, progress, ratings, reactions)
-│   ├── friends/          friends list/search + a friend's public profile
+│   ├── friends/          following/followers list/search + another user's public profile
 │   ├── goal.tsx, suggest-book.tsx, notifications.tsx, edit-profile.tsx, onboarding.tsx, help.tsx
-│   └── api/push/send+api.ts   the only server code: looks up a push token and sends the notification
+│   └── api/push/send+api.ts, api/hardcover-lookup+api.ts   the only server code
 ├── lib/                  supabase.ts (the client), books.ts (talks to Open Library directly),
 │                         pendingUsername.ts (email-confirmation signup flow), and one module
-│                         per other feature (userBooks, friends, goals, feed, suggestions)
+│                         per other feature (userBooks, follows, goals, feed, suggestions)
 ├── context/              AuthContext (session + profile), ThemeContext (dark/light)
 ├── components/           shared UI (TabBar, ...)
 ├── theme/                color palette, radius, shadows

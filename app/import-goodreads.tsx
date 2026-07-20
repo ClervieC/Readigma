@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import { Feather } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { fonts, radius, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import { importGoodreadsCsv, ImportProgress } from '../lib/goodreadsImport';
@@ -15,6 +16,7 @@ export default function ImportGoodreadsScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const styles = makeStyles(colors);
+  const { t } = useTranslation();
   const [status, setStatus] = useState<Status>('idle');
   const [progress, setProgress] = useState<ImportProgress | null>(null);
   const [result, setResult] = useState<{ booksCount: number; importedCount: number } | null>(null);
@@ -34,29 +36,29 @@ export default function ImportGoodreadsScreen() {
       setResult(outcome);
       setStatus('done');
     } catch (e: any) {
-      setError(e.message || "Erreur lors de l'import");
+      setError(e.message || t('importGoodreads.errors.importFailed'));
       setStatus('error');
     }
   };
 
   const progressLabel = () => {
-    if (!progress) return 'Import en cours...';
-    if (progress.phase === 'books') return `Livres : ${progress.current}/${progress.total}`;
-    return `Ajout à ta bibliothèque : ${progress.current}/${progress.total}`;
+    if (!progress) return t('importGoodreads.importing');
+    if (progress.phase === 'books') return t('importGoodreads.booksProgress', { current: progress.current, total: progress.total });
+    return t('importGoodreads.addingToLibrary', { current: progress.current, total: progress.total });
   };
 
   return (
-    <Screen back title="Importer depuis Goodreads">
+    <Screen back title={t('importGoodreads.title')}>
       <View style={styles.hero}>
         <Feather name="upload" size={28} color={colors.purple} />
-        <Text style={styles.heroTitle}>Importer ta bibliothèque Goodreads</Text>
+        <Text style={styles.heroTitle}>{t('importGoodreads.heroTitle')}</Text>
         <Text style={styles.heroSub}>
-          Sur Goodreads : Mes Livres → Outils → Importer/Exporter → "Export Library". Choisis ensuite le fichier .csv téléchargé ci-dessous.
+          {t('importGoodreads.heroSub')}
         </Text>
       </View>
 
       {(status === 'idle' || status === 'error') && (
-        <Button label="Choisir un fichier CSV" onPress={pickAndImport} />
+        <Button label={t('importGoodreads.chooseCsv')} onPress={pickAndImport} />
       )}
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -64,23 +66,23 @@ export default function ImportGoodreadsScreen() {
       {(status === 'reading' || status === 'importing') && (
         <View style={styles.progressBox}>
           <ActivityIndicator color={colors.purple} />
-          <Text style={styles.progressText}>{status === 'reading' ? 'Lecture du fichier...' : progressLabel()}</Text>
+          <Text style={styles.progressText}>{status === 'reading' ? t('importGoodreads.readingFile') : progressLabel()}</Text>
         </View>
       )}
 
       {status === 'done' && result && (
         <View style={styles.doneBox}>
           <Feather name="check-circle" size={32} color={colors.teal} />
-          <Text style={styles.doneTitle}>Import terminé</Text>
+          <Text style={styles.doneTitle}>{t('importGoodreads.importDone')}</Text>
           <Text style={styles.doneSub}>
-            {result.importedCount} livre{result.importedCount > 1 ? 's' : ''} ajouté{result.importedCount > 1 ? 's' : ''} à ta bibliothèque, tous en format liseuse.
+            {t('importGoodreads.importedCount', { count: result.importedCount })}
           </Text>
-          <Button label="Voir ma bibliothèque" onPress={() => router.push('/(tabs)/library')} style={{ marginTop: 16, alignSelf: 'stretch' }} />
+          <Button label={t('importGoodreads.viewLibrary')} onPress={() => router.push('/(tabs)/library')} style={{ marginTop: 16, alignSelf: 'stretch' }} />
         </View>
       )}
 
       <Text style={styles.note}>
-        Le statut (à lire / en cours / lu), la note et la série sont repris directement de ton export Goodreads. Réimporter le même fichier plus tard ne crée pas de doublons.
+        {t('importGoodreads.note')}
       </Text>
     </Screen>
   );

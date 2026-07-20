@@ -66,7 +66,7 @@ create table user_books (
   user_id          uuid not null references profiles(id) on delete cascade,
   book_id          uuid not null references books(id) on delete cascade,
   status           varchar(20) not null default 'to_read', -- 'to_read' | 'reading' | 'done' | 'dnf'
-  format           varchar(20),                             -- 'physical' | 'ereader'
+  formats          text[] not null default '{}',            -- any of 'physical' | 'ereader' | 'audiobook'
   rating           numeric(3,2),                            -- quarter-point increments, 0–5
   comment          text,
   current_page     int not null default 0,
@@ -109,26 +109,30 @@ create table shelf_frames (
   user_id       uuid not null references profiles(id) on delete cascade,
   status        varchar(20) not null,
   position      int not null default 0,
-  kind          varchar(10) not null default 'frame', -- 'frame' | 'plant'
+  kind          varchar(10) not null default 'frame', -- 'frame' | 'plant' | 'clock' | 'candle'
   book_id       uuid references books(id) on delete set null,
   image_url     text,
   manual_tilt   smallint,     -- -1/0/1 = user-chosen tilt; null = automatic
   created_at    timestamptz not null default now()
 );
 
-create table friendships (
-  id            uuid primary key default gen_random_uuid(),
-  requester_id  uuid not null references profiles(id) on delete cascade,
-  receiver_id   uuid not null references profiles(id) on delete cascade,
-  status        varchar(20) not null default 'pending', -- 'pending' | 'accepted'
-  created_at    timestamptz not null default now()
+-- Asymmetric follow (like Twitter/Instagram) — following someone needs no
+-- acceptance from them. See migration 034 for the earlier mutual
+-- "friendships" (request + accept) model this replaced.
+create table follows (
+  id           uuid primary key default gen_random_uuid(),
+  follower_id  uuid not null references profiles(id) on delete cascade,
+  followee_id  uuid not null references profiles(id) on delete cascade,
+  created_at   timestamptz not null default now(),
+  unique (follower_id, followee_id),
+  constraint follows_no_self check (follower_id <> followee_id)
 );
 
 create table reading_reactions (
   id               uuid primary key default gen_random_uuid(),
   user_id          uuid not null references profiles(id) on delete cascade,
   book_id          uuid not null references books(id) on delete cascade,
-  emoji            varchar(16),
+  emoji            varchar(64),
   note             text,
   progress_percent numeric(5,2),
   page_number      int,
@@ -360,7 +364,7 @@ alter table push_tokens enable row level security;
 alter table books enable row level security;
 alter table user_books enable row level security;
 alter table shelf_frames enable row level security;
-alter table friendships enable row level security;
+alter table follows enable row level security;
 alter table reading_reactions enable row level security;
 alter table activity_feed enable row level security;
 alter table reading_goals enable row level security;
@@ -423,17 +427,15 @@ create policy activity_feed_owner_insert on activity_feed for insert
 create policy reading_goals_owner on reading_goals for all
   to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 
--- friendships: visible/editable only to the two people involved. Only the
--- receiver can accept or delete (decline/remove), matching the old
--- `PUT /request/:id/accept` and `DELETE /request/:id` behavior exactly.
-create policy friendships_select_involved on friendships for select
-  to authenticated using (requester_id = auth.uid() or receiver_id = auth.uid());
-create policy friendships_insert_as_requester on friendships for insert
-  to authenticated with check (requester_id = auth.uid());
-create policy friendships_update_as_receiver on friendships for update
-  to authenticated using (receiver_id = auth.uid());
-create policy friendships_delete_as_receiver on friendships for delete
-  to authenticated using (receiver_id = auth.uid());
+-- follows: visible to any signed-in user (follower/following lists and
+-- counts are meant to be public on a profile), but only the follower
+-- themself can create or remove their own follow row.
+create policy follows_select_any on follows for select
+  to authenticated using (true);
+create policy follows_insert_as_follower on follows for insert
+  to authenticated with check (follower_id = auth.uid());
+create policy follows_delete_as_follower on follows for delete
+  to authenticated using (follower_id = auth.uid());
 
 -- book_suggestions: authors see their own; admins (profiles.role = 'admin')
 -- see and moderate all, replacing the old `/suggestions/admin` routes.
@@ -555,19 +557,14 @@ language sql security definer set search_path = public stable as $$
   left join (select feed_id, count(*) as count from feed_comments group by feed_id) cc on cc.feed_id = af.id
   left join (select feed_id, true as liked from feed_likes where user_id = auth.uid()) ml on ml.feed_id = af.id
   where af.user_id = auth.uid()
-     or af.user_id in (
-       select case when f.requester_id = auth.uid() then f.receiver_id else f.requester_id end
-       from friendships f
-       where f.status = 'accepted'
-         and (f.requester_id = auth.uid() or f.receiver_id = auth.uid())
-     )
+     or af.user_id in (select followee_id from follows where follower_id = auth.uid())
   order by af.created_at desc
   limit 50;
 $$;
 
 -- Backs toggle_feed_like/add_feed_comment/get_feed_comments below: a post is
 -- only actionable by the same audience get_feed()'s union already grants
--- read access to (the author, or an accepted friend of theirs).
+-- read access to (the author, or someone the viewer follows).
 create or replace function is_feed_visible(p_feed_id uuid)
 returns boolean
 language sql security definer set search_path = public stable as $$
@@ -576,12 +573,7 @@ language sql security definer set search_path = public stable as $$
     where af.id = p_feed_id
       and (
         af.user_id = auth.uid()
-        or af.user_id in (
-          select case when f.requester_id = auth.uid() then f.receiver_id else f.requester_id end
-          from friendships f
-          where f.status = 'accepted'
-            and (f.requester_id = auth.uid() or f.receiver_id = auth.uid())
-        )
+        or af.user_id in (select followee_id from follows where follower_id = auth.uid())
       )
   );
 $$;
@@ -687,13 +679,13 @@ $$;
 -- format_stats()/reading_time_stats() compute for the *caller's own* data
 -- (those stay security invoker / auth.uid()-scoped); this is the security
 -- definer path for viewing someone else's.
-create or replace function friend_profile(p_user_id uuid)
+create or replace function get_user_profile(p_user_id uuid)
 returns table (
   username text, avatar_url text,
   done_count bigint, to_read_count bigint, reading_count bigint, avg_rating numeric,
   currently_reading jsonb,
   goal_target int, goal_books_read bigint,
-  physical_count bigint, ereader_count bigint,
+  physical_count bigint, ereader_count bigint, audiobook_count bigint,
   reading_seconds bigint,
   reviews jsonb
 )
@@ -706,7 +698,7 @@ language sql security definer set search_path = public stable as $$
     round(avg(ub.rating) filter (where ub.rating is not null), 2),
     coalesce((
       select jsonb_agg(jsonb_build_object(
-        'title', b2.title, 'author', b2.author, 'genres', b2.genres, 'cover_url', b2.cover_url,
+        'id', b2.id, 'title', b2.title, 'author', b2.author, 'genres', b2.genres, 'cover_url', b2.cover_url,
         'progress_percent', ub2.progress_percent,
         'current_page', ub2.current_page, 'total_pages', ub2.total_pages
       ) order by ub2.updated_at desc)
@@ -722,8 +714,9 @@ language sql security definer set search_path = public stable as $$
     (select count(*) from user_books ub3
        where ub3.user_id = p_user_id and ub3.status = 'done'
          and extract(year from ub3.finished_at) = extract(year from now())),
-    count(*) filter (where ub.format = 'physical'),
-    count(*) filter (where ub.format = 'ereader'),
+    count(*) filter (where 'physical' = any(ub.formats)),
+    count(*) filter (where 'ereader' = any(ub.formats)),
+    count(*) filter (where 'audiobook' = any(ub.formats)),
     (select coalesce(sum(rs.duration_seconds), 0) from reading_sessions rs where rs.user_id = p_user_id and rs.duration_seconds is not null),
     coalesce((
       select jsonb_agg(jsonb_build_object(
@@ -751,28 +744,29 @@ language sql security definer set search_path = public stable as $$
   limit 20;
 $$;
 
-create or replace function list_friends()
+create or replace function list_following()
 returns table (id uuid, username text, avatar_url text, books_count bigint)
 language sql security definer set search_path = public stable as $$
   select p.id, p.username, p.avatar_url, count(ub.id) filter (where ub.status = 'done')
-  from friendships f
-  join profiles p on p.id = case when f.requester_id = auth.uid() then f.receiver_id else f.requester_id end
+  from follows f
+  join profiles p on p.id = f.followee_id
   left join user_books ub on ub.user_id = p.id
-  where f.status = 'accepted' and (f.requester_id = auth.uid() or f.receiver_id = auth.uid())
+  where f.follower_id = auth.uid()
   group by p.id;
 $$;
 
--- security invoker (not definer, unlike the two above): friendships RLS
--- already lets the receiver see their own pending rows, and profiles are
--- readable by any signed-in user, so no cross-user RLS gap to bridge here.
-create or replace function list_pending_requests()
-returns table (id uuid, username text, avatar_url text, created_at timestamptz)
-language sql security invoker stable as $$
-  select f.id, p.username, p.avatar_url, f.created_at
-  from friendships f
-  join profiles p on p.id = f.requester_id
-  where f.receiver_id = auth.uid() and f.status = 'pending'
-  order by f.created_at desc;
+-- followed_back lets the UI offer "Suivre en retour" vs. just "Abonné(e)"
+-- for each entry in the caller's followers list.
+create or replace function list_followers()
+returns table (id uuid, username text, avatar_url text, books_count bigint, followed_back boolean)
+language sql security definer set search_path = public stable as $$
+  select p.id, p.username, p.avatar_url, count(ub.id) filter (where ub.status = 'done'),
+    exists(select 1 from follows fb where fb.follower_id = auth.uid() and fb.followee_id = p.id)
+  from follows f
+  join profiles p on p.id = f.follower_id
+  left join user_books ub on ub.user_id = p.id
+  where f.followee_id = auth.uid()
+  group by p.id;
 $$;
 
 -- external_id travels along so the client can treat a popular result exactly
@@ -814,14 +808,18 @@ language sql security invoker stable as $$
   where user_id = auth.uid() and duration_seconds is not null;
 $$;
 
--- Physical vs. e-reader split for the profile screen (lib/userBooks.ts) —
--- counts every book the reader has tagged with a format, any status.
+-- Physical vs. e-reader vs. audiobook split for the profile screen
+-- (lib/userBooks.ts) — counts every book the reader has tagged with a given
+-- format, any status. A book can carry more than one format (e.g. read
+-- physically then relistened to as an audiobook), so counts don't sum to
+-- the total number of books.
 create or replace function format_stats()
-returns table (physical_count bigint, ereader_count bigint)
+returns table (physical_count bigint, ereader_count bigint, audiobook_count bigint)
 language sql security invoker stable as $$
   select
-    count(*) filter (where format = 'physical'),
-    count(*) filter (where format = 'ereader')
+    count(*) filter (where 'physical' = any(formats)),
+    count(*) filter (where 'ereader' = any(formats)),
+    count(*) filter (where 'audiobook' = any(formats))
   from user_books
   where user_id = auth.uid();
 $$;
@@ -829,7 +827,7 @@ $$;
 -- Community rating average + individual reviews for the book detail screen
 -- (lib/userBooks.ts) — reads every finished reader's rating/comment for a
 -- book, not just the caller's own, so this needs security definer like
--- friend_profile()/popular_books() above.
+-- get_user_profile()/popular_books() above.
 create or replace function book_rating_stats(p_book_id uuid)
 returns table (avg_rating numeric, ratings_count int)
 language sql security definer set search_path = public stable as $$
@@ -973,25 +971,23 @@ language sql security invoker stable as $$
     (select round(days::numeric, 1) from done order by days asc limit 1);
 $$;
 
--- Average books finished this year across the caller's accepted friends —
+-- Average books finished this year across who the caller follows —
 -- security definer since it reads other users' user_books, same pattern as
--- list_friends()/friend_profile() above.
-create or replace function friends_avg_books_this_year()
-returns table (friend_count int, avg_books numeric)
+-- list_following()/get_user_profile() above.
+create or replace function following_avg_books_this_year()
+returns table (following_count int, avg_books numeric)
 language sql security definer set search_path = public stable as $$
-  with friend_ids as (
-    select case when f.requester_id = auth.uid() then f.receiver_id else f.requester_id end as id
-    from friendships f
-    where f.status = 'accepted' and (f.requester_id = auth.uid() or f.receiver_id = auth.uid())
+  with following_ids as (
+    select followee_id as id from follows where follower_id = auth.uid()
   ),
   counts as (
     select fi.id, count(ub.id) as cnt
-    from friend_ids fi
+    from following_ids fi
     left join user_books ub on ub.user_id = fi.id and ub.status = 'done'
       and extract(year from ub.finished_at) = extract(year from now())
     group by fi.id
   )
-  select (select count(*) from friend_ids)::int, round(avg(cnt)::numeric, 1) from counts;
+  select (select count(*) from following_ids)::int, round(avg(cnt)::numeric, 1) from counts;
 $$;
 
 -- Backs the badges page (app/badges.tsx, lib/badges.ts) — badges themselves

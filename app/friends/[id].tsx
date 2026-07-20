@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, ActivityIndicator, Modal, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { fonts, ColorPalette } from '../../theme';
+import { useTranslation } from 'react-i18next';
+import { fonts, radius, ColorPalette } from '../../theme';
 import { useTheme } from '../../context/ThemeContext';
-import * as friends from '../../lib/friends';
+import * as follows from '../../lib/follows';
 import Pill from '../../components/Pill';
 import ProgressBar from '../../components/ProgressBar';
 import { formatDuration } from '../../lib/timer';
@@ -14,21 +15,34 @@ export default function UserProfileScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const styles = makeStyles(colors);
+  const { t } = useTranslation();
   const { id, username } = useLocalSearchParams<{ id: string; username?: string }>();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
+  const [followLoading, setFollowLoading] = useState(false);
 
   useEffect(() => {
-    friends.getUserProfile(id).then(setData).catch(() => {}).finally(() => setLoading(false));
+    follows.getUserProfile(id).then(setData).catch(() => {}).finally(() => setLoading(false));
+    follows.isFollowing(id).then(setIsFollowing).catch(() => {});
   }, [id]);
+
+  const toggleFollow = () => {
+    if (isFollowing === null) return;
+    setFollowLoading(true);
+    (isFollowing ? follows.unfollowUser(id) : follows.followUser(id))
+      .then(() => setIsFollowing(!isFollowing))
+      .catch(() => Alert.alert(t('common.error'), isFollowing ? t('follows.errors.unfollow') : t('userProfile.errors.follow')))
+      .finally(() => setFollowLoading(false));
+  };
 
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()}><Feather name="arrow-left" size={20} color={colors.white} /></TouchableOpacity>
-          <Text style={styles.headerTitle}>{username ?? 'Profil'}</Text>
+          <Text style={styles.headerTitle}>{username ?? t('userProfile.defaultTitle')}</Text>
           <View style={{ width: 20 }} />
         </View>
         <View style={styles.loader}><ActivityIndicator color={colors.lavender} size="large" /></View>
@@ -42,21 +56,20 @@ export default function UserProfileScreen() {
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()}><Feather name="arrow-left" size={20} color={colors.white} /></TouchableOpacity>
         </View>
-        <View style={styles.loader}><Text style={styles.errorText}>Impossible de charger ce profil</Text></View>
+        <View style={styles.loader}><Text style={styles.errorText}>{t('userProfile.loadError')}</Text></View>
       </SafeAreaView>
     );
   }
 
   const { user, stats, currentlyReading, goal, formatStats, readingSeconds, reviews } = data;
-  const formatTotal = formatStats.physical_count + formatStats.ereader_count;
-  const physicalPct = formatTotal > 0 ? Math.round((formatStats.physical_count / formatTotal) * 100) : 0;
+  const formatTotal = formatStats.physical_count + formatStats.ereader_count + formatStats.audiobook_count;
   const goalPct = goal ? Math.min((goal.booksRead / goal.target) * 100, 100) : 0;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}><Feather name="arrow-left" size={20} color={colors.white} /></TouchableOpacity>
-        <Text style={styles.headerTitle}>Profil</Text>
+        <Text style={styles.headerTitle}>{t('userProfile.defaultTitle')}</Text>
         <TouchableOpacity onPress={() => setShowMoreMenu(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Feather name="more-vertical" size={20} color={colors.white} />
         </TouchableOpacity>
@@ -74,7 +87,7 @@ export default function UserProfileScreen() {
                 }}
               >
                 <Feather name="flag" size={16} color={colors.error} />
-                <Text style={[styles.menuRowText, { color: colors.error }]}>Signaler ce profil</Text>
+                <Text style={[styles.menuRowText, { color: colors.error }]}>{t('userProfile.reportProfile')}</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
@@ -92,14 +105,29 @@ export default function UserProfileScreen() {
           )}
           <Text style={styles.name}>{user.username}</Text>
           <Text style={styles.handle}>@{user.username?.toLowerCase()}</Text>
+          {isFollowing !== null && (
+            <TouchableOpacity
+              style={[styles.followBtn, isFollowing && styles.followBtnActive]}
+              onPress={toggleFollow}
+              disabled={followLoading}
+            >
+              {followLoading ? (
+                <ActivityIndicator size="small" color={isFollowing ? colors.white : 'white'} />
+              ) : (
+                <Text style={[styles.followBtnText, isFollowing && styles.followBtnTextActive]}>
+                  {isFollowing ? t('userProfile.following') : t('follows.follow')}
+                </Text>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.statsRow}>
           {[
-            { num: stats.done_count ?? 0,    label: 'Lus',      color: colors.success },
-            { num: stats.reading_count ?? 0, label: 'En cours', color: colors.cyan },
-            { num: stats.to_read_count ?? 0, label: 'À lire',   color: colors.lavender },
-            { num: stats.avg_rating ? Number(stats.avg_rating).toFixed(1) + '★' : '—', label: 'Moy.', color: colors.warning },
+            { num: stats.done_count ?? 0,    label: t('profile.statsRead'),    color: colors.success },
+            { num: stats.reading_count ?? 0, label: t('profile.statsReading'), color: colors.cyan },
+            { num: stats.to_read_count ?? 0, label: t('profile.statsToRead'),  color: colors.lavender },
+            { num: stats.avg_rating ? Number(stats.avg_rating).toFixed(1) + '★' : '—', label: t('profile.statsAvg'), color: colors.warning },
           ].map((s, i) => (
             <View key={i} style={styles.statBox}>
               <Text style={[styles.statNum, { color: s.color }]}>{s.num}</Text>
@@ -111,8 +139,8 @@ export default function UserProfileScreen() {
         {goal && (
           <View style={styles.card}>
             <View style={styles.cardHeaderRow}>
-              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Objectif de lecture</Text>
-              <Text style={styles.cardHeaderValue}>{goal.booksRead} / {goal.target} livres</Text>
+              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>{t('userProfile.readingGoal')}</Text>
+              <Text style={styles.cardHeaderValue}>{t('userProfile.booksCount', { read: goal.booksRead, target: goal.target })}</Text>
             </View>
             <ProgressBar percent={goalPct} color={colors.cyan} trackColor={colors.card2} />
           </View>
@@ -120,29 +148,39 @@ export default function UserProfileScreen() {
 
         {readingSeconds > 0 && (
           <View style={styles.timeRow}>
-            <Text style={styles.timeLabel}>Temps de lecture total</Text>
+            <Text style={styles.timeLabel}>{t('userProfile.totalReadingTime')}</Text>
             <Text style={styles.timeValue}>{formatDuration(readingSeconds)}</Text>
           </View>
         )}
 
         {formatTotal > 0 && (
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Format de lecture</Text>
-            <View style={styles.formatRow}>
-              <Text style={styles.formatLabel}>{physicalPct}% physique</Text>
-              <View style={styles.formatBar}>
-                <View style={[styles.formatFillA, { width: `${physicalPct}%` as any }]} />
-                <View style={[styles.formatFillB, { width: `${100 - physicalPct}%` as any }]} />
+            <Text style={styles.sectionTitle}>{t('profile.formatSplitTitle')}</Text>
+            <View style={styles.formatStatsRow}>
+              <View style={styles.formatStatItem}>
+                <Feather name="book" size={16} color={colors.purple} />
+                <Text style={styles.formatStatNum}>{formatStats.physical_count}</Text>
+                <Text style={styles.formatStatLabel}>{t('book.formatPhysical')}</Text>
               </View>
-              <Text style={styles.formatLabel}>{100 - physicalPct}% liseuse</Text>
+              <View style={styles.formatStatItem}>
+                <Feather name="tablet" size={16} color={colors.teal} />
+                <Text style={styles.formatStatNum}>{formatStats.ereader_count}</Text>
+                <Text style={styles.formatStatLabel}>{t('book.formatEreader')}</Text>
+              </View>
+              <View style={styles.formatStatItem}>
+                <Feather name="headphones" size={16} color={colors.lavender} />
+                <Text style={styles.formatStatNum}>{formatStats.audiobook_count}</Text>
+                <Text style={styles.formatStatLabel}>{t('book.formatAudiobook')}</Text>
+              </View>
             </View>
           </View>
         )}
 
-        <Text style={styles.sectionTitle}>En ce moment</Text>
+        <Text style={styles.sectionTitle}>{t('userProfile.currentlyReading')}</Text>
         {currentlyReading.length > 0 ? (
           currentlyReading.map((book: any, i: number) => (
-            <View key={i} style={[styles.bookCard, i < currentlyReading.length - 1 && styles.bookCardDivider]}>
+            <TouchableOpacity key={i} activeOpacity={0.75} disabled={!book.id} onPress={() => router.push(`/book/${book.id}`)}
+              style={[styles.bookCard, i < currentlyReading.length - 1 && styles.bookCardDivider]}>
               <View style={styles.bookCover}>
                 {book.cover_url ? <Image source={{ uri: book.cover_url }} style={styles.bookCoverImg} /> : <Feather name="book" size={20} color={colors.purple} />}
               </View>
@@ -159,16 +197,17 @@ export default function UserProfileScreen() {
                   </View>
                 )}
               </View>
-            </View>
+              {book.id ? <Feather name="chevron-right" size={16} color={colors.gray} /> : null}
+            </TouchableOpacity>
           ))
         ) : (
-          <Text style={styles.emptyText}>@{user.username} ne lit rien en ce moment</Text>
+          <Text style={styles.emptyText}>{t('userProfile.notReadingAnything', { username: `@${user.username}` })}</Text>
         )}
 
         {reviews.length > 0 && (
           <>
-            <Text style={[styles.sectionTitle, { marginTop: 10 }]}>Livres lus</Text>
-            <Text style={styles.readHint}>Appuie sur un livre pour l'ajouter (ou non) à ta pile à lire.</Text>
+            <Text style={[styles.sectionTitle, { marginTop: 10 }]}>{t('userProfile.booksRead')}</Text>
+            <Text style={styles.readHint}>{t('userProfile.tapToAddHint')}</Text>
             {reviews.map((r: any, i: number) => (
               <TouchableOpacity key={i} style={[styles.reviewCard, i < reviews.length - 1 && styles.bookCardDivider]}
                 activeOpacity={0.75} onPress={() => router.push(`/book/${r.id}`)}>
@@ -210,6 +249,10 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   avatarInitials: { fontSize: 26, fontWeight: '700', color: 'white' },
   name: { fontSize: 18, fontFamily: fonts.headingBold, color: colors.white, marginTop: 6 },
   handle: { fontSize: 12, color: colors.gray },
+  followBtn: { marginTop: 12, paddingHorizontal: 24, paddingVertical: 9, borderRadius: 999, backgroundColor: colors.purple, minWidth: 110, alignItems: 'center' },
+  followBtnActive: { backgroundColor: colors.card2, borderWidth: 1, borderColor: colors.divider },
+  followBtnText: { fontSize: 13, fontWeight: '700', color: 'white' },
+  followBtnTextActive: { color: colors.white },
   statsRow: { flexDirection: 'row', marginBottom: 24, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.divider, paddingVertical: 16 },
   statBox: { flex: 1, alignItems: 'center' },
   statNum: { fontSize: 18, fontFamily: fonts.headingBold },
@@ -233,11 +276,10 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   timeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
   timeLabel: { fontSize: 13, color: colors.gray },
   timeValue: { fontSize: 15, fontFamily: fonts.headingBold, color: colors.purple },
-  formatRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  formatLabel: { fontSize: 11, color: colors.gray },
-  formatBar: { flex: 1, height: 5, borderRadius: 3, overflow: 'hidden', flexDirection: 'row', backgroundColor: colors.card2 },
-  formatFillA: { backgroundColor: colors.purple },
-  formatFillB: { backgroundColor: colors.teal },
+  formatStatsRow: { flexDirection: 'row', gap: 10 },
+  formatStatItem: { flex: 1, alignItems: 'center', gap: 4, backgroundColor: colors.card2, borderRadius: radius.md, paddingVertical: 12 },
+  formatStatNum: { fontSize: 16, fontFamily: fonts.headingBold, color: colors.white },
+  formatStatLabel: { fontSize: 10, color: colors.gray },
   reviewCard: { flexDirection: 'row', gap: 12, alignItems: 'flex-start', paddingBottom: 16, marginBottom: 16 },
   reviewRating: { fontSize: 12, color: colors.teal, fontWeight: '700', marginTop: 2 },
   reviewComment: { fontSize: 12, color: colors.gray, fontStyle: 'italic', marginTop: 4, lineHeight: 17 },

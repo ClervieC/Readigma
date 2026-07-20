@@ -11,6 +11,13 @@ import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { TimerProvider } from '../context/TimerContext';
 import TimerBubble from '../components/TimerBubble';
 import { ColorPalette } from '../theme';
+// Side-effect import: initializes i18next synchronously with its `resources`
+// (no lazy backend), so every screen's useTranslation() is ready to render
+// translated text on the very first paint — loadSavedLanguage() below only
+// needs to run for the rarer case where the user has previously overridden
+// the device-locale guess it starts with.
+import '../lib/i18n';
+import { loadSavedLanguage } from '../lib/i18n';
 
 SplashScreen.preventAutoHideAsync();
 

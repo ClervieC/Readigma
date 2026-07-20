@@ -1,25 +1,32 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { fonts, ColorPalette } from '../theme';
 import { useTheme, ThemeMode } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { setAppLanguage, AppLanguage } from '../lib/i18n';
 import Screen from '../components/Screen';
 import Row from '../components/Row';
 import Pill from '../components/Pill';
 
-const THEME_OPTIONS: { label: string; value: ThemeMode }[] = [
-  { label: 'Clair', value: 'light' },
-  { label: 'Sombre', value: 'dark' },
-  { label: 'Système', value: 'system' },
+const THEME_OPTIONS: { labelKey: string; value: ThemeMode }[] = [
+  { labelKey: 'settings.light', value: 'light' },
+  { labelKey: 'settings.dark', value: 'dark' },
+  { labelKey: 'settings.system', value: 'system' },
 ];
 
-const SETTINGS: { icon: keyof typeof Feather.glyphMap; label: string; route: string }[] = [
-  { icon: 'edit-2', label: 'Modifier le profil', route: '/edit-profile' },
-  { icon: 'upload', label: 'Importer depuis Goodreads', route: '/import-goodreads' },
-  { icon: 'help-circle', label: 'Aide & Contact', route: '/help' },
-  { icon: 'shield', label: 'Confidentialité', route: '/privacy' },
-  { icon: 'file-text', label: "Conditions d'utilisation", route: '/terms' },
+const LANGUAGE_OPTIONS: { labelKey: string; value: AppLanguage }[] = [
+  { labelKey: 'settings.french', value: 'fr' },
+  { labelKey: 'settings.english', value: 'en' },
+];
+
+const SETTINGS: { icon: keyof typeof Feather.glyphMap; labelKey: string; route: string }[] = [
+  { icon: 'edit-2', labelKey: 'settings.editProfile', route: '/edit-profile' },
+  { icon: 'upload', labelKey: 'settings.importGoodreads', route: '/import-goodreads' },
+  { icon: 'help-circle', labelKey: 'settings.help', route: '/help' },
+  { icon: 'shield', labelKey: 'settings.privacy', route: '/privacy' },
+  { icon: 'file-text', labelKey: 'settings.terms', route: '/terms' },
 ];
 
 export default function SettingsScreen() {
@@ -27,31 +34,44 @@ export default function SettingsScreen() {
   const { colors, isDark, mode, setMode } = useTheme();
   const router = useRouter();
   const styles = makeStyles(colors);
+  const { t, i18n } = useTranslation();
 
   return (
-    <Screen back title="Paramètres">
+    <Screen back title={t('settings.title')}>
       <View>
         {SETTINGS.map(item => (
           <Row key={item.route} onPress={() => router.push(item.route as any)} chevron
             icon={<Feather name={item.icon} size={18} color={colors.white} />}>
-            <Text style={styles.settingLabel}>{item.label}</Text>
+            <Text style={styles.settingLabel}>{t(item.labelKey)}</Text>
           </Row>
         ))}
 
         <View style={styles.themeRow}>
           <View style={styles.themeLabelRow}>
             <Feather name={isDark ? 'moon' : 'sun'} size={18} color={colors.white} />
-            <Text style={styles.settingLabel}>Apparence</Text>
+            <Text style={styles.settingLabel}>{t('settings.appearance')}</Text>
           </View>
           <View style={styles.themeOptions}>
             {THEME_OPTIONS.map(opt => (
-              <Pill key={opt.value} label={opt.label} active={mode === opt.value} onPress={() => setMode(opt.value)} />
+              <Pill key={opt.value} label={t(opt.labelKey)} active={mode === opt.value} onPress={() => setMode(opt.value)} />
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.themeRow}>
+          <View style={styles.themeLabelRow}>
+            <Feather name="globe" size={18} color={colors.white} />
+            <Text style={styles.settingLabel}>{t('settings.language')}</Text>
+          </View>
+          <View style={styles.themeOptions}>
+            {LANGUAGE_OPTIONS.map(opt => (
+              <Pill key={opt.value} label={t(opt.labelKey)} active={i18n.language === opt.value} onPress={() => setAppLanguage(opt.value)} />
             ))}
           </View>
         </View>
 
         <Row last onPress={signOut} icon={<Feather name="log-out" size={18} color={colors.error} />}>
-          <Text style={[styles.settingLabel, { color: colors.error }]}>Se déconnecter</Text>
+          <Text style={[styles.settingLabel, { color: colors.error }]}>{t('settings.logout')}</Text>
         </Row>
       </View>
     </Screen>

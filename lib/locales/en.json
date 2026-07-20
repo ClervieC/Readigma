@@ -1,0 +1,783 @@
+{
+  "common": {
+    "error": "Error",
+    "cancel": "Cancel",
+    "ok": "OK"
+  },
+  "tabs": {
+    "discover": "Discover",
+    "feed": "Feed",
+    "library": "Library",
+    "search": "Search",
+    "profile": "Profile"
+  },
+  "settings": {
+    "title": "Settings",
+    "editProfile": "Edit profile",
+    "importGoodreads": "Import from Goodreads",
+    "help": "Help & Contact",
+    "privacy": "Privacy",
+    "terms": "Terms of use",
+    "appearance": "Appearance",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System",
+    "language": "Language",
+    "french": "Français",
+    "english": "English",
+    "logout": "Log out"
+  },
+  "discover": {
+    "greetingMorning": "Good morning",
+    "greetingEvening": "Good evening",
+    "sectionTitle": "Discover",
+    "subtitle": "What will your next book be?",
+    "pickForMe": "Pick for me",
+    "picking": "Picking...",
+    "allFilter": "All",
+    "timerShort": "Timer",
+    "spinPlaceholder": "Spin to discover\nyour next book",
+    "tapToSeeDetail": "Tap to see details →",
+    "iReadThis": "I'm reading this",
+    "anotherBook": "Another book",
+    "myPile": "Your pile",
+    "recentlyAdded": "Recently added",
+    "seeAll": "See all",
+    "addBooksToPile": "Add books to your pile!",
+    "noBookFound": "No book found",
+    "genres": {
+      "fantasy": "Fantasy",
+      "scifi": "Science Fiction",
+      "romance": "Romance",
+      "thriller": "Thriller",
+      "mystery": "Mystery",
+      "horror": "Horror",
+      "youngAdult": "Young Adult",
+      "historical": "Historical",
+      "biography": "Biography",
+      "poetry": "Poetry",
+      "adventure": "Adventure",
+      "drama": "Drama",
+      "dystopia": "Dystopia",
+      "contemporary": "Contemporary",
+      "fiction": "Fiction"
+    },
+    "errors": {
+      "finishBookFailed": "Couldn't mark the book as finished",
+      "timerFailed": "Couldn't manage the timer",
+      "updateProgressFailed": "Couldn't update progress"
+    },
+    "currentlyReading": "Currently reading",
+    "percentRead": "{{percent}}% read",
+    "page": "page",
+    "total": "total",
+    "percentPlaceholder": "% read"
+  },
+  "profile": {
+    "title": "Profile",
+    "admin": "Admin",
+    "following": "Following",
+    "followers": "Followers",
+    "statsRead": "Read",
+    "statsToRead": "To read",
+    "statsAvg": "Avg.",
+    "statsReading": "Reading",
+    "readingTimeMonth": "Reading time this month",
+    "formatSplitTitle": "Reading format",
+    "administration": "Administration",
+    "linkStats": "Statistics",
+    "linkBadges": "Badges",
+    "linkGoal": "Reading Goal",
+    "linkFollows": "Following & followers",
+    "linkNotifications": "Notifications",
+    "linkSuggestBook": "Suggest a book",
+    "linkContact": "Contact the team"
+  },
+  "feed": {
+    "title": "Feed",
+    "subtitle": "Activity from readers you follow",
+    "loading": "Loading...",
+    "emptyTitle": "Nothing yet",
+    "emptyText": "Follow readers to see their activity here!",
+    "timeJustNow": "Just now",
+    "timeMinutes": "{{count}}min ago",
+    "timeHours": "{{count}}h ago",
+    "timeDays": "{{count}}d ago",
+    "activityReaction": "reacted while reading",
+    "activityProgress": "read {{percent}}% of",
+    "activityFinished": "finished",
+    "activityStarted": "started reading",
+    "activityDefault": "updated",
+    "finishedLabel": "Book finished",
+    "percentOfBook": "at {{percent}}% of the book",
+    "pageLabel": "Page {{page}}",
+    "commentPlaceholder": "Write a comment..."
+  },
+  "search": {
+    "title": "Search",
+    "placeholder": "Title, author, ISBN...",
+    "resultsCount_one": "{{count}} result for \"{{query}}\"",
+    "resultsCount_other": "{{count}} results for \"{{query}}\"",
+    "noResults": "No results for \"{{query}}\"",
+    "forYou": "For you",
+    "popularOnReadigma": "Popular on Readigma",
+    "addToToRead": "Add to my to-read pile",
+    "currentlyReading": "I'm currently reading it",
+    "alreadyRead": "I've already read it",
+    "addToList": "Add to my list",
+    "reviewsHeader": "Reader reviews",
+    "addedToRead": "\"{{title}}\" added to your pile",
+    "addedToDone": "\"{{title}}\" added to read books",
+    "addError": "Error while adding",
+    "trending": {
+      "fantasy": "🐉 Must-read fantasy",
+      "thriller": "🔪 Thrillers of the moment",
+      "romance": "💕 Romance",
+      "scifi": "🚀 Science fiction",
+      "frenchAuthors": "🇫🇷 French authors"
+    },
+    "yourStatus": "Your status",
+    "addedToReading": "\"{{title}}\" marked as currently reading"
+  },
+  "book": {
+    "editSuggestion": "Suggest an edit",
+    "reportBook": "Report this book",
+    "tabOverview": "Overview",
+    "tabReading": "Reading",
+    "tabReviews": "Reviews",
+    "summary": "Summary",
+    "readMore": "Read more",
+    "readLess": "Show less",
+    "noSummary": "No summary for this book yet.",
+    "series": "Series",
+    "seriesNamePlaceholder": "Series name (optional)",
+    "seriesTomePlaceholder": "Volume",
+    "saving": "Saving...",
+    "save": "Save",
+    "seriesTome": " — Book {{index}}",
+    "noSeries": "This book isn't part of a series.",
+    "otherSeriesBooks": "Other books in this series",
+    "noOtherSeriesBooks": "No other book found for this series.",
+    "status": "Status",
+    "statusToRead": "To read",
+    "statusReading": "Reading",
+    "statusDone": "Read",
+    "statusDnf": "DNF",
+    "format": "Format",
+    "formatPhysical": "Physical",
+    "formatEreader": "E-reader",
+    "readingTimer": "Reading timer",
+    "stop": "Stop",
+    "loadingEllipsis": "...",
+    "startSession": "Start a session",
+    "totalTimeOnBook": "Total time on this book: {{time}}",
+    "myProgress": "My progress",
+    "percentRead": "{{percent}}% read",
+    "byPages": "By pages",
+    "byPercent": "By %",
+    "currentPage": "Current page",
+    "totalPagesLabel": "Total pages",
+    "percentReadLabel": "Percent read",
+    "updating": "Updating...",
+    "update": "Update",
+    "finishReading": "Finished reading",
+    "myRating": "My rating",
+    "myReviewPlaceholder": "Your thoughts on this book... (optional)",
+    "ratingSaved": "Rating saved!",
+    "myJourney": "My reading journey",
+    "addReaction": "Add a reaction",
+    "firstReaction": "Add your first reaction!",
+    "communityReviews": "Community reviews",
+    "reviewsCount_one": "{{count}} review",
+    "reviewsCount_other": "{{count}} reviews",
+    "noReviews": "No reviews yet — be the first to leave one!",
+    "howDoYouFeel": "How are you feeling?",
+    "clearAll": "Clear all",
+    "addNotePlaceholder": "Add a note...",
+    "shareWithFollowers": "Share with my followers",
+    "keepPrivate": "Keep private",
+    "add": "Add",
+    "youFinished": "You finished it!",
+    "ratingOptional": "Your rating (optional)",
+    "reviewOptionalPlaceholder": "Your thoughts on this book... (optional)",
+    "finishReadingBtn": "Finish reading",
+    "errors": {
+      "saveSeries": "Couldn't save the series",
+      "openBook": "Couldn't open this book",
+      "startTimer": "Couldn't start the timer",
+      "stopTimer": "Couldn't stop the timer",
+      "updateFormat": "Couldn't update the format",
+      "percentOver100": "The percentage can't exceed 100%",
+      "progressUpdated": "Progress updated!",
+      "updateFailed": "Couldn't update",
+      "finishedCongrats": "Congratulations! You finished this book!",
+      "saveFailed": "Couldn't save",
+      "chooseEmoji": "Choose at least one emoji!",
+      "addFailed": "Couldn't add"
+    },
+    "formatAudiobook": "Audiobook"
+  },
+  "follows": {
+    "title": "Reader friends",
+    "following": "Following",
+    "followers": "Followers",
+    "search": "Search",
+    "searchPlaceholder": "Search for a reader...",
+    "booksReadCount_one": "{{count}} book read",
+    "booksReadCount_other": "{{count}} books read",
+    "followed": "Following",
+    "follow": "Follow",
+    "noReaderFound": "No reader found",
+    "notFollowingAnyone": "You're not following anyone",
+    "searchToFollow": "Search for readers to follow!",
+    "searchReaders": "Search for readers",
+    "noFollowersYet": "No one is following you yet",
+    "followBack": "Follow back",
+    "errors": {
+      "unfollow": "Couldn't unfollow",
+      "follow": "Couldn't follow {{username}}"
+    }
+  },
+  "userProfile": {
+    "defaultTitle": "Profile",
+    "loadError": "Couldn't load this profile",
+    "reportProfile": "Report this profile",
+    "following": "Following",
+    "readingGoal": "Reading goal",
+    "booksCount": "{{read}} / {{target}} books",
+    "totalReadingTime": "Total reading time",
+    "currentlyReading": "Currently reading",
+    "notReadingAnything": "{{username}} isn't reading anything right now",
+    "booksRead": "Books read",
+    "tapToAddHint": "Tap a book to add it (or not) to your to-read pile.",
+    "errors": {
+      "follow": "Couldn't follow this reader"
+    }
+  },
+  "stats": {
+    "title": "Statistics",
+    "loading": "Loading...",
+    "totalBooksRead": "Books read (total)",
+    "thisMonth": "This month",
+    "thisYear": "This year",
+    "avgTimeToFinish": "Average time to finish",
+    "avgReadingTime": "Average reading time",
+    "avgRatingGiven": "Average rating given",
+    "currentStreak": "Current reading streak",
+    "busiestDay": "Day you read the most",
+    "favoriteAuthor": "Favorite author",
+    "booksCount_one": "{{count}} book",
+    "booksCount_other": "{{count}} books",
+    "comparedToFollowing_one": "Compared to the reader you follow",
+    "comparedToFollowing_other": "Compared to the {{count}} readers you follow",
+    "youReadMore": "You read more than them this year",
+    "theyReadMore": "They read more than you this year",
+    "samePace": "You're reading at the same pace this year",
+    "readingRecords": "Reading records",
+    "longest": "Longest",
+    "fastest": "Fastest",
+    "daysAbbrev": "{{count}}d",
+    "booksFinishedByMonth": "Books finished by month",
+    "mostReadGenres": "Most-read genres",
+    "emptyState": "Finish your first book to see your stats here.",
+    "months": [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec"
+    ],
+    "weekdays": [
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday"
+    ]
+  },
+  "goal": {
+    "title": "Reading Goal {{year}}",
+    "myGoal": "My {{year}} goal",
+    "books": " books",
+    "percentDone": "{{percent}}% done",
+    "goalReached": "🎉 Goal reached! Well done!",
+    "booksLeft": "books left",
+    "booksPerMonth": "books/month",
+    "monthsLeft": "months left",
+    "noGoal": "No goal set for {{year}} yet",
+    "monthByMonth": "Month by month",
+    "editGoal": "Edit my goal",
+    "setGoal": "Set my goal",
+    "booksInYear": "books in {{year}}",
+    "saving": "Saving...",
+    "save": "Save",
+    "errors": {
+      "invalidNumber": "Enter a valid number",
+      "saveFailed": "Couldn't save"
+    },
+    "goalSetToast": "Goal of {{count}} books set for {{year}}!"
+  },
+  "badges": {
+    "title": "Badges",
+    "loading": "Loading...",
+    "summaryLabel": "categories with at least one badge unlocked",
+    "notUnlocked": "Not unlocked yet",
+    "beforeTier": "{{count}} {{unit}} until \"{{label}}\"",
+    "maxLevel": "Max level reached 🎉",
+    "categories": {
+      "books_read": {
+        "title": "Books read",
+        "unit": "books",
+        "tiers": [
+          "First book",
+          "Casual reader",
+          "Regular reader",
+          "Bookworm",
+          "Book devourer",
+          "Library rat",
+          "Reading legend"
+        ]
+      },
+      "to_read": {
+        "title": "To-read pile",
+        "unit": "books",
+        "tiers": [
+          "Small pile",
+          "Collector",
+          "Big ambitions",
+          "Towering pile",
+          "In too deep now"
+        ]
+      },
+      "reading_time": {
+        "title": "Reading time",
+        "unit": "hours",
+        "tiers": [
+          "First hour",
+          "Warming up",
+          "Cruising speed",
+          "Dedicated reader",
+          "Reading marathon",
+          "Page centurion"
+        ]
+      },
+      "streak": {
+        "title": "Reading streak",
+        "unit": "days",
+        "tiers": [
+          "On a roll",
+          "One week",
+          "Two weeks",
+          "One month",
+          "Unstoppable"
+        ]
+      },
+      "genres": {
+        "title": "Genres explored",
+        "unit": "genres",
+        "tiers": [
+          "Curious",
+          "Eclectic",
+          "Jack of all genres",
+          "No boundaries"
+        ]
+      },
+      "authors": {
+        "title": "Different authors",
+        "unit": "authors",
+        "tiers": [
+          "First steps",
+          "Nice variety",
+          "Great explorer",
+          "Living encyclopedia"
+        ]
+      }
+    }
+  },
+  "help": {
+    "title": "Help",
+    "heroTitle": "How does it work?",
+    "heroSub": "Everything you need to know to make the most of Readigma.",
+    "sectionTitle": "Frequently asked questions",
+    "contactTitle": "Still stuck?",
+    "contactSub": "Write to us, our team usually replies within 48h.",
+    "contactBtn": "Contact the team",
+    "faq": [
+      {
+        "q": "How do I add a book to my library?",
+        "a": "In \"Discover\" or \"Search\", tap a book to see its details, then choose its status: To read, Reading, or Read."
+      },
+      {
+        "q": "How do I track my reading progress?",
+        "a": "Open a book from your library, then use the timer or the \"Update\" button to log your current page or percentage."
+      },
+      {
+        "q": "How do I follow other readers?",
+        "a": "Go to Profile → Following & followers → \"Search\" tab. Type a username and tap \"Follow\" — no acceptance needed."
+      },
+      {
+        "q": "My feed is empty, why?",
+        "a": "The feed shows activity from readers you follow. Start by following some via the \"Following & followers\" section in your profile."
+      },
+      {
+        "q": "How do I set a reading goal?",
+        "a": "Profile → Reading Goal. You can choose a number of books to read this year and track your progress month by month."
+      },
+      {
+        "q": "How does \"Pick for me\" work?",
+        "a": "In the Discover tab, this button picks a random book from your \"To read\" pile. You need books in that list for it to work."
+      },
+      {
+        "q": "How do I react to my reading?",
+        "a": "On a book's detail page, you can add reactions (emoji + note) at any page. They show up in your followers' feed."
+      },
+      {
+        "q": "My notifications aren't working.",
+        "a": "Make sure you've allowed notifications for Readigma in your phone's settings. Push notifications arrive as soon as someone starts following you."
+      }
+    ]
+  },
+  "privacy": {
+    "title": "Privacy",
+    "updated": "Last updated: July 2026",
+    "sections": [
+      {
+        "title": "Data we collect",
+        "body": "Readigma stores your email address, username, profile picture, library (books, statuses, ratings, comments), reading reactions, reading time, yearly goals, and your follow relationships with other users (who you follow, who follows you)."
+      },
+      {
+        "title": "How we use your data",
+        "body": "This data is used solely to run the app: displaying your library, your feed, your reading stats, and the profiles of readers you follow. Readigma never sells or shares your data with third parties for advertising purposes."
+      },
+      {
+        "title": "Visibility of your information",
+        "body": "Your username, avatar, library, and book reviews are visible to any signed-in user. Your activity feed (finished books, reactions, progress updates), however, is only visible to the people who follow you."
+      },
+      {
+        "title": "External services",
+        "body": "Book covers and information come from Open Library, the Bibliothèque nationale de France (BnF), and Google Books. Readigma uses Supabase for data hosting and authentication, and Expo for push notifications."
+      },
+      {
+        "title": "Retention and deletion",
+        "body": "Your data is kept for as long as your account exists. To delete your account and all your data, write to us from the Help & Contact page."
+      },
+      {
+        "title": "Your rights",
+        "body": "You can request access, correction, or deletion of your personal data at any time by contacting us via Profile → Help & Contact."
+      }
+    ]
+  },
+  "terms": {
+    "title": "Terms of use",
+    "updated": "Last updated: July 2026",
+    "sections": [
+      {
+        "title": "1. Acceptance of terms",
+        "body": "By creating a Readigma account, you agree to these terms of use. If you don't agree, please don't use the app."
+      },
+      {
+        "title": "2. Your account",
+        "body": "You're responsible for keeping your credentials confidential and for the accuracy of the information you provide (username, email). One account per person."
+      },
+      {
+        "title": "3. Content you post",
+        "body": "Your comments, ratings, reactions, and messages remain your property, but you allow Readigma to display them to other users according to your privacy settings (e.g. visibility to followers). You agree not to post any illegal, abusive content, or content that infringes on others' rights."
+      },
+      {
+        "title": "4. Book catalog",
+        "body": "Book information (titles, covers, descriptions) comes from third-party sources (Open Library, BnF, Google Books) and is provided for informational purposes. Readigma doesn't guarantee its accuracy."
+      },
+      {
+        "title": "5. Expected behavior",
+        "body": "Harassment, spam, and impersonation are prohibited. An account violating these rules may be suspended or deleted without notice."
+      },
+      {
+        "title": "6. Service availability",
+        "body": "Readigma is provided \"as is\", with no guarantee of continuous availability. Interruptions or changes to the service may occur at any time."
+      },
+      {
+        "title": "7. Changes",
+        "body": "These terms may be updated. Significant changes will be communicated through the app."
+      },
+      {
+        "title": "8. Contact",
+        "body": "For any question, write to us from Profile → Help & Contact."
+      }
+    ]
+  },
+  "library": {
+    "title": "My Library",
+    "viewShelf": "Shelf view",
+    "viewGrid": "Grid view",
+    "tabs": {
+      "toRead": "To read",
+      "reading": "Reading",
+      "read": "Read",
+      "dnf": "DNF"
+    },
+    "status": {
+      "toRead": "To read",
+      "reading": "Reading",
+      "read": "Read",
+      "dnf": "Didn't finish (DNF)"
+    },
+    "noMoreDecorations": "No more decorations available",
+    "unlockFirstDecoration": "Unlock your first decoration by earning a badge (books read, reading streak...).",
+    "unlockedDecorations_one": "You've unlocked {{count}} decoration from your badges. Earn more to unlock more.",
+    "unlockedDecorations_other": "You've unlocked {{count}} decorations from your badges. Earn more to unlock more.",
+    "viewBadges": "View my badges",
+    "permissionDenied": "Permission denied",
+    "cameraAccessNeeded": "Camera access is required.",
+    "galleryAccessNeeded": "Gallery access is required.",
+    "confirmRemoveBook": "Remove this book from your list?",
+    "remove": "Remove",
+    "pileFull": "Pile full",
+    "pileFullMessage": "A pile can't hold more than {{count}} books.",
+    "gridDragHint": "Drag a book to move it, or tap two to swap them",
+    "shelfDragHint": "Drag to move or stack · tap a book to add space to its left or right",
+    "frameDragHint": "Drag the frame to position it, then drop it to choose its content",
+    "backToRoom": "Back to the room",
+    "searchPlaceholder": "Search my library...",
+    "noResultsFor": "No results for \"{{query}}\"",
+    "noBooksHere": "No books here",
+    "emptyShelf": "Empty shelf",
+    "spacingLeft": "Left",
+    "spacingRight": "Right",
+    "spacingNewLine": "New row",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "options": "Options",
+    "putBack": "Put back",
+    "tapCoverToOpen": "Tap the cover to open it",
+    "tapShelfToOpen": "Tap a bookshelf to open it",
+    "editModeTitle": "Edit mode",
+    "tutorial": {
+      "dragBook": "Drag a book to move it or stack it with another one.",
+      "addSpace": "Tap a book to add empty space to its left or right.",
+      "addDecor": "Add a photo frame, plant, clock, or candle from the icons at the top of the shelf — then tap the frame to choose its content.",
+      "removeDecor": "Tap the small cross on a decoration or a selected book to remove it from the shelf.",
+      "gridDrag": "In grid view, drag a book or tap two to swap them."
+    },
+    "gotIt": "Got it",
+    "sortTitle": "Sort",
+    "sortManual": "My arrangement",
+    "sortOldest": "Oldest added first",
+    "sortNewest": "Newest added first",
+    "sortAuthor": "Author (A-Z)",
+    "editFrameTitle": "Edit frame",
+    "addFrameTitle": "Add a frame",
+    "chooseBook": "Choose a book",
+    "takePhoto": "Take a photo",
+    "fromGallery": "From my gallery",
+    "removeFrame": "Remove frame",
+    "removeFromList": "Remove from my list",
+    "errors": {
+      "addFrame": "Couldn't add the frame",
+      "editFrame": "Couldn't edit the frame",
+      "removeFrame": "Couldn't remove the frame",
+      "saveOrder": "Couldn't save the order",
+      "stackBooks": "Couldn't stack these books",
+      "unstackBook": "Couldn't unstack this book",
+      "removeShelf": "Couldn't remove the shelf",
+      "editSpacing": "Couldn't edit this spacing",
+      "editShelf": "Couldn't edit the shelf",
+      "changeTilt": "Couldn't change the tilt",
+      "moveShelf": "Couldn't move the shelf",
+      "moveFrame": "Couldn't move the frame"
+    }
+  },
+  "editProfile": {
+    "title": "Edit profile",
+    "save": "Save",
+    "changePhotoHint": "Tap to change photo",
+    "information": "Information",
+    "username": "Username",
+    "email": "Email",
+    "changePassword": "Change password",
+    "leaveBlankHint": "Leave blank to keep unchanged",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm password",
+    "done": "Done",
+    "profileUpdated": "Profile updated!",
+    "errors": {
+      "galleryAccessNeeded": "Gallery access is required.",
+      "passwordsDontMatch": "Passwords don't match",
+      "passwordTooShort": "Password must be at least 6 characters",
+      "updateFailed": "Couldn't update"
+    }
+  },
+  "contact": {
+    "teamName": "The Readigma team",
+    "subtitle": "Usually replies within 48h",
+    "loading": "Loading...",
+    "noMessagesYet": "No messages yet",
+    "writeToUsHint": "Write to the team, we'll reply right here.",
+    "placeholder": "Write a message...",
+    "errors": {
+      "sendFailed": "Couldn't send the message"
+    }
+  },
+  "suggestBook": {
+    "title": "Suggest a book",
+    "heroTitle": "Know an amazing book?",
+    "heroSub": "Fill in its details and suggest it to the admin so it gets added to Readigma.",
+    "sending": "Sending...",
+    "send": "Send suggestion",
+    "sent": "Sent",
+    "sentMessage": "Suggestion sent! The admin will review it soon.",
+    "errors": {
+      "titleAndAuthorRequired": "Title and author are required",
+      "sendFailed": "Couldn't send the suggestion"
+    }
+  },
+  "importGoodreads": {
+    "title": "Import from Goodreads",
+    "heroTitle": "Import your Goodreads library",
+    "heroSub": "On Goodreads: My Books → Tools → Import/Export → \"Export Library\". Then choose the downloaded .csv file below.",
+    "chooseCsv": "Choose a CSV file",
+    "readingFile": "Reading file...",
+    "importing": "Import in progress...",
+    "booksProgress": "Books: {{current}}/{{total}}",
+    "addingToLibrary": "Adding to your library: {{current}}/{{total}}",
+    "importDone": "Import complete",
+    "importedCount_one": "{{count}} book added to your library, all in e-reader format.",
+    "importedCount_other": "{{count}} books added to your library, all in e-reader format.",
+    "viewLibrary": "View my library",
+    "note": "Status (to read / reading / read), rating, and series are taken directly from your Goodreads export. Re-importing the same file later won't create duplicates.",
+    "errors": {
+      "importFailed": "Error during import"
+    }
+  },
+  "bookForm": {
+    "titleLabel": "Title *",
+    "authorLabel": "Author",
+    "isbnLabel": "ISBN",
+    "searching": "Searching...",
+    "findCoverByIsbn": "Find cover via ISBN",
+    "coverUrlLabel": "Cover URL",
+    "searchCover": "Search for a cover",
+    "descriptionLabel": "Description",
+    "genresLabel": "Genres (comma-separated)",
+    "yearLabel": "Year",
+    "tomeLabel": "Volume",
+    "seriesLabel": "Series",
+    "notFound": "Not found",
+    "noCoverFoundForIsbn": "No cover found for this ISBN."
+  },
+  "editBookSuggestion": {
+    "hint": "Only fill in what you want to fix or add — the rest of the book's info won't change.",
+    "sending": "Sending...",
+    "send": "Send suggestion",
+    "empty": "Empty",
+    "emptyMessage": "Fill in at least one field before sending.",
+    "thanks": "Thanks",
+    "thanksMessage": "Your suggestion has been sent to the team.",
+    "errors": {
+      "sendFailed": "Couldn't send the suggestion"
+    }
+  },
+  "notifications": {
+    "title": "Notifications",
+    "emptyTitle": "No notifications",
+    "emptyText": "Your new followers and activity from readers you follow will appear here.",
+    "newFollowers": "New followers",
+    "followedActivity": "Activity from readers you follow",
+    "startedFollowing": "started following you",
+    "finished": "finished \"{{title}}\"",
+    "reaction": "reacted to \"{{title}}\"",
+    "progressUpdate": "read {{percent}}% of \"{{title}}\"",
+    "defaultActivity": "updated their reading"
+  },
+  "admin": {
+    "title": "Administration",
+    "loading": "Loading...",
+    "tabs": {
+      "users": "Users",
+      "messages": "Messages",
+      "reports": "Reports",
+      "suggestions": "Suggestions",
+      "edits": "Edits",
+      "add": "Add a book"
+    },
+    "searchUsersPlaceholder": "Search a user...",
+    "noUsers": "No users.",
+    "noMessages": "No messages.",
+    "noSuggestions": "No suggestions.",
+    "noReports": "No reports.",
+    "noEdits": "No proposed edits.",
+    "roleAdmin": "Admin",
+    "bannedBadge": "Banned",
+    "promote": "Promote to admin",
+    "demote": "Demote",
+    "ban": "Ban",
+    "unban": "Unban",
+    "banConfirmWeb": "Ban @{{username}}? They will no longer be able to log in.",
+    "banConfirmTitle": "Ban this user?",
+    "banConfirmMessage": "@{{username}} will no longer be able to log in to Readigma.",
+    "youPrefix": "You: ",
+    "statusPending": "Pending",
+    "statusApproved": "Approved",
+    "statusRejected": "Rejected",
+    "statusTreated": "Reviewed",
+    "statusApplied": "Applied",
+    "isbnLabel": "ISBN {{isbn}}",
+    "isbnLabelColon": "ISBN: {{isbn}}",
+    "approve": "Approve",
+    "edit": "Edit",
+    "reject": "Reject",
+    "apply": "Apply",
+    "notFound": "(not found)",
+    "bookNotFound": "(book not found)",
+    "reportedBy": "Reported by @{{username}} · {{reason}}",
+    "markReviewed": "Mark reviewed",
+    "summaryLabel": "Summary: {{description}}",
+    "genresLabel": "Genres: {{genres}}",
+    "seriesLabel": "Series: {{series}}",
+    "tomeSuffix": " · Book {{index}}",
+    "yearLabel": "Year: {{year}}",
+    "missingInfoTitle": "Missing info",
+    "missingInfoDesc": "Looks up missing cover, summary, genres, and ISBN (Hardcover, Open Library, Google Books, Wikidata) for every catalog book that's missing one.",
+    "inProgress": "In progress...",
+    "completeMissingInfo": "Complete missing info",
+    "repopulateDesc": "Sweeps the entire catalog: replaces each cover with the one found via Hardcover first (even if the book already has one), and fills in missing summary/genres/ISBN only.",
+    "repopulateCatalog": "Repopulate entire catalog",
+    "backfillProgress_one": "Searching... {{done}}/{{total}} ({{count}} book completed)",
+    "backfillProgress_other": "Searching... {{done}}/{{total}} ({{count}} books completed)",
+    "backfillDoneTitle": "Done",
+    "backfillDone_one": "{{count}} book completed out of {{total}} that was missing something (cover, summary, or genres).",
+    "backfillDone_other": "{{count}} books completed out of {{total}} that were missing something (cover, summary, or genres).",
+    "repopulateDone_one": "{{count}} book updated out of {{total}} total.",
+    "repopulateDone_other": "{{count}} books updated out of {{total}} total.",
+    "repopulateConfirmTitle": "Repopulate the entire catalog?",
+    "repopulateConfirmMessage": "Replaces every book's cover (even ones that already have one) with the one found via Hardcover first, and fills in missing summary/genres. Can take a while.",
+    "repopulateConfirmAction": "Repopulate",
+    "editingSuggestionBanner": "You're editing a suggestion — the author will be notified once it's added.",
+    "saving": "Adding...",
+    "addToCatalog": "Add to catalog",
+    "bookAddedTitle": "Added",
+    "bookAddedMessage": "\"{{title}}\" was added to the catalog.",
+    "thread": {
+      "subtitle": "Conversation",
+      "replyPlaceholder": "Reply..."
+    },
+    "errors": {
+      "updateUserFailed": "Could not update this user",
+      "updateReportFailed": "Could not update the report",
+      "addBookFailed": "Could not add this book",
+      "applyEditFailed": "Could not apply this edit",
+      "rejectEditFailed": "Could not reject this edit",
+      "titleRequired": "Title is required",
+      "backfillFailed": "The sweep failed.",
+      "repopulateFailed": "The repopulate failed."
+    }
+  }
+}

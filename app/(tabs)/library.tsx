@@ -13,9 +13,11 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { useTranslation } from "react-i18next";
 import Animated, {
   FadeInDown,
   ZoomIn,
@@ -23,6 +25,7 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
+  interpolate,
   runOnJS,
 } from "react-native-reanimated";
 import { fonts, shadows, ColorPalette } from "../../theme";
@@ -61,18 +64,22 @@ const GRID_GAP = 18;
 const GRID_CELL_HEIGHT = COVER_HEIGHT + 34;
 
 const TABS = [
-  { label: "À lire", value: "to_read" },
-  { label: "En cours", value: "reading" },
-  { label: "Lus", value: "done" },
-  { label: "DNF", value: "dnf" },
+  { labelKey: "library.tabs.toRead", value: "to_read" },
+  { labelKey: "library.tabs.reading", value: "reading" },
+  { labelKey: "library.tabs.read", value: "done" },
+  { labelKey: "library.tabs.dnf", value: "dnf" },
 ];
 
 const STATUS_OPTIONS = [
-  { label: "À lire", icon: "bookmark" as const, value: "to_read" },
-  { label: "En cours", icon: "book-open" as const, value: "reading" },
-  { label: "Lu", icon: "check" as const, value: "done" },
-  { label: "Pas fini (DNF)", icon: "x" as const, value: "dnf" },
+  { labelKey: "library.status.toRead", icon: "bookmark" as const, value: "to_read" },
+  { labelKey: "library.status.reading", icon: "book-open" as const, value: "reading" },
+  { labelKey: "library.status.read", icon: "check" as const, value: "done" },
+  { labelKey: "library.status.dnf", icon: "x" as const, value: "dnf" },
 ];
+
+// Shown once, automatically, the first time edit mode is entered — see
+// EDIT_TUTORIAL_STEPS/showEditTutorial below.
+const EDIT_TUTORIAL_SEEN_KEY = "readigma_edit_tutorial_seen";
 
 type Slot =
   | { type: "spine"; book: any; gapBefore: boolean; gapAfter: boolean }
@@ -80,13 +87,21 @@ type Slot =
   | { type: "frame"; frame: any };
 // A frame takes the same shelf width as 3 standing spines (plus the gaps
 // between them), so it reads as "one furniture piece the size of 3 books"
-// rather than an arbitrary fixed size. A plant takes the same as 2, a clock
-// (small, round) takes barely more than a single book.
+// rather than an arbitrary fixed size. A plant (and a candle, sized the
+// same way) takes the same as 2, a clock (small, round) takes barely more
+// than a single book.
 const FRAME_WIDTH = SPINE_WIDTH * 3 + SLOT_GAP * 2;
 const PLANT_WIDTH = SPINE_WIDTH * 2 + SLOT_GAP;
 const CLOCK_WIDTH = SPINE_WIDTH + 20;
+const CANDLE_WIDTH = PLANT_WIDTH;
 const decorWidth = (kind: string) =>
-  kind === "plant" ? PLANT_WIDTH : kind === "clock" ? CLOCK_WIDTH : FRAME_WIDTH;
+  kind === "plant"
+    ? PLANT_WIDTH
+    : kind === "clock"
+      ? CLOCK_WIDTH
+      : kind === "candle"
+        ? CANDLE_WIDTH
+        : FRAME_WIDTH;
 
 // User-supplied plant art (see assets/plants) — a stable hash-picked one per
 // frame id, same reasoning as spineTilt, so a given plant doesn't change
@@ -102,6 +117,21 @@ function plantImageFor(frameId: string) {
     hashRatio(`${frameId}_plant_art`) * PLANT_IMAGES.length,
   );
   return PLANT_IMAGES[Math.min(index, PLANT_IMAGES.length - 1)];
+}
+
+// Same idea as PLANT_IMAGES/plantImageFor, just for the candle art (see
+// assets/bougie) — a stable hash-picked candle per frame id.
+const CANDLE_IMAGES = [
+  require("../../assets/bougie/bougie1.png"),
+  require("../../assets/bougie/bougie2.png"),
+  require("../../assets/bougie/bougie3.png"),
+  require("../../assets/bougie/bougie4.png"),
+];
+function candleImageFor(frameId: string) {
+  const index = Math.floor(
+    hashRatio(`${frameId}_candle_art`) * CANDLE_IMAGES.length,
+  );
+  return CANDLE_IMAGES[Math.min(index, CANDLE_IMAGES.length - 1)];
 }
 
 // A real, ticking clock (not a static graphic) — its own tiny component,
@@ -765,222 +795,127 @@ function DraggableHandle({
   );
 }
 
-// Two physical bookshelf units, each holding two statuses as its own
-// labeled section (upper/lower), rather than one small cabinet per status —
-// purely a visual regrouping, each section still opens its own status list.
-const ROOM_SHELF_UNITS: {
+const SALON_IMAGE = require("../../assets/salon.jpg");
+// assets/salon.jpg is a fixed 7019×4988 illustration with 4 distinct pieces
+// of furniture holding books; each is mapped to one status and given a
+// percentage-based (not pixel) hit zone so it still lines up correctly
+// whatever width the image actually renders at on a given device — see
+// SALON_IMAGE_ASPECT_RATIO below, which is what keeps that percentage
+// mapping valid (the image is always shown at its native ratio, never
+// cropped/stretched).
+const SALON_IMAGE_ASPECT_RATIO = 7019 / 4988;
+const SALON_SHELF_ZONES: {
   status: string;
-  label: string;
+  labelKey: string;
   icon: keyof typeof Feather.glyphMap;
-}[][] = [
-  [
-    { status: "to_read", label: "À lire", icon: "bookmark" },
-    { status: "dnf", label: "Pas fini", icon: "x-circle" },
-  ],
-  [
-    { status: "reading", label: "En cours", icon: "book-open" },
-    { status: "done", label: "Lus", icon: "check-circle" },
-  ],
+  top: `${number}%`;
+  left: `${number}%`;
+  width: `${number}%`;
+  height: `${number}%`;
+}[] = [
+  // Left wall shelf (3 tiers)
+  {
+    status: "dnf",
+    labelKey: "library.tabs.dnf",
+    icon: "x-circle",
+    top: "35%",
+    left: "9%",
+    width: "23%",
+    height: "29%",
+  },
+  // Middle wall cabinet above the chair (3 tiers)
+  {
+    status: "done",
+    labelKey: "library.status.read",
+    icon: "check-circle",
+    top: "27%",
+    left: "36%",
+    width: "23%",
+    height: "26%",
+  },
+  // Small side table stacked with books, in front of the chair
+  {
+    status: "reading",
+    labelKey: "library.status.reading",
+    icon: "book-open",
+    top: "56%",
+    left: "35%",
+    width: "11%",
+    height: "30%",
+  },
+  // Tall rolling bookshelf on the right (4 tiers)
+  {
+    status: "to_read",
+    labelKey: "library.status.toRead",
+    icon: "bookmark",
+    top: "34%",
+    left: "66%",
+    width: "25%",
+    height: "50%",
+  },
 ];
 
-// Splits a pile of "bars" (one per book, capped) into two shelf
-// compartments so each cabinet reads as an actual piece of furniture with
-// two levels rather than one flat row of ticks.
-function splitBars(count: number): [number, number] {
-  const total = Math.min(Math.max(count, count > 0 ? 2 : 0), 16);
-  const top = Math.ceil(total / 2);
-  return [top, total - top];
-}
-
-function ShelfRow({
-  n,
-  colors,
-  styles,
-}: {
-  n: number;
-  colors: ColorPalette;
-  styles: any;
-}) {
-  if (n === 0) return <View style={styles.roomCompartment} />;
-  return (
-    <View style={styles.roomCompartment}>
-      {Array.from({ length: n }).map((_, i) => (
-        <View
-          key={i}
-          style={[
-            styles.roomBar,
-            {
-              height: 36 + ((i * 29) % 24),
-              backgroundColor: [
-                colors.purple,
-                colors.teal,
-                colors.pink,
-                colors.cyan,
-              ][i % 4],
-            },
-          ]}
-        />
-      ))}
-    </View>
-  );
-}
-
-function RoomPlant({ styles, tall }: { styles: any; tall?: boolean }) {
-  return (
-    <View
-      style={[styles.roomPlant, tall && styles.roomPlantTall]}
-      pointerEvents="none"
-    >
-      {tall ? (
-        <>
-          <View
-            style={[
-              styles.roomLeafSpike,
-              { transform: [{ rotate: "-18deg" }], marginBottom: -18 },
-            ]}
-          />
-          <View
-            style={[
-              styles.roomLeafSpike,
-              {
-                transform: [{ rotate: "10deg" }],
-                marginBottom: -20,
-                marginLeft: 8,
-              },
-            ]}
-          />
-          <View
-            style={[
-              styles.roomLeafSpike,
-              {
-                transform: [{ rotate: "-4deg" }],
-                marginBottom: -18,
-                marginLeft: -6,
-              },
-            ]}
-          />
-        </>
-      ) : (
-        <>
-          <View style={styles.roomPlantLeafBack} />
-          <View style={styles.roomPlantLeafFront} />
-        </>
-      )}
-      <View style={[styles.roomPlantPot, tall && styles.roomPlantPotTall]} />
-    </View>
-  );
-}
-
-// Frame with a tiny abstract shape inside, echoing a simple gallery-wall
-// piece rather than a plain bordered rectangle.
-function RoomFrame({
-  style,
-  borderColor,
-  children,
-}: {
-  style: any;
-  borderColor: string;
-  children?: React.ReactNode;
-}) {
-  return (
-    <View style={[style, { borderColor }]} pointerEvents="none">
-      {children}
-    </View>
-  );
-}
-
-function RoomWindow({ styles }: { styles: any }) {
-  return (
-    <View style={styles.roomWindow} pointerEvents="none">
-      <View style={styles.roomWindowGrid}>
-        {Array.from({ length: 4 }).map((_, i) => (
-          <View key={i} style={styles.roomWindowPane} />
-        ))}
-      </View>
-      <View style={styles.roomWindowSill} />
-    </View>
-  );
-}
-
-// A wide "room" made of plain Views (no real illustration asset available)
-// with one bookshelf unit per status — a real drawing would need an art
-// asset this codebase doesn't have, so this fakes the room honestly with
-// flat wall/floor colors and a row of generic little spine bars per shelf,
-// sized/colored from the actual book count rather than a fixed decoration.
-// Tapping a shelf hands off to the exact same per-status shelf browsing UI
-// already used by viewMode "shelf" (see roomZoomed in LibraryScreen).
+// The room is now a real illustration (assets/salon.jpg) instead of a
+// hand-drawn approximation — each piece of furniture in the image gets an
+// invisible percentage-positioned tap zone (see SALON_SHELF_ZONES) handing
+// off to the exact same per-status shelf browsing UI already used by
+// viewMode "shelf" (see roomZoomed in LibraryScreen).
 function RoomView({
   colors,
   styles,
-  counts,
   onOpenShelf,
 }: {
   colors: ColorPalette;
   styles: any;
-  counts: Record<string, number>;
   onOpenShelf: (status: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <ScrollView
       style={styles.roomScroll}
       contentContainerStyle={styles.roomFloor}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={styles.roomHint}>Touche une étagère pour l'ouvrir</Text>
+      <Text style={styles.roomHint}>{t('library.tapShelfToOpen')}</Text>
 
-      <View style={styles.roomWall}>
-        <View style={styles.roomUnitsRow}>
-          {ROOM_SHELF_UNITS.map((sections) => (
-            <View
-              key={sections.map((s) => s.status).join("-")}
-              style={styles.roomUnit}
+      <View style={styles.salonCard}>
+        <View
+          style={[
+            styles.salonImageWrap,
+            { aspectRatio: SALON_IMAGE_ASPECT_RATIO },
+          ]}
+        >
+          <Image
+            source={SALON_IMAGE}
+            style={styles.salonImage}
+            resizeMode="contain"
+          />
+          {SALON_SHELF_ZONES.map((zone) => (
+            <TouchableOpacity
+              key={zone.status}
+              style={[
+                styles.salonShelfZone,
+                {
+                  top: zone.top,
+                  left: zone.left,
+                  width: zone.width,
+                  height: zone.height,
+                },
+              ]}
+              activeOpacity={0.7}
+              accessibilityLabel={t(zone.labelKey)}
+              onPress={() => onOpenShelf(zone.status)}
             >
-              <View style={styles.roomCabinet}>
-                {sections.map((shelf, i) => {
-                  const count = counts[shelf.status] ?? 0;
-                  const [topBars, bottomBars] = splitBars(count);
-                  return (
-                    <View key={shelf.status}>
-                      {i > 0 && <View style={styles.roomShelfBoard} />}
-                      <TouchableOpacity
-                        style={styles.roomUnitSection}
-                        activeOpacity={0.85}
-                        onPress={() => onOpenShelf(shelf.status)}
-                      >
-                        <View style={styles.roomUnitHeader}>
-                          <Feather
-                            name={shelf.icon}
-                            size={12}
-                            color={colors.lavender}
-                          />
-                          <Text style={styles.roomUnitLabel} numberOfLines={1}>
-                            {shelf.label}
-                          </Text>
-                          <Text style={styles.roomUnitCount}>{count}</Text>
-                        </View>
-                        <ShelfRow n={topBars} colors={colors} styles={styles} />
-                        <View style={styles.roomShelfBoard} />
-                        {count > 0 ? (
-                          <ShelfRow
-                            n={bottomBars}
-                            colors={colors}
-                            styles={styles}
-                          />
-                        ) : (
-                          <View style={styles.roomCompartment}>
-                            <Text style={styles.roomUnitEmpty}>Vide</Text>
-                          </View>
-                        )}
-                      </TouchableOpacity>
-                    </View>
-                  );
-                })}
+              <View
+                style={[
+                  styles.salonShelfBadge,
+                  { backgroundColor: colors.purple },
+                ]}
+              >
+                <Feather name={zone.icon} size={11} color="#FFFFFF" />
+                <Text style={styles.salonShelfBadgeText}>{t(zone.labelKey)}</Text>
               </View>
-              <View style={styles.roomCabinetLegs}>
-                <View style={styles.roomLeg} />
-                <View style={styles.roomLeg} />
-              </View>
-            </View>
+            </TouchableOpacity>
           ))}
         </View>
       </View>
@@ -989,10 +924,11 @@ function RoomView({
 }
 
 export default function LibraryScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const { profile, setLibraryViewMode } = useAuth();
   const router = useRouter();
-  const styles = makeStyles(colors, isDark);
+  const styles = makeStyles(colors);
+  const { t } = useTranslation();
   const { width, height } = useWindowDimensions();
   const [activeTab, setActiveTab] = useState("to_read");
   const [query, setQuery] = useState("");
@@ -1040,6 +976,7 @@ export default function LibraryScreen() {
     position: number;
   } | null>(null);
   const [reorderMode, setReorderMode] = useState(false);
+  const [showEditTutorial, setShowEditTutorial] = useState(false);
   // While the FlatList re-settles onto the restored scroll offset (see the
   // reorderMode effect below), it's kept invisible instead of visibly
   // rendering at the top and then jumping — that jump-then-correct sequence
@@ -1081,6 +1018,41 @@ export default function LibraryScreen() {
   // above the current viewport at all.
   const reorderScrollRef = useRef<ScrollView>(null);
   const scrollOffsetRef = useRef(0);
+  // Search bar + category pills collapse away on a downward scroll and
+  // reappear on an upward one, freeing up space for the shelf — same idea as
+  // most feed apps' collapsing toolbars. In reorder mode they stay hidden
+  // outright regardless of scroll direction, since that mode already needs
+  // all the vertical room it can get (see the toolbarHidden effect below).
+  const toolbarHidden = useSharedValue(0);
+  // Measured once from the toolbar's natural layout (see its onLayout
+  // below), then used to animate height 0 <-> natural instead of just
+  // fading it — collapsing all the way so the shelf actually gains the
+  // freed-up space rather than leaving a blank gap.
+  const toolbarHeight = useSharedValue(0);
+  const lastScrollYRef = useRef(0);
+  const SCROLL_HIDE_THRESHOLD = 12;
+  const handleToolbarScroll = (y: number) => {
+    if (reorderMode) return;
+    const delta = y - lastScrollYRef.current;
+    if (y <= 0) {
+      toolbarHidden.value = withSpring(0, { damping: 20, stiffness: 200 });
+    } else if (delta > SCROLL_HIDE_THRESHOLD) {
+      toolbarHidden.value = withSpring(1, { damping: 20, stiffness: 200 });
+      lastScrollYRef.current = y;
+    } else if (delta < -SCROLL_HIDE_THRESHOLD) {
+      toolbarHidden.value = withSpring(0, { damping: 20, stiffness: 200 });
+      lastScrollYRef.current = y;
+    }
+  };
+  const toolbarAnimatedStyle = useAnimatedStyle(() => ({
+    height: toolbarHeight.value === 0 ? undefined : interpolate(toolbarHidden.value, [0, 1], [toolbarHeight.value, 0]),
+    opacity: interpolate(toolbarHidden.value, [0, 1], [1, 0]),
+    overflow: "hidden",
+  }));
+  useEffect(() => {
+    toolbarHidden.value = withSpring(reorderMode ? 1 : 0, { damping: 20, stiffness: 200 });
+    lastScrollYRef.current = 0;
+  }, [reorderMode]);
   const autoScrollDirRef = useRef<0 | 1 | -1>(0);
   const autoScrollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
@@ -1169,7 +1141,20 @@ export default function LibraryScreen() {
       );
       loadBooks();
       loadFrames();
-      badges.syncDecorationUnlocks().then(setDecorationsUnlocked).catch(() => {});
+      badges
+        .syncDecorationUnlocks()
+        .then(setDecorationsUnlocked)
+        .catch(() => {});
+      // Cleans up any title+author duplicates that predate addBookSmart
+      // (see app/(tabs)/search.tsx) — e.g. the same book once added via two
+      // different search providers. Runs after the initial paint above and
+      // only reloads if it actually found something to merge.
+      userBooks
+        .mergeDuplicates()
+        .then((count) => {
+          if (count > 0) loadBooks();
+        })
+        .catch(() => {});
     }, []),
   );
 
@@ -1253,7 +1238,7 @@ export default function LibraryScreen() {
 
   const loadFrames = () => {
     Promise.all(
-      TABS.map((t) => shelfFrames.getShelfFrames(t.value).catch(() => [])),
+      TABS.map((tab) => shelfFrames.getShelfFrames(tab.value).catch(() => [])),
     ).then((results) => setAllFrames(results.flat()));
   };
 
@@ -1292,13 +1277,13 @@ export default function LibraryScreen() {
   const requireDecorationSlot = () => {
     if (allFrames.length >= decorationsUnlocked) {
       Alert.alert(
-        "Plus de décoration disponible",
+        t("library.noMoreDecorations"),
         decorationsUnlocked === 0
-          ? "Débloque ta première décoration en obtenant un badge (livres lus, série de lecture...)."
-          : `Tu as débloqué ${decorationsUnlocked} décoration${decorationsUnlocked > 1 ? "s" : ""} grâce à tes badges. Gagne-en d'autres pour en débloquer plus.`,
+          ? t("library.unlockFirstDecoration")
+          : t("library.unlockedDecorations", { count: decorationsUnlocked }),
         [
-          { text: "Voir mes badges", onPress: () => router.push("/badges") },
-          { text: "OK", style: "cancel" },
+          { text: t("library.viewBadges"), onPress: () => router.push("/badges") },
+          { text: t("common.ok"), style: "cancel" },
         ],
       );
       return false;
@@ -1324,6 +1309,11 @@ export default function LibraryScreen() {
     if (!requireDecorationSlot()) return;
     placeFrame(estimatePlacementPosition(), "clock");
   };
+  // Same reasoning as the plant/clock — a candle is purely decorative too.
+  const addCandleDirectly = () => {
+    if (!requireDecorationSlot()) return;
+    placeFrame(estimatePlacementPosition(), "candle");
+  };
 
   // Tapping/dropping the ghost places it — the piece is created right away
   // (a plant needs nothing more; a frame starts empty). Choosing what a
@@ -1335,7 +1325,7 @@ export default function LibraryScreen() {
     shelfFrames
       .addShelfFrame(activeTab, position, kind)
       .then((created) => setAllFrames((cur) => [...cur, created]))
-      .catch(() => Alert.alert("Erreur", "Impossible d'ajouter le cadre"));
+      .catch(() => Alert.alert(t("common.error"), t("library.errors.addFrame")));
   };
 
   const confirmFramePlacement = () => {
@@ -1350,10 +1340,10 @@ export default function LibraryScreen() {
         : await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (permission.status !== "granted") {
       Alert.alert(
-        "Permission refusée",
+        t("library.permissionDenied"),
         source === "camera"
-          ? "L'accès à l'appareil photo est nécessaire."
-          : "L'accès à la galerie est nécessaire.",
+          ? t("library.cameraAccessNeeded")
+          : t("library.galleryAccessNeeded"),
       );
       return;
     }
@@ -1384,7 +1374,7 @@ export default function LibraryScreen() {
     );
     shelfFrames
       .setShelfFrameContent(editingFrame.id, { imageUrl })
-      .catch(() => Alert.alert("Erreur", "Impossible de modifier le cadre"));
+      .catch(() => Alert.alert(t("common.error"), t("library.errors.editFrame")));
   };
 
   const pickFrameBook = (book: any) => {
@@ -1400,7 +1390,7 @@ export default function LibraryScreen() {
     );
     shelfFrames
       .setShelfFrameContent(editingFrame.id, { bookId: book.book_id })
-      .catch(() => Alert.alert("Erreur", "Impossible de modifier le cadre"));
+      .catch(() => Alert.alert(t("common.error"), t("library.errors.editFrame")));
   };
 
   const deleteFrame = (frame: shelfFrames.ShelfFrame) => {
@@ -1408,7 +1398,7 @@ export default function LibraryScreen() {
     setAllFrames((cur) => cur.filter((f) => f.id !== frame.id));
     shelfFrames
       .removeShelfFrame(frame.id)
-      .catch(() => Alert.alert("Erreur", "Impossible de retirer le cadre"));
+      .catch(() => Alert.alert(t("common.error"), t("library.errors.removeFrame")));
   };
 
   const frameImageUri = (frame: shelfFrames.ShelfFrame) =>
@@ -1438,6 +1428,40 @@ export default function LibraryScreen() {
               <Image
                 source={plantImageFor(frame.id)}
                 style={styles.plantImage}
+                resizeMode="cover"
+              />
+            )}
+          </TouchableOpacity>
+          {reorderMode && !frame.__ghost ? (
+            <TouchableOpacity
+              style={styles.frameDeleteBtn}
+              hitSlop={8}
+              onPress={() => deleteFrame(frame)}
+            >
+              <Feather name="x" size={12} color="#FFFFFF" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      );
+    }
+    // A candle, exactly like the plant above — purely decorative, no
+    // content picker, no tilt, only move/delete.
+    if (frame.kind === "candle") {
+      return (
+        <View key={`frame-${frame.id}`} style={styles.candleWrap}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            style={styles.candleBox}
+            onPress={() => {
+              if (frame.__ghost) confirmFramePlacement();
+            }}
+          >
+            {frame.__ghost ? (
+              <Feather name="check" size={18} color={colors.purple} />
+            ) : (
+              <Image
+                source={candleImageFor(frame.id)}
+                style={styles.candleImage}
                 resizeMode="cover"
               />
             )}
@@ -1566,8 +1590,7 @@ export default function LibraryScreen() {
             return (a.author || "").localeCompare(b.author || "");
           }
           const diff =
-            new Date(a.created_at).getTime() -
-            new Date(b.created_at).getTime();
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
           return sortOrder === "asc" ? diff : -diff;
         }),
     [allBooks, activeTab, q, sortOrder],
@@ -1640,12 +1663,12 @@ export default function LibraryScreen() {
     // dropped, so the confirm dialog (and thus the remove callback) never
     // appeared on web at all. window.confirm is the web-native equivalent.
     if (Platform.OS === "web") {
-      if (window.confirm("Retirer ce livre de ta liste ?")) doRemove();
+      if (window.confirm(t("library.confirmRemoveBook"))) doRemove();
       return;
     }
-    Alert.alert("Retirer", "Retirer ce livre de ta liste ?", [
-      { text: "Annuler", style: "cancel" },
-      { text: "Retirer", style: "destructive", onPress: doRemove },
+    Alert.alert(t("library.remove"), t("library.confirmRemoveBook"), [
+      { text: t("common.cancel"), style: "cancel" },
+      { text: t("library.remove"), style: "destructive", onPress: doRemove },
     ]);
   };
 
@@ -1664,10 +1687,30 @@ export default function LibraryScreen() {
     pendingWritesRef.current++;
     userBooks
       .saveShelfOrder(ids)
-      .catch(() => Alert.alert("Erreur", "Impossible d'enregistrer l'ordre"))
+      .catch(() => Alert.alert(t("common.error"), t("library.errors.saveOrder")))
       .finally(() => {
         pendingWritesRef.current--;
       });
+  };
+
+  // Reorders a book within its own pile (see renderStack: the pile's
+  // top-to-bottom order is that group's relative order within filteredBooks,
+  // not their own individual shelf_position values) — swaps it with its
+  // pile neighbor one step up/down, leaving every other book's position
+  // untouched, then persists the same way a drag-drop does.
+  const moveBookInPile = (book: any, direction: "up" | "down") => {
+    if (!book.pile_id) return;
+    const ids = filteredBooks.map((b) => b.book_id);
+    const pileIndices = filteredBooks
+      .map((b, i) => (b.pile_id === book.pile_id ? i : -1))
+      .filter((i) => i !== -1);
+    const posInPile = pileIndices.indexOf(ids.indexOf(book.book_id));
+    const swapWith = direction === "up" ? posInPile - 1 : posInPile + 1;
+    if (swapWith < 0 || swapWith >= pileIndices.length) return;
+    const idxA = pileIndices[posInPile];
+    const idxB = pileIndices[swapWith];
+    [ids[idxA], ids[idxB]] = [ids[idxB], ids[idxA]];
+    persistOrder(ids);
   };
 
   // Grid-only tap-to-swap: first tap picks a book up, a second tap on a
@@ -1707,8 +1750,8 @@ export default function LibraryScreen() {
       ).length;
       if (pileSize >= STACK_SIZE) {
         Alert.alert(
-          "Pile pleine",
-          `Une pile ne peut pas dépasser ${STACK_SIZE} livres.`,
+          t("library.pileFull"),
+          t("library.pileFullMessage", { count: STACK_SIZE }),
         );
         return;
       }
@@ -1746,7 +1789,7 @@ export default function LibraryScreen() {
           }),
         );
       })
-      .catch(() => Alert.alert("Erreur", "Impossible d'empiler ces livres"))
+      .catch(() => Alert.alert(t("common.error"), t("library.errors.stackBooks")))
       .finally(() => {
         pendingWritesRef.current--;
       });
@@ -1761,7 +1804,7 @@ export default function LibraryScreen() {
     pendingWritesRef.current++;
     userBooks
       .unstackBook(book.book_id)
-      .catch(() => Alert.alert("Erreur", "Impossible de désempiler ce livre"))
+      .catch(() => Alert.alert(t("common.error"), t("library.errors.unstackBook")))
       .finally(() => {
         pendingWritesRef.current--;
       });
@@ -1776,7 +1819,7 @@ export default function LibraryScreen() {
     );
     userBooks
       .setShelfBreak(anchorId, false)
-      .catch(() => Alert.alert("Erreur", "Impossible de retirer l'étagère"));
+      .catch(() => Alert.alert(t("common.error"), t("library.errors.removeShelf")));
   };
 
   const toggleShelfGap = (side: "before" | "after") => {
@@ -1792,7 +1835,7 @@ export default function LibraryScreen() {
     );
     userBooks
       .setShelfGap(book.book_id, side, value)
-      .catch(() => Alert.alert("Erreur", "Impossible de modifier cet espace"));
+      .catch(() => Alert.alert(t("common.error"), t("library.errors.editSpacing")));
   };
 
   // Forces the selected book onto its own new shelf row, so it can stand
@@ -1811,7 +1854,7 @@ export default function LibraryScreen() {
     );
     userBooks
       .setShelfBreak(book.book_id, value)
-      .catch(() => Alert.alert("Erreur", "Impossible de modifier l'étagère"));
+      .catch(() => Alert.alert(t("common.error"), t("library.errors.editShelf")));
   };
 
   // Cycles a spine's tilt: left → right → straight → left. Deliberately
@@ -1829,7 +1872,7 @@ export default function LibraryScreen() {
     userBooks
       .setManualTilt(book.book_id, next)
       .catch(() =>
-        Alert.alert("Erreur", "Impossible de changer l'inclinaison"),
+        Alert.alert(t("common.error"), t("library.errors.changeTilt")),
       );
   };
 
@@ -1843,7 +1886,7 @@ export default function LibraryScreen() {
     shelfFrames
       .setShelfFrameTilt(frame.id, next)
       .catch(() =>
-        Alert.alert("Erreur", "Impossible de changer l'inclinaison"),
+        Alert.alert(t("common.error"), t("library.errors.changeTilt")),
       );
   };
 
@@ -2034,11 +2077,11 @@ export default function LibraryScreen() {
     );
     userBooks
       .setShelfBreak(nextBookId, false)
-      .catch(() => Alert.alert("Erreur", "Impossible de déplacer l'étagère"));
+      .catch(() => Alert.alert(t("common.error"), t("library.errors.moveShelf")));
     if (!newFirstId.startsWith("frame:")) {
       userBooks
         .setShelfBreak(newFirstId, true)
-        .catch(() => Alert.alert("Erreur", "Impossible de déplacer l'étagère"));
+        .catch(() => Alert.alert(t("common.error"), t("library.errors.moveShelf")));
     }
   };
 
@@ -2116,8 +2159,8 @@ export default function LibraryScreen() {
         ).length;
         if (pileSize >= STACK_SIZE) {
           Alert.alert(
-            "Pile pleine",
-            `Une pile ne peut pas dépasser ${STACK_SIZE} livres.`,
+            t("library.pileFull"),
+            t("library.pileFullMessage", { count: STACK_SIZE }),
           );
           return;
         }
@@ -2155,10 +2198,10 @@ export default function LibraryScreen() {
       );
       userBooks
         .setShelfBreak(resolved.anchorId, false)
-        .catch(() => Alert.alert("Erreur", "Impossible de déplacer l'étagère"));
+        .catch(() => Alert.alert(t("common.error"), t("library.errors.moveShelf")));
       userBooks
         .setShelfBreak(bookId, true)
-        .catch(() => Alert.alert("Erreur", "Impossible de déplacer l'étagère"));
+        .catch(() => Alert.alert(t("common.error"), t("library.errors.moveShelf")));
     } else {
       const idx = ids.indexOf(bookId);
       transferShelfBreak(ids[idx + 1], bookId);
@@ -2271,7 +2314,7 @@ export default function LibraryScreen() {
     transferShelfBreak(filteredBooks[frame.position]?.book_id, frameKey);
     shelfFrames
       .setShelfFramePosition(frameId, frame.position)
-      .catch(() => Alert.alert("Erreur", "Impossible de déplacer le cadre"));
+      .catch(() => Alert.alert(t("common.error"), t("library.errors.moveFrame")));
   };
 
   // Free drag-and-drop for the grid view: converts how far the book moved
@@ -2316,7 +2359,7 @@ export default function LibraryScreen() {
     const ids = filteredBooks.map((b) => b.book_id);
     userBooks
       .saveShelfOrder(ids)
-      .catch(() => Alert.alert("Erreur", "Impossible d'enregistrer l'ordre"));
+      .catch(() => Alert.alert(t("common.error"), t("library.errors.saveOrder")));
   };
 
   // Tapping a spine/stack bar "picks up" that book into a centered card,
@@ -2359,13 +2402,13 @@ export default function LibraryScreen() {
               onPress={() => toggleShelfGap("before")}
             >
               <Feather name="chevron-left" size={14} color="#FFFFFF" />
-              <Text style={styles.spacingBookActionText}>Gauche</Text>
+              <Text style={styles.spacingBookActionText}>{t("library.spacingLeft")}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.spacingBookActionBtn}
               onPress={() => toggleShelfGap("after")}
             >
-              <Text style={styles.spacingBookActionText}>Droite</Text>
+              <Text style={styles.spacingBookActionText}>{t("library.spacingRight")}</Text>
               <Feather name="chevron-right" size={14} color="#FFFFFF" />
             </TouchableOpacity>
             <TouchableOpacity
@@ -2376,7 +2419,7 @@ export default function LibraryScreen() {
               onPress={toggleShelfBreak}
             >
               <Feather name="corner-down-left" size={14} color="#FFFFFF" />
-              <Text style={styles.spacingBookActionText}>Nouvelle ligne</Text>
+              <Text style={styles.spacingBookActionText}>{t("library.spacingNewLine")}</Text>
             </TouchableOpacity>
           </View>
         ) : null}
@@ -2475,7 +2518,7 @@ export default function LibraryScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Ma Bibliothèque</Text>
+        <Text style={styles.title}>{t("library.title")}</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
           <View style={styles.viewToggle}>
             <TouchableOpacity
@@ -2488,6 +2531,7 @@ export default function LibraryScreen() {
                 setPoppedBook(null);
               }}
               hitSlop={6}
+              accessibilityLabel={t("library.viewShelf")}
             >
               <Feather
                 name="book-open"
@@ -2505,6 +2549,7 @@ export default function LibraryScreen() {
                 setPoppedBook(null);
               }}
               hitSlop={6}
+              accessibilityLabel={t("library.viewGrid")}
             >
               <Feather
                 name="grid"
@@ -2513,44 +2558,55 @@ export default function LibraryScreen() {
               />
             </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={() => setShowSortSheet(true)} hitSlop={6}>
-            <Feather
-              name="sliders"
-              size={17}
-              color={sortOrder === "manual" ? colors.gray : colors.purple}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => {
-              const nextReorderMode = !reorderMode;
-              setReorderMode(nextReorderMode);
-              // Manual positioning needs the actual saved order. A date sort
-              // would immediately re-sort the books after every drop and make
-              // a successful drag look like it had been ignored.
-              if (nextReorderMode) {
-                setSortOrder("manual");
-                if (viewMode === "shelf" && !roomZoomed) {
-                  setRoomZoomed(true);
-                }
-              }
-              setReorderSelectedId(null);
-              setSpacingSelectedId(null);
-              setPoppedBook(null);
-            }}
-            hitSlop={6}
-            style={[
-              styles.editToggle,
-              reorderMode && {
-                backgroundColor: colors.purpleGlow,
-              },
-            ]}
-          >
-            <Feather
-              name="edit-2"
-              size={17}
-              color={reorderMode ? colors.purple : colors.gray}
-            />
-          </TouchableOpacity>
+          {!(viewMode === "shelf" && !roomZoomed) && (
+            <>
+              <TouchableOpacity
+                onPress={() => setShowSortSheet(true)}
+                hitSlop={6}
+              >
+                <Feather
+                  name="sliders"
+                  size={17}
+                  color={sortOrder === "manual" ? colors.gray : colors.purple}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  const nextReorderMode = !reorderMode;
+                  setReorderMode(nextReorderMode);
+                  // Manual positioning needs the actual saved order. A date
+                  // sort would immediately re-sort the books after every drop
+                  // and make a successful drag look like it had been ignored.
+                  if (nextReorderMode) {
+                    setSortOrder("manual");
+                    AsyncStorage.getItem(EDIT_TUTORIAL_SEEN_KEY).then(
+                      (seen) => {
+                        if (seen) return;
+                        setShowEditTutorial(true);
+                        AsyncStorage.setItem(EDIT_TUTORIAL_SEEN_KEY, "1");
+                      },
+                    );
+                  }
+                  setReorderSelectedId(null);
+                  setSpacingSelectedId(null);
+                  setPoppedBook(null);
+                }}
+                hitSlop={6}
+                style={[
+                  styles.editToggle,
+                  reorderMode && {
+                    backgroundColor: colors.purpleGlow,
+                  },
+                ]}
+              >
+                <Feather
+                  name="edit-2"
+                  size={17}
+                  color={reorderMode ? colors.purple : colors.gray}
+                />
+              </TouchableOpacity>
+            </>
+          )}
           <NotificationBell />
         </View>
       </View>
@@ -2560,9 +2616,15 @@ export default function LibraryScreen() {
           <Feather name="edit-2" size={13} color={colors.purple} />
           <Text style={styles.reorderBannerText}>
             {viewMode === "grid"
-              ? "Glisse un livre pour le déplacer, ou touche-en deux pour les échanger"
-              : "Glisse pour déplacer ou empiler · touche un livre pour ajouter un espace à gauche ou à droite"}
+              ? t("library.gridDragHint")
+              : t("library.shelfDragHint")}
           </Text>
+          <TouchableOpacity
+            onPress={() => setShowEditTutorial(true)}
+            hitSlop={8}
+          >
+            <Feather name="help-circle" size={15} color={colors.purple} />
+          </TouchableOpacity>
         </View>
       )}
 
@@ -2570,11 +2632,10 @@ export default function LibraryScreen() {
         <View style={styles.reorderBanner}>
           <Feather name="image" size={13} color={colors.purple} />
           <Text style={styles.reorderBannerText}>
-            Glisse le cadre pour le positionner, puis dépose-le pour choisir son
-            contenu
+            {t("library.frameDragHint")}
           </Text>
           <TouchableOpacity onPress={() => setFramePlacement(null)}>
-            <Text style={styles.reorderBannerCancel}>Annuler</Text>
+            <Text style={styles.reorderBannerCancel}>{t("common.cancel")}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -2583,7 +2644,6 @@ export default function LibraryScreen() {
         <RoomView
           colors={colors}
           styles={styles}
-          counts={counts}
           onOpenShelf={(status) => {
             setActiveTab(status);
             setRoomZoomed(true);
@@ -2593,13 +2653,21 @@ export default function LibraryScreen() {
         <>
           {viewMode === "shelf" && roomZoomed && (
             <View style={styles.roomBackRow}>
-              <TouchableOpacity
-                style={styles.backToRoomBtn}
-                onPress={() => setRoomZoomed(false)}
-              >
-                <Feather name="arrow-left" size={14} color={colors.white} />
-                <Text style={styles.backToRoomText}>Retour au salon</Text>
-              </TouchableOpacity>
+              {/* Hidden in reorder mode — that mode already needs all the
+                  vertical room it can get (see toolbarHidden above), and the
+                  edit toggle itself remains available to exit reorder mode. */}
+              {!reorderMode && (
+                <TouchableOpacity
+                  style={styles.backToRoomBtn}
+                  onPress={() => {
+                    setRoomZoomed(false);
+                    setShowScrollTop(false);
+                  }}
+                >
+                  <Feather name="arrow-left" size={14} color={colors.white} />
+                  <Text style={styles.backToRoomText}>{t("library.backToRoom")}</Text>
+                </TouchableOpacity>
+              )}
               {reorderMode && !framePlacement ? (
                 <View style={styles.addDecorRow}>
                   <Text style={styles.decorCounter}>
@@ -2625,6 +2693,17 @@ export default function LibraryScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.addFrameBtn}
+                    onPress={addCandleDirectly}
+                    hitSlop={6}
+                  >
+                    <MaterialCommunityIcons
+                      name="candle"
+                      size={17}
+                      color={colors.gray}
+                    />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.addFrameBtn}
                     onPress={beginFramePlacement}
                     hitSlop={6}
                   >
@@ -2635,44 +2714,51 @@ export default function LibraryScreen() {
             </View>
           )}
 
-          <View style={styles.searchBar}>
-            <Feather name="search" size={17} color={colors.gray} />
-            <TextInput
-              style={styles.searchInput}
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Chercher dans ma bibliothèque..."
-              placeholderTextColor={colors.gray}
-              autoCapitalize="none"
-            />
-            {query ? (
-              <TouchableOpacity onPress={() => setQuery("")}>
-                <Feather name="x" size={16} color={colors.gray} />
-              </TouchableOpacity>
-            ) : null}
-          </View>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.tabs}
-            contentContainerStyle={{ gap: 8 }}
+          <Animated.View
+            style={toolbarAnimatedStyle}
+            onLayout={(e) => {
+              if (toolbarHeight.value === 0) toolbarHeight.value = e.nativeEvent.layout.height;
+            }}
           >
-            {TABS.map((tab) => (
-              <Pill
-                key={tab.value}
-                active={activeTab === tab.value}
-                onPress={() => {
-                  setActiveTab(tab.value);
-                  setPoppedBook(null);
-                }}
-                label={`${tab.label}${counts[tab.value] ? ` · ${counts[tab.value]}` : ""}`}
+            <View style={styles.searchBar}>
+              <Feather name="search" size={17} color={colors.gray} />
+              <TextInput
+                style={styles.searchInput}
+                value={query}
+                onChangeText={setQuery}
+                placeholder={t("library.searchPlaceholder")}
+                placeholderTextColor={colors.gray}
+                autoCapitalize="none"
               />
-            ))}
-          </ScrollView>
+              {query ? (
+                <TouchableOpacity onPress={() => setQuery("")}>
+                  <Feather name="x" size={16} color={colors.gray} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.tabs}
+              contentContainerStyle={{ gap: 8 }}
+            >
+              {TABS.map((tab) => (
+                <Pill
+                  key={tab.value}
+                  active={activeTab === tab.value}
+                  onPress={() => {
+                    setActiveTab(tab.value);
+                    setPoppedBook(null);
+                  }}
+                  label={`${t(tab.labelKey)}${counts[tab.value] ? ` · ${counts[tab.value]}` : ""}`}
+                />
+              ))}
+            </ScrollView>
+          </Animated.View>
 
           {loading ? (
-            <Text style={styles.emptyText}>Chargement...</Text>
+            <Text style={styles.emptyText}>{t("feed.loading")}</Text>
           ) : filteredBooks.length === 0 ? (
             <View style={styles.emptyState}>
               <Feather
@@ -2681,7 +2767,7 @@ export default function LibraryScreen() {
                 color={colors.gray}
               />
               <Text style={styles.emptyText}>
-                {q ? `Aucun résultat pour "${query}"` : "Aucun livre ici"}
+                {q ? t("library.noResultsFor", { query }) : t("library.noBooksHere")}
               </Text>
             </View>
           ) : viewMode === "grid" && reorderMode ? (
@@ -2699,6 +2785,7 @@ export default function LibraryScreen() {
               onScroll={(e) => {
                 scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
                 setShowScrollTop(e.nativeEvent.contentOffset.y > 400);
+                handleToolbarScroll(e.nativeEvent.contentOffset.y);
               }}
             >
               <View
@@ -2793,6 +2880,7 @@ export default function LibraryScreen() {
               onScroll={(e) => {
                 scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
                 setShowScrollTop(e.nativeEvent.contentOffset.y > 400);
+                handleToolbarScroll(e.nativeEvent.contentOffset.y);
               }}
               initialNumToRender={gridColumns * 4}
               windowSize={7}
@@ -2893,6 +2981,7 @@ export default function LibraryScreen() {
               onScroll={(e) => {
                 scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
                 setShowScrollTop(e.nativeEvent.contentOffset.y > 400);
+                handleToolbarScroll(e.nativeEvent.contentOffset.y);
               }}
             >
               {rows.map((row, index) => (
@@ -2911,7 +3000,7 @@ export default function LibraryScreen() {
                         },
                       ]}
                     >
-                      <Text style={styles.emptyShelfText}>Étagère vide</Text>
+                      <Text style={styles.emptyShelfText}>{t("library.emptyShelf")}</Text>
                       <TouchableOpacity
                         style={styles.emptyShelfRemove}
                         hitSlop={8}
@@ -3198,6 +3287,7 @@ export default function LibraryScreen() {
               onScroll={(e) => {
                 scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
                 setShowScrollTop(e.nativeEvent.contentOffset.y > 400);
+                handleToolbarScroll(e.nativeEvent.contentOffset.y);
               }}
               initialNumToRender={4}
               windowSize={7}
@@ -3217,7 +3307,7 @@ export default function LibraryScreen() {
                       },
                     ]}
                   >
-                    <Text style={styles.emptyShelfText}>Étagère vide</Text>
+                    <Text style={styles.emptyShelfText}>{t("library.emptyShelf")}</Text>
                   </Animated.View>
                 ) : (
                   <Animated.View
@@ -3251,7 +3341,7 @@ export default function LibraryScreen() {
         </>
       )}
 
-      {showScrollTop && (
+      {showScrollTop && !(viewMode === "shelf" && !roomZoomed) && (
         <TouchableOpacity
           style={styles.scrollTopBtn}
           onPress={scrollToTop}
@@ -3309,26 +3399,101 @@ export default function LibraryScreen() {
                 {poppedBook.author}
               </Text>
             ) : null}
+            {poppedBook.series ? (
+              <Text style={styles.pickupSeries} numberOfLines={1}>
+                {poppedBook.series}
+                {poppedBook.series_index
+                  ? t("book.seriesTome", { index: poppedBook.series_index })
+                  : ""}
+              </Text>
+            ) : null}
             <Text style={styles.pickupHint}>
-              Touche la couverture pour l'ouvrir
+              {t("library.tapCoverToOpen")}
             </Text>
+            {reorderMode && poppedBook.pile_id ? (
+              <View style={styles.pickupActions}>
+                <TouchableOpacity
+                  style={styles.pickupActionBtn}
+                  onPress={() => moveBookInPile(poppedBook, "up")}
+                >
+                  <Feather name="chevron-up" size={15} color="#FFFFFF" />
+                  <Text style={styles.pickupActionText}>{t("library.moveUp")}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.pickupActionBtn}
+                  onPress={() => moveBookInPile(poppedBook, "down")}
+                >
+                  <Feather name="chevron-down" size={15} color="#FFFFFF" />
+                  <Text style={styles.pickupActionText}>{t("library.moveDown")}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
             <View style={styles.pickupActions}>
               <TouchableOpacity
                 style={styles.pickupActionBtn}
                 onPress={() => setSelectedBook(poppedBook)}
               >
                 <Feather name="more-horizontal" size={15} color="#FFFFFF" />
-                <Text style={styles.pickupActionText}>Options</Text>
+                <Text style={styles.pickupActionText}>{t("library.options")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.pickupActionBtn}
                 onPress={() => setPoppedBook(null)}
               >
                 <Feather name="corner-down-left" size={15} color="#FFFFFF" />
-                <Text style={styles.pickupActionText}>Reposer</Text>
+                <Text style={styles.pickupActionText}>{t("library.putBack")}</Text>
               </TouchableOpacity>
             </View>
           </Animated.View>
+        </TouchableOpacity>
+      )}
+
+      {showEditTutorial && (
+        <TouchableOpacity
+          style={styles.overlay}
+          onPress={() => setShowEditTutorial(false)}
+          activeOpacity={1}
+        >
+          <TouchableOpacity style={styles.bottomSheet} activeOpacity={1}>
+            <View style={styles.handle} />
+            <Text style={styles.sheetTitle}>{t("library.editModeTitle")}</Text>
+            <View style={styles.tutorialRow}>
+              <Feather name="move" size={16} color={colors.purple} />
+              <Text style={styles.tutorialText}>
+                {t("library.tutorial.dragBook")}
+              </Text>
+            </View>
+            <View style={styles.tutorialRow}>
+              <Feather name="minus-square" size={16} color={colors.purple} />
+              <Text style={styles.tutorialText}>
+                {t("library.tutorial.addSpace")}
+              </Text>
+            </View>
+            <View style={styles.tutorialRow}>
+              <Feather name="image" size={16} color={colors.purple} />
+              <Text style={styles.tutorialText}>
+                {t("library.tutorial.addDecor")}
+              </Text>
+            </View>
+            <View style={styles.tutorialRow}>
+              <Feather name="x-circle" size={16} color={colors.purple} />
+              <Text style={styles.tutorialText}>
+                {t("library.tutorial.removeDecor")}
+              </Text>
+            </View>
+            <View style={styles.tutorialRow}>
+              <Feather name="grid" size={16} color={colors.purple} />
+              <Text style={styles.tutorialText}>
+                {t("library.tutorial.gridDrag")}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.tutorialCloseBtn}
+              onPress={() => setShowEditTutorial(false)}
+            >
+              <Text style={styles.tutorialCloseBtnText}>{t("library.gotIt")}</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
         </TouchableOpacity>
       )}
 
@@ -3340,7 +3505,7 @@ export default function LibraryScreen() {
         >
           <TouchableOpacity style={styles.bottomSheet} activeOpacity={1}>
             <View style={styles.handle} />
-            <Text style={styles.sheetTitle}>Trier</Text>
+            <Text style={styles.sheetTitle}>{t("library.sortTitle")}</Text>
             <TouchableOpacity
               style={[styles.sheetRow, styles.sheetDivider]}
               onPress={() => {
@@ -3349,7 +3514,7 @@ export default function LibraryScreen() {
               }}
             >
               <Feather name="sliders" size={16} color={colors.white} />
-              <Text style={styles.sheetBtnText}>Mon organisation</Text>
+              <Text style={styles.sheetBtnText}>{t("library.sortManual")}</Text>
               {sortOrder === "manual" && (
                 <Feather
                   name="check"
@@ -3368,7 +3533,7 @@ export default function LibraryScreen() {
             >
               <Feather name="arrow-up" size={16} color={colors.white} />
               <Text style={styles.sheetBtnText}>
-                Plus ancien ajouté d'abord
+                {t("library.sortOldest")}
               </Text>
               {sortOrder === "asc" && (
                 <Feather
@@ -3388,7 +3553,7 @@ export default function LibraryScreen() {
             >
               <Feather name="arrow-down" size={16} color={colors.white} />
               <Text style={styles.sheetBtnText}>
-                Plus récent ajouté d'abord
+                {t("library.sortNewest")}
               </Text>
               {sortOrder === "desc" && (
                 <Feather
@@ -3407,7 +3572,7 @@ export default function LibraryScreen() {
               }}
             >
               <Feather name="user" size={16} color={colors.white} />
-              <Text style={styles.sheetBtnText}>Auteur (A-Z)</Text>
+              <Text style={styles.sheetBtnText}>{t("library.sortAuthor")}</Text>
               {sortOrder === "author" && (
                 <Feather
                   name="check"
@@ -3430,7 +3595,7 @@ export default function LibraryScreen() {
           <TouchableOpacity style={styles.bottomSheet} activeOpacity={1}>
             <View style={styles.handle} />
             <Text style={styles.sheetTitle}>
-              {framePicker.frame ? "Modifier le cadre" : "Ajouter un cadre"}
+              {framePicker.frame ? t("library.editFrameTitle") : t("library.addFrameTitle")}
             </Text>
             <TouchableOpacity
               style={[styles.sheetRow, styles.sheetDivider]}
@@ -3439,14 +3604,14 @@ export default function LibraryScreen() {
               }
             >
               <Feather name="book" size={16} color={colors.white} />
-              <Text style={styles.sheetBtnText}>Choisir un livre</Text>
+              <Text style={styles.sheetBtnText}>{t("library.chooseBook")}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.sheetRow, styles.sheetDivider]}
               onPress={() => pickFrameImage("camera")}
             >
               <Feather name="camera" size={16} color={colors.white} />
-              <Text style={styles.sheetBtnText}>Prendre une photo</Text>
+              <Text style={styles.sheetBtnText}>{t("library.takePhoto")}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[
@@ -3456,7 +3621,7 @@ export default function LibraryScreen() {
               onPress={() => pickFrameImage("gallery")}
             >
               <Feather name="image" size={16} color={colors.white} />
-              <Text style={styles.sheetBtnText}>Depuis ma galerie</Text>
+              <Text style={styles.sheetBtnText}>{t("library.fromGallery")}</Text>
             </TouchableOpacity>
             {framePicker.frame ? (
               <TouchableOpacity
@@ -3464,7 +3629,7 @@ export default function LibraryScreen() {
                 onPress={() => deleteFrame(framePicker.frame!)}
               >
                 <Feather name="trash-2" size={16} color={colors.error} />
-                <Text style={styles.sheetBtnDangerText}>Retirer le cadre</Text>
+                <Text style={styles.sheetBtnDangerText}>{t("library.removeFrame")}</Text>
               </TouchableOpacity>
             ) : null}
           </TouchableOpacity>
@@ -3479,7 +3644,7 @@ export default function LibraryScreen() {
         >
           <TouchableOpacity style={styles.bottomSheet} activeOpacity={1}>
             <View style={styles.handle} />
-            <Text style={styles.sheetTitle}>Choisir un livre</Text>
+            <Text style={styles.sheetTitle}>{t("library.chooseBook")}</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -3531,12 +3696,12 @@ export default function LibraryScreen() {
                 onPress={() => changeStatus(s.value)}
               >
                 <Feather name={s.icon} size={16} color={colors.white} />
-                <Text style={styles.sheetBtnText}>{s.label}</Text>
+                <Text style={styles.sheetBtnText}>{t(s.labelKey)}</Text>
               </TouchableOpacity>
             ))}
             <TouchableOpacity style={styles.sheetRow} onPress={removeBook}>
               <Feather name="trash-2" size={16} color={colors.error} />
-              <Text style={styles.sheetBtnDangerText}>Retirer de ma liste</Text>
+              <Text style={styles.sheetBtnDangerText}>{t("library.removeFromList")}</Text>
             </TouchableOpacity>
           </TouchableOpacity>
         </TouchableOpacity>
@@ -3545,26 +3710,7 @@ export default function LibraryScreen() {
   );
 }
 
-const makeStyles = (colors: ColorPalette, isDark: boolean) => {
-  const wood = isDark
-    ? {
-        wall: "#332A1E",
-        border: "#8C6C48",
-        frame: "#5E4732",
-        text: "#FBF7EF",
-        emptyText: "#D4C4A8",
-        windowGlass: "#22423C",
-        windowFrameBg: "#33281A",
-      }
-    : {
-        wall: "#f3e6d5",
-        border: "#5c4632",
-        frame: "#c9a876",
-        text: "#3a2e22",
-        emptyText: "#5c4632",
-        windowGlass: "#cfe3e0",
-        windowFrameBg: "#e9dcc4",
-      };
+const makeStyles = (colors: ColorPalette) => {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.bg },
     header: {
@@ -3838,6 +3984,24 @@ const makeStyles = (colors: ColorPalette, isDark: boolean) => {
       width: "96%",
       height: 108,
     },
+    // A candle dropped into the shelf — exactly the same treatment as the
+    // plant above (see plantWrap/plantBox/plantImage), just with the
+    // assets/bougie art instead of assets/plants.
+    candleWrap: { width: CANDLE_WIDTH, position: "relative" },
+    candleBox: {
+      width: CANDLE_WIDTH,
+      height: SPINE_HEIGHT,
+      alignItems: "center",
+      justifyContent: "center",
+      overflow: "hidden",
+    },
+    candleImage: {
+      position: "absolute",
+      bottom: 0,
+      alignSelf: "center",
+      width: "96%",
+      height: 116,
+    },
     // A small standing clock — round face on the shelf baseline, like a
     // desk/mantel clock rather than a wall-hung one (no tilt, same as the
     // plant).
@@ -4033,268 +4197,63 @@ const makeStyles = (colors: ColorPalette, isDark: boolean) => {
       elevation: 8,
     },
 
-    // "Room" view (the un-zoomed side of viewMode "shelf") — a furnished-
-    // feeling wall of wooden bookshelf cabinets, one per status, built
-    // entirely from flat Views since there's no room illustration asset in
-    // this app: a wallpapered wall with a couple of picture-frame accents,
-    // a wood-floor band, and each cabinet drawn with two shelf compartments,
-    // a center shelf board, and little legs so it reads as furniture rather
-    // than a plain card. Tapping a cabinet zooms into that status's real
-    // shelf (see roomZoomed/backToRoomBtn).
+    // "Room" view (the un-zoomed side of viewMode "shelf") — assets/salon.jpg
+    // rendered at its native aspect ratio (see SALON_IMAGE_ASPECT_RATIO)
+    // with invisible tap zones over each piece of furniture in the
+    // illustration (see SALON_SHELF_ZONES). Tapping one zooms into that
+    // status's real shelf (see roomZoomed/backToRoomBtn).
     roomScroll: { flex: 1 },
-    roomFloor: { paddingBottom: 20 },
+    roomFloor: {
+      paddingVertical: 24,
+      paddingHorizontal: 20,
+    },
     roomHint: {
-      fontSize: 12,
-      color: colors.gray,
+      fontSize: 13,
+      fontWeight: "600",
+      color: colors.lavender,
       textAlign: "center",
       marginTop: 4,
-      marginBottom: 14,
+      marginBottom: 16,
     },
-    // Warm cream wallpaper, tall enough to hold a small gallery wall (frames,
-    // mirror, window) above the bookshelf cabinets, echoing a real living
-    // room's wall-then-furniture layout instead of just a colored strip.
-    roomWall: {
-      marginHorizontal: 16,
-      backgroundColor: wood.wall,
-      borderTopLeftRadius: 14,
-      borderTopRightRadius: 14,
-      paddingHorizontal: 16,
-      paddingTop: 14,
-      paddingBottom: 16,
+    // Centered, width-capped so the illustration doesn't stretch edge to
+    // edge on a wide/tablet screen — a soft card frame around it (rather
+    // than the bare image floating on the screen background) is what makes
+    // this read as a designed page instead of a dropped-in picture.
+    salonCard: {
+      alignSelf: "center",
+      width: "100%",
+      maxWidth: 480,
+      backgroundColor: colors.card,
+      borderRadius: 24,
+      padding: 12,
+      ...shadows.card,
+    },
+    salonImageWrap: {
+      width: "100%",
+      position: "relative",
+      borderRadius: 16,
       overflow: "hidden",
     },
-    // A real flex row — every piece of wall décor sits side by side on the
-    // same baseline instead of being nudged into place with absolute
-    // top/left guesses, so nothing can ever drift into overlapping anything
-    // else regardless of screen width.
-    roomDecorRow: {
-      flexDirection: "row",
-      alignItems: "flex-end",
-      justifyContent: "space-between",
-      marginBottom: 14,
-    },
-    roomDecorCluster: { flexDirection: "row", alignItems: "flex-end", gap: 10 },
-    roomFrame1: {
-      width: 30,
-      height: 40,
-      borderWidth: 3,
-      borderRadius: 3,
-      backgroundColor: "#faf3e8",
-      alignItems: "center",
-      justifyContent: "center",
-      transform: [{ rotate: "-3deg" }],
-    },
-    roomFrameArch: {
+    salonImage: { width: "100%", height: "100%" },
+    salonShelfZone: {
       position: "absolute",
-      bottom: 7,
-      width: 14,
-      height: 9,
-      backgroundColor: "#d69a4f",
-      borderTopLeftRadius: 7,
-      borderTopRightRadius: 7,
-    },
-    roomFrameCircle: {
-      position: "absolute",
-      top: 7,
-      width: 9,
-      height: 9,
-      borderRadius: 5,
-      backgroundColor: "#c9613f",
-    },
-    roomFrame2: {
-      width: 20,
-      height: 24,
-      borderWidth: 3,
-      borderRadius: 2,
-      backgroundColor: "#faf3e8",
       alignItems: "center",
-      justifyContent: "center",
-    },
-    roomFrameLeaf: {
-      width: 3,
-      height: 12,
-      backgroundColor: "#4a7a4e",
-      borderRadius: 2,
-    },
-    roomMirror: {
-      width: 30,
-      height: 30,
-      borderRadius: 15,
-      borderWidth: 3,
-      borderColor: "#c9613f",
-      backgroundColor: "#e4d8ea",
-      overflow: "hidden",
-    },
-    roomMirrorShine: {
-      position: "absolute",
-      top: 3,
-      left: 6,
-      width: 7,
-      height: 18,
-      borderRadius: 4,
-      backgroundColor: "rgba(255,255,255,0.5)",
-      transform: [{ rotate: "20deg" }],
-    },
-    // A small paned window, on the other end of the same décor row.
-    roomWindow: { alignItems: "center" },
-    roomWindowGrid: {
-      width: 40,
-      height: 40,
-      flexDirection: "row",
-      flexWrap: "wrap",
-      backgroundColor: wood.windowFrameBg,
-      borderWidth: 3,
-      borderColor: wood.frame,
-      borderRadius: 2,
-    },
-    roomWindowPane: {
-      width: "48%",
-      height: "48%",
-      margin: "1%",
-      backgroundColor: wood.windowGlass,
-    },
-    roomWindowSill: {
-      width: 46,
-      height: 4,
-      marginTop: 2,
-      backgroundColor: wood.frame,
-      borderRadius: 1,
-    },
-    roomUnitsRow: {
-      flexDirection: "row",
-    },
-    roomUnit: {
-      width: "50%",
-    },
-    // One status's slice of a shared two-section cabinet — its own tap
-    // target and header, sitting directly on the wood background.
-    roomUnitSection: {
-      paddingHorizontal: 5,
-      paddingTop: 6,
-    },
-    roomUnitHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      marginBottom: 4,
-    },
-    roomUnitLabel: {
-      flex: 1,
-      fontSize: 12,
-      fontWeight: "700",
-      color: wood.text,
-    },
-    roomUnitCount: { fontSize: 11, color: colors.purple, fontWeight: "700" },
-    // The cabinet itself: two shelf compartments separated by a solid board,
-    // framed by the outer wood tone so it reads as one piece of furniture.
-    roomCabinet: {
-      backgroundColor: wood.frame,
-      borderRadius: 4,
-      borderWidth: 2,
-      borderColor: wood.border,
-      overflow: "hidden",
-    },
-    roomCompartment: {
-      flexDirection: "row",
-      alignItems: "flex-end",
-      gap: 3,
-      minHeight: 64,
-      paddingHorizontal: 5,
+      justifyContent: "flex-start",
       paddingTop: 4,
-      paddingBottom: 3,
     },
-    roomShelfBoard: { height: 5, backgroundColor: wood.border },
-    roomBar: { width: 7, borderRadius: 2, opacity: 0.92 },
-    roomUnitEmpty: {
+    salonShelfBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 999,
+      opacity: 0.92,
+    },
+    salonShelfBadgeText: {
       fontSize: 10,
-      color: wood.emptyText,
-      fontStyle: "italic",
-      paddingBottom: 6,
-    },
-    roomCabinetLegs: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      paddingHorizontal: 6,
-    },
-    roomLeg: {
-      width: 5,
-      height: 6,
-      backgroundColor: wood.border,
-      borderRadius: 1,
-    },
-    // The tall potted plant standing on the floor row (see roomFloorRow) —
-    // a plain flex item now, so its "feet" always land exactly at floor
-    // level no matter how tall the wall/shelves above happen to be, instead
-    // of an absolute-positioned guess that could float mid-air over them.
-    roomFloorRow: {
-      flexDirection: "row",
-      alignItems: "flex-end",
-      marginHorizontal: 16,
-      gap: 6,
-    },
-    roomPlant: { alignItems: "center", paddingBottom: 2 },
-    roomPlantLeafBack: {
-      width: 26,
-      height: 26,
-      borderRadius: 13,
-      backgroundColor: "#4a7a4e",
-      opacity: 0.85,
-      marginBottom: -10,
-    },
-    roomPlantLeafFront: {
-      width: 20,
-      height: 20,
-      borderRadius: 10,
-      backgroundColor: "#5f9463",
-      marginBottom: -6,
-      marginLeft: -8,
-    },
-    roomLeafSpike: {
-      width: 9,
-      height: 34,
-      borderRadius: 6,
-      backgroundColor: "#3f6b52",
-    },
-    roomPlantPot: {
-      width: 18,
-      height: 14,
-      backgroundColor: "#a05a3f",
-      borderBottomLeftRadius: 3,
-      borderBottomRightRadius: 3,
-    },
-    roomPlantPotTall: {
-      width: 22,
-      height: 18,
-      borderBottomLeftRadius: 4,
-      borderBottomRightRadius: 4,
-    },
-    roomFloorBand: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "flex-end",
-      height: 14,
-      borderBottomLeftRadius: 14,
-      borderBottomRightRadius: 14,
-      overflow: "hidden",
-      backgroundColor: "#a9784f",
-    },
-    roomFloorPlank: {
-      flex: 1,
-      alignSelf: "stretch",
-      borderRightWidth: 1,
-      borderRightColor: "rgba(0,0,0,0.15)",
-    },
-    // A thin rug hint tucked into the floor band itself rather than a
-    // separately floating shape below it.
-    roomRugStripe: {
-      position: "absolute",
-      left: "20%",
-      right: "20%",
-      bottom: 4,
-      height: 4,
-      borderRadius: 2,
-      backgroundColor: "#c9613f",
-      opacity: 0.5,
+      fontWeight: "700",
+      color: "#FFFFFF",
     },
 
     roomBackRow: {
@@ -4382,6 +4341,13 @@ const makeStyles = (colors: ColorPalette, isDark: boolean) => {
       color: "rgba(255,255,255,0.7)",
       textAlign: "center",
       marginTop: 3,
+    },
+    pickupSeries: {
+      fontSize: 12,
+      fontWeight: "600",
+      color: "#fff",
+      textAlign: "center",
+      marginTop: 4,
     },
     pickupHint: {
       fontSize: 11,
@@ -4486,6 +4452,26 @@ const makeStyles = (colors: ColorPalette, isDark: boolean) => {
     },
     sheetDivider: { borderBottomWidth: 1, borderBottomColor: colors.divider },
     sheetBtnText: { color: colors.white, fontSize: 14, fontWeight: "500" },
+    tutorialRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 12,
+      paddingVertical: 10,
+    },
+    tutorialText: {
+      flex: 1,
+      color: colors.white,
+      fontSize: 13,
+      lineHeight: 19,
+    },
+    tutorialCloseBtn: {
+      backgroundColor: colors.purple,
+      borderRadius: 12,
+      paddingVertical: 13,
+      alignItems: "center",
+      marginTop: 12,
+    },
+    tutorialCloseBtnText: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
     sheetBtnDangerText: {
       color: colors.error,
       fontSize: 14,

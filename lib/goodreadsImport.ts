@@ -145,7 +145,7 @@ export async function importGoodreadsCsv(csvText: string, onProgress?: (p: Impor
         user_id: userId,
         book_id,
         status,
-        format: 'ereader',
+        formats: ['ereader'],
         rating: ratingNum > 0 ? ratingNum : null,
         comment: m.review || null,
         finished_at: status === 'done' ? cleanDate(m.dateRead) : null,

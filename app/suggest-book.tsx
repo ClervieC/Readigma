@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { View, Text, StyleSheet, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { fonts, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import { submitSuggestion } from '../lib/suggestions';
@@ -13,29 +14,30 @@ export default function SuggestBookScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const styles = makeStyles(colors);
+  const { t } = useTranslation();
   const [book, setBook] = useState<BookFormFields>(EMPTY_BOOK_FORM);
   const [loading, setLoading] = useState(false);
 
   const submit = () => {
-    if (!book.title.trim() || !book.author.trim()) { Alert.alert('Erreur', "Le titre et l'auteur sont requis"); return; }
+    if (!book.title.trim() || !book.author.trim()) { Alert.alert(t('common.error'), t('suggestBook.errors.titleAndAuthorRequired')); return; }
     setLoading(true);
     submitSuggestion(book).then(() => {
       setLoading(false);
-      Alert.alert('Envoyé', "Suggestion envoyée ! L'admin la reviewera bientôt.", [{ text: 'OK', onPress: () => router.back() }]);
-    }).catch(() => { setLoading(false); Alert.alert('Erreur', "Impossible d'envoyer la suggestion"); });
+      Alert.alert(t('suggestBook.sent'), t('suggestBook.sentMessage'), [{ text: t('common.ok'), onPress: () => router.back() }]);
+    }).catch(() => { setLoading(false); Alert.alert(t('common.error'), t('suggestBook.errors.sendFailed')); });
   };
 
   return (
-    <Screen back title="Suggérer un livre">
+    <Screen back title={t('suggestBook.title')}>
       <View style={styles.hero}>
         <Feather name="send" size={28} color={colors.purple} />
-        <Text style={styles.heroTitle}>Tu connais un livre incroyable ?</Text>
-        <Text style={styles.heroSub}>Remplis sa fiche et propose-la à l'admin pour qu'elle soit ajoutée à Readigma.</Text>
+        <Text style={styles.heroTitle}>{t('suggestBook.heroTitle')}</Text>
+        <Text style={styles.heroSub}>{t('suggestBook.heroSub')}</Text>
       </View>
 
       <BookForm value={book} onChange={setBook} requireAuthor />
 
-      <Button label={loading ? 'Envoi...' : 'Envoyer la suggestion'} onPress={submit} disabled={loading} style={{ marginTop: 12 }} />
+      <Button label={loading ? t('suggestBook.sending') : t('suggestBook.send')} onPress={submit} disabled={loading} style={{ marginTop: 12 }} />
     </Screen>
   );
 }

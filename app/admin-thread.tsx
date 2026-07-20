@@ -6,16 +6,20 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { fonts, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import * as supportChat from '../lib/supportChat';
 
-function timeLabel(dateStr: string) {
+// Locale-aware date formatting (not a translation key — Intl handles the
+// month/day ordering per locale), unlike every other user-facing string in
+// this file which does go through t().
+function timeLabel(dateStr: string, locale: string) {
   const d = new Date(dateStr);
   const now = new Date();
   const sameDay = d.toDateString() === now.toDateString();
-  const time = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  return sameDay ? time : `${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} ${time}`;
+  const time = d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+  return sameDay ? time : `${d.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' })} ${time}`;
 }
 
 // The admin-side mirror of app/contact.tsx — same thread, viewed from the
@@ -27,6 +31,7 @@ export default function AdminThreadScreen() {
   const router = useRouter();
   const { userId, username } = useLocalSearchParams<{ userId: string; username?: string }>();
   const styles = makeStyles(colors);
+  const { t, i18n } = useTranslation();
   const [messages, setMessages] = useState<supportChat.ThreadMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
@@ -58,7 +63,7 @@ export default function AdminThreadScreen() {
     }).catch(() => {
       setSending(false);
       setText(body);
-      Alert.alert('Erreur', "Impossible d'envoyer le message");
+      Alert.alert(t('common.error'), t('contact.errors.sendFailed'));
     });
   };
 
@@ -70,13 +75,13 @@ export default function AdminThreadScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>@{username ?? '?'}</Text>
-          <Text style={styles.subtitle}>Conversation</Text>
+          <Text style={styles.subtitle}>{t('admin.thread.subtitle')}</Text>
         </View>
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={8}>
         {loading ? (
-          <Text style={styles.emptyText}>Chargement...</Text>
+          <Text style={styles.emptyText}>{t('admin.loading')}</Text>
         ) : (
           <FlatList
             ref={listRef}
@@ -89,7 +94,7 @@ export default function AdminThreadScreen() {
                 <View style={[styles.bubble, item.sender === 'admin' ? styles.bubbleMine : styles.bubbleTheirs]}>
                   <Text style={[styles.bubbleText, item.sender === 'admin' && styles.bubbleTextMine]}>{item.body}</Text>
                 </View>
-                <Text style={[styles.bubbleTime, item.sender === 'admin' && styles.bubbleTimeMine]}>{timeLabel(item.created_at)}</Text>
+                <Text style={[styles.bubbleTime, item.sender === 'admin' && styles.bubbleTimeMine]}>{timeLabel(item.created_at, i18n.language)}</Text>
               </View>
             )}
           />
@@ -100,7 +105,7 @@ export default function AdminThreadScreen() {
             style={styles.input}
             value={text}
             onChangeText={setText}
-            placeholder="Répondre..."
+            placeholder={t('admin.thread.replyPlaceholder')}
             placeholderTextColor={colors.gray}
             multiline
             maxLength={1000}

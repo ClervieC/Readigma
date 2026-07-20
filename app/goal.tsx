@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { radius, fonts, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import * as goals from '../lib/goals';
@@ -13,12 +14,12 @@ import Pill from '../components/Pill';
 import Button from '../components/Button';
 import ProgressBar from '../components/ProgressBar';
 
-const MONTHS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
-
 export default function GoalScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const styles = makeStyles(colors);
+  const { t } = useTranslation();
+  const MONTHS = t('stats.months', { returnObjects: true }) as string[];
   const [goal, setGoal] = useState<any>(null);
   const [booksRead, setBooksRead] = useState(0);
   const [target, setTarget] = useState('');
@@ -39,13 +40,13 @@ export default function GoalScreen() {
   };
 
   const saveGoal = () => {
-    const t = parseInt(target);
-    if (isNaN(t) || t <= 0) { Alert.alert('Erreur', 'Entre un nombre valide'); return; }
+    const targetNum = parseInt(target);
+    if (isNaN(targetNum) || targetNum <= 0) { Alert.alert(t('common.error'), t('goal.errors.invalidNumber')); return; }
     setLoading(true);
-    goals.setGoal(t).then(() => {
+    goals.setGoal(targetNum).then(() => {
       setLoading(false); loadGoal();
-      Alert.alert('🎯', `Objectif de ${t} livres fixé pour ${year} !`);
-    }).catch(() => { setLoading(false); Alert.alert('Erreur', 'Impossible de sauvegarder'); });
+      Alert.alert('🎯', t('goal.goalSetToast', { count: targetNum, year }));
+    }).catch(() => { setLoading(false); Alert.alert(t('common.error'), t('goal.errors.saveFailed')); });
   };
 
   const progress = goal ? Math.min((booksRead / goal.target_books) * 100, 100) : 0;
@@ -58,52 +59,52 @@ export default function GoalScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}><Feather name="arrow-left" size={20} color={colors.white} /></TouchableOpacity>
-        <Text style={styles.headerTitle}>Reading Goal {year}</Text>
+        <Text style={styles.headerTitle}>{t('goal.title', { year })}</Text>
         <View style={{ width: 20 }} />
       </View>
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.goalHero}>
-          <Text style={styles.goalTitle}>Mon objectif {year}</Text>
+          <Text style={styles.goalTitle}>{t('goal.myGoal', { year })}</Text>
           {goal ? (
             <>
               <Text style={styles.goalNumbers}>
                 <Text style={styles.goalCurrent}>{booksRead}</Text>
                 <Text style={styles.goalSeparator}> / </Text>
                 <Text style={styles.goalTarget}>{goal.target_books}</Text>
-                <Text style={styles.goalLabel}> livres</Text>
+                <Text style={styles.goalLabel}>{t('goal.books')}</Text>
               </Text>
               <ProgressBar percent={progress} color={colors.cyan} trackColor={colors.card2} />
-              <Text style={styles.progressText}>{Math.round(progress)}% accompli</Text>
+              <Text style={styles.progressText}>{t('goal.percentDone', { percent: Math.round(progress) })}</Text>
               {progress >= 100 ? (
-                <Text style={styles.congratsText}>🎉 Objectif atteint ! Bravo !</Text>
+                <Text style={styles.congratsText}>{t('goal.goalReached')}</Text>
               ) : (
                 <View style={styles.paceRow}>
                   <View style={styles.paceStat}>
                     <Text style={styles.paceNum}>{booksLeft}</Text>
-                    <Text style={styles.paceLabel}>livres restants</Text>
+                    <Text style={styles.paceLabel}>{t('goal.booksLeft')}</Text>
                   </View>
                   <View style={styles.paceDivider} />
                   <View style={styles.paceStat}>
                     <Text style={styles.paceNum}>{pace}</Text>
-                    <Text style={styles.paceLabel}>livres/mois</Text>
+                    <Text style={styles.paceLabel}>{t('goal.booksPerMonth')}</Text>
                   </View>
                   <View style={styles.paceDivider} />
                   <View style={styles.paceStat}>
                     <Text style={styles.paceNum}>{monthsLeft}</Text>
-                    <Text style={styles.paceLabel}>mois restants</Text>
+                    <Text style={styles.paceLabel}>{t('goal.monthsLeft')}</Text>
                   </View>
                 </View>
               )}
             </>
           ) : (
-            <Text style={styles.noGoal}>Pas encore d'objectif pour {year}</Text>
+            <Text style={styles.noGoal}>{t('goal.noGoal', { year })}</Text>
           )}
         </View>
 
         {monthly.some(m => m.count > 0) && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Mois par mois</Text>
+            <Text style={styles.sectionTitle}>{t('goal.monthByMonth')}</Text>
             <View style={styles.chart}>
               {monthly.map((m) => {
                 const barH = maxMonthly > 0 ? (m.count / maxMonthly) * 80 : 0;
@@ -123,18 +124,18 @@ export default function GoalScreen() {
         )}
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{goal ? 'Modifier mon objectif' : 'Définir mon objectif'}</Text>
+          <Text style={styles.sectionTitle}>{goal ? t('goal.editGoal') : t('goal.setGoal')}</Text>
           <View style={styles.inputRow}>
             <TextInput style={styles.input} value={target} onChangeText={setTarget}
               keyboardType="number-pad" placeholder="24" placeholderTextColor={colors.gray} />
-            <Text style={styles.inputSuffix}>livres en {year}</Text>
+            <Text style={styles.inputSuffix}>{t('goal.booksInYear', { year })}</Text>
           </View>
           <View style={styles.suggestions}>
             {[12, 24, 36, 52].map(n => (
               <Pill key={n} label={String(n)} active={target === n.toString()} onPress={() => setTarget(n.toString())} />
             ))}
           </View>
-          <Button label={loading ? 'Sauvegarde...' : 'Sauvegarder'} onPress={saveGoal} disabled={loading} />
+          <Button label={loading ? t('goal.saving') : t('goal.save')} onPress={saveGoal} disabled={loading} />
         </View>
 
         <View style={{ height: 30 }} />

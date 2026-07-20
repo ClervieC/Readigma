@@ -2,17 +2,18 @@ import { useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming, interpolateColor } from 'react-native-reanimated';
 import { ColorPalette, fonts } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import { emitScrollToTop } from '../lib/tabScrollEmitter';
 
-const TABS: { name: string; label: string; icon: keyof typeof Feather.glyphMap }[] = [
-  { name: 'index', label: 'Découvrir', icon: 'compass' },
-  { name: 'feed', label: 'Fil', icon: 'activity' },
-  { name: 'library', label: 'Biblio', icon: 'book-open' },
-  { name: 'search', label: 'Chercher', icon: 'search' },
-  { name: 'profile', label: 'Profil', icon: 'user' },
+const TABS: { name: string; labelKey: string; icon: keyof typeof Feather.glyphMap }[] = [
+  { name: 'index', labelKey: 'tabs.discover', icon: 'compass' },
+  { name: 'feed', labelKey: 'tabs.feed', icon: 'activity' },
+  { name: 'library', labelKey: 'tabs.library', icon: 'book-open' },
+  { name: 'search', labelKey: 'tabs.search', icon: 'search' },
+  { name: 'profile', labelKey: 'tabs.profile', icon: 'user' },
 ];
 
 // expo-router's Tabs vendors its own copy of react-navigation/bottom-tabs
@@ -26,6 +27,7 @@ type TabBarProps = {
 
 function TabItem({ tab, focused, onPress, colors }: { tab: typeof TABS[number]; focused: boolean; onPress: () => void; colors: ColorPalette }) {
   const styles = makeStyles(colors);
+  const { t } = useTranslation();
   const progress = useSharedValue(focused ? 1 : 0);
   const scale = useSharedValue(focused ? 1 : 1);
 
@@ -48,7 +50,7 @@ function TabItem({ tab, focused, onPress, colors }: { tab: typeof TABS[number]; 
           <Feather name={tab.icon} size={20} color={focused ? colors.purple : colors.gray} />
         </Animated.View>
       </Animated.View>
-      <Animated.Text style={[styles.label, labelStyle, focused && styles.labelActive]}>{tab.label}</Animated.Text>
+      <Animated.Text style={[styles.label, labelStyle, focused && styles.labelActive]}>{t(tab.labelKey)}</Animated.Text>
     </TouchableOpacity>
   );
 }

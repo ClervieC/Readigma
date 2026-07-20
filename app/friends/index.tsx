@@ -4,40 +4,44 @@ import {
   StyleSheet, TextInput, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { fonts, ColorPalette } from '../../theme';
 import { useTheme } from '../../context/ThemeContext';
-import * as friends from '../../lib/friends';
+import * as follows from '../../lib/follows';
 import Row from '../../components/Row';
 import Pill from '../../components/Pill';
 
-export default function FriendsScreen() {
+export default function FollowsScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const styles = makeStyles(colors);
+  const { t } = useTranslation();
+  // Lets the profile screen's "Abonnements"/"Abonnés" counts deep-link
+  // straight to the matching tab instead of always landing on "following".
+  const { tab: initialTab } = useLocalSearchParams<{ tab?: string }>();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
-  const [friendsList, setFriendsList] = useState<any[]>([]);
-  const [pending, setPending] = useState<any[]>([]);
-  const [sentRequests, setSentRequests] = useState<Set<string>>(new Set());
-  const [tab, setTab] = useState<'search' | 'friends' | 'pending'>('friends');
+  const [following, setFollowing] = useState<any[]>([]);
+  const [followers, setFollowers] = useState<any[]>([]);
+  const [tab, setTab] = useState<'following' | 'followers' | 'search'>(
+    initialTab === 'followers' ? 'followers' : 'following',
+  );
 
-  useFocusEffect(useCallback(() => { loadFriends(); loadPending(); }, []));
+  useFocusEffect(useCallback(() => { loadFollowing(); loadFollowers(); }, []));
 
-  const loadFriends = () => { friends.getFriends().then(setFriendsList).catch(() => {}); };
-  const loadPending = () => { friends.getPendingRequests().then(setPending).catch(() => {}); };
-  const search = () => { if (!query.trim()) return; friends.searchUsers(query).then(setResults).catch(() => {}); };
+  const loadFollowing = () => { follows.getFollowing().then(setFollowing).catch(() => {}); };
+  const loadFollowers = () => { follows.getFollowers().then(setFollowers).catch(() => {}); };
+  const search = () => { if (!query.trim()) return; follows.searchUsers(query).then(setResults).catch(() => {}); };
 
-  const sendRequest = (userId: string, username: string) => {
-    friends.sendRequest(userId).then(() => {
-      setSentRequests(new Set([...sentRequests, userId]));
-      Alert.alert('✅', `Demande envoyée à ${username} !`);
-    }).catch(() => Alert.alert('Erreur', 'Impossible d\'envoyer la demande'));
-  };
+  const followingIds = new Set(following.map((f) => f.id));
 
-  const acceptRequest = (id: string) => {
-    friends.acceptRequest(id).then(() => { loadFriends(); loadPending(); }).catch(() => Alert.alert('Erreur', 'Impossible d\'accepter'));
+  const toggleFollow = (userId: string, username: string) => {
+    const action = followingIds.has(userId) ? follows.unfollowUser(userId) : follows.followUser(userId);
+    action.then(loadFollowing).catch(() =>
+      Alert.alert(t('common.error'), followingIds.has(userId) ? t('follows.errors.unfollow') : t('follows.errors.follow', { username }))
+    );
   };
 
   const goToProfile = (id: string, username: string) => router.push({ pathname: '/friends/[id]', params: { id, username } });
@@ -46,14 +50,14 @@ export default function FriendsScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}><Feather name="arrow-left" size={20} color={colors.white} /></TouchableOpacity>
-        <Text style={styles.headerTitle}>Amis lecteurs</Text>
+        <Text style={styles.headerTitle}>{t('follows.title')}</Text>
         <View style={{ width: 20 }} />
       </View>
 
       <View style={styles.tabs}>
-        <Pill label="Mes amis" active={tab === 'friends'} onPress={() => setTab('friends')} />
-        <Pill label="Chercher" active={tab === 'search'} onPress={() => setTab('search')} />
-        <Pill label={`Demandes${pending.length ? ` (${pending.length})` : ''}`} active={tab === 'pending'} onPress={() => setTab('pending')} />
+        <Pill label={`${t('follows.following')}${following.length ? ` (${following.length})` : ''}`} active={tab === 'following'} onPress={() => setTab('following')} />
+        <Pill label={`${t('follows.followers')}${followers.length ? ` (${followers.length})` : ''}`} active={tab === 'followers'} onPress={() => setTab('followers')} />
+        <Pill label={t('follows.search')} active={tab === 'search'} onPress={() => setTab('search')} />
       </View>
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -62,62 +66,69 @@ export default function FriendsScreen() {
             <View style={styles.searchBar}>
               <Feather name="search" size={17} color={colors.gray} />
               <TextInput style={styles.searchInput} value={query} onChangeText={setQuery}
-                placeholder="Chercher un lecteur..." placeholderTextColor={colors.gray}
+                placeholder={t('follows.searchPlaceholder')} placeholderTextColor={colors.gray}
                 returnKeyType="search" onSubmitEditing={search} autoCapitalize="none" />
             </View>
             {results.map((user, i) => (
               <Row key={i} last={i === results.length - 1} onPress={() => goToProfile(user.id, user.username)}
                 icon={<View style={styles.userAvatar}><Text style={styles.userAvatarText}>{user.username?.slice(0, 2).toUpperCase()}</Text></View>}
                 right={
-                  <TouchableOpacity style={[styles.addBtn, sentRequests.has(user.id) && styles.addBtnSent]}
-                    onPress={() => sendRequest(user.id, user.username)} disabled={sentRequests.has(user.id)}>
-                    <Text style={styles.addBtnText}>{sentRequests.has(user.id) ? 'Envoyé' : 'Suivre'}</Text>
+                  <TouchableOpacity style={[styles.addBtn, followingIds.has(user.id) && styles.addBtnSent]}
+                    onPress={() => toggleFollow(user.id, user.username)}>
+                    <Text style={styles.addBtnText}>{followingIds.has(user.id) ? t('follows.followed') : t('follows.follow')}</Text>
                   </TouchableOpacity>
                 }>
                 <Text style={styles.userName}>@{user.username}</Text>
-                <Text style={styles.userBooks}>{user.books_count} livres lus</Text>
+                <Text style={styles.userBooks}>{t('follows.booksReadCount', { count: user.books_count })}</Text>
               </Row>
             ))}
-            {results.length === 0 && query && <Text style={styles.emptyText}>Aucun lecteur trouvé</Text>}
+            {results.length === 0 && query && <Text style={styles.emptyText}>{t('follows.noReaderFound')}</Text>}
           </>
         )}
 
-        {tab === 'friends' && (
+        {tab === 'following' && (
           <>
-            {friendsList.length === 0 ? (
+            {following.length === 0 ? (
               <View style={styles.emptyState}>
                 <Feather name="users" size={36} color={colors.gray} />
-                <Text style={styles.emptyTitle}>Pas encore d'amis</Text>
-                <Text style={styles.emptyText}>Cherche des lecteurs pour les ajouter !</Text>
+                <Text style={styles.emptyTitle}>{t('follows.notFollowingAnyone')}</Text>
+                <Text style={styles.emptyText}>{t('follows.searchToFollow')}</Text>
                 <TouchableOpacity style={styles.emptyCta} onPress={() => setTab('search')}>
                   <Feather name="search" size={14} color={colors.purple} />
-                  <Text style={styles.emptyCtaText}>Chercher des lecteurs</Text>
+                  <Text style={styles.emptyCtaText}>{t('follows.searchReaders')}</Text>
                 </TouchableOpacity>
               </View>
-            ) : friendsList.map((friend, i) => (
-              <Row key={i} last={i === friendsList.length - 1} onPress={() => goToProfile(friend.id, friend.username)} chevron
-                icon={<View style={styles.userAvatar}><Text style={styles.userAvatarText}>{friend.username?.slice(0, 2).toUpperCase()}</Text></View>}>
-                <Text style={styles.userName}>@{friend.username}</Text>
-                <Text style={styles.userBooks}>{friend.books_count} livres lus</Text>
+            ) : following.map((user, i) => (
+              <Row key={i} last={i === following.length - 1} onPress={() => goToProfile(user.id, user.username)}
+                icon={<View style={styles.userAvatar}><Text style={styles.userAvatarText}>{user.username?.slice(0, 2).toUpperCase()}</Text></View>}
+                right={
+                  <TouchableOpacity style={styles.addBtnSent} onPress={() => toggleFollow(user.id, user.username)}>
+                    <Text style={styles.addBtnText}>{t('follows.followed')}</Text>
+                  </TouchableOpacity>
+                }>
+                <Text style={styles.userName}>@{user.username}</Text>
+                <Text style={styles.userBooks}>{t('follows.booksReadCount', { count: user.books_count })}</Text>
               </Row>
             ))}
           </>
         )}
 
-        {tab === 'pending' && (
+        {tab === 'followers' && (
           <>
-            {pending.length === 0 ? (
-              <Text style={styles.emptyText}>Aucune demande en attente</Text>
-            ) : pending.map((req, i) => (
-              <Row key={i} last={i === pending.length - 1}
-                icon={<View style={styles.userAvatar}><Text style={styles.userAvatarText}>{req.username?.slice(0, 2).toUpperCase()}</Text></View>}
+            {followers.length === 0 ? (
+              <Text style={styles.emptyText}>{t('follows.noFollowersYet')}</Text>
+            ) : followers.map((user, i) => (
+              <Row key={i} last={i === followers.length - 1} onPress={() => goToProfile(user.id, user.username)}
+                icon={<View style={styles.userAvatar}><Text style={styles.userAvatarText}>{user.username?.slice(0, 2).toUpperCase()}</Text></View>}
                 right={
-                  <TouchableOpacity style={styles.addBtn} onPress={() => acceptRequest(req.id)}>
-                    <Text style={styles.addBtnText}>Accepter</Text>
-                  </TouchableOpacity>
+                  user.followed_back ? undefined : (
+                    <TouchableOpacity style={styles.addBtn} onPress={() => toggleFollow(user.id, user.username)}>
+                      <Text style={styles.addBtnText}>{t('follows.followBack')}</Text>
+                    </TouchableOpacity>
+                  )
                 }>
-                <Text style={styles.userName}>@{req.username}</Text>
-                <Text style={styles.userBooks}>veut être ton ami</Text>
+                <Text style={styles.userName}>@{user.username}</Text>
+                <Text style={styles.userBooks}>{t('follows.booksReadCount', { count: user.books_count })}</Text>
               </Row>
             ))}
           </>
@@ -141,7 +152,7 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   userName: { fontSize: 14, fontWeight: '600', color: colors.white },
   userBooks: { fontSize: 11, color: colors.gray, marginTop: 2 },
   addBtn: { paddingHorizontal: 14, paddingVertical: 7, backgroundColor: colors.purple, borderRadius: 20 },
-  addBtnSent: { backgroundColor: colors.purpleGlow },
+  addBtnSent: { paddingHorizontal: 14, paddingVertical: 7, backgroundColor: colors.purpleGlow, borderRadius: 20 },
   addBtnText: { color: 'white', fontSize: 12, fontWeight: '600' },
   emptyState: { alignItems: 'center', paddingTop: 60, gap: 12 },
   emptyTitle: { fontSize: 16, fontFamily: fonts.headingBold, color: colors.white },

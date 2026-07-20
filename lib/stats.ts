@@ -72,9 +72,9 @@ export async function getExtremes(): Promise<ReadingExtremes> {
   };
 }
 
-export async function getFriendsAvg(): Promise<{ friend_count: number; avg_books: number | null }> {
-  const { data, error } = await supabase.rpc('friends_avg_books_this_year');
+export async function getFollowingAvg(): Promise<{ following_count: number; avg_books: number | null }> {
+  const { data, error } = await supabase.rpc('following_avg_books_this_year');
   if (error) throw new Error(error.message);
   const row = data?.[0];
-  return { friend_count: row?.friend_count ?? 0, avg_books: row?.avg_books ?? null };
+  return { following_count: row?.following_count ?? 0, avg_books: row?.avg_books ?? null };
 }

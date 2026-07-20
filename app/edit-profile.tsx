@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Image } fro
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { fonts, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -14,6 +15,7 @@ export default function EditProfileScreen() {
   const router = useRouter();
   const { session, profile, refreshProfile } = useAuth();
   const styles = makeStyles(colors);
+  const { t } = useTranslation();
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -29,14 +31,14 @@ export default function EditProfileScreen() {
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') { Alert.alert('Permission refusée', 'L\'accès à la galerie est nécessaire.'); return; }
+    if (status !== 'granted') { Alert.alert(t('library.permissionDenied'), t('editProfile.errors.galleryAccessNeeded')); return; }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.5, base64: true });
     if (!result.canceled && result.assets[0].base64) setAvatarUri(`data:image/jpeg;base64,${result.assets[0].base64}`);
   };
 
   const save = async () => {
-    if (password && password !== confirmPassword) { Alert.alert('Erreur', 'Les mots de passe ne correspondent pas'); return; }
-    if (password && password.length < 6) { Alert.alert('Erreur', 'Le mot de passe doit faire au moins 6 caractères'); return; }
+    if (password && password !== confirmPassword) { Alert.alert(t('common.error'), t('editProfile.errors.passwordsDontMatch')); return; }
+    if (password && password.length < 6) { Alert.alert(t('common.error'), t('editProfile.errors.passwordTooShort')); return; }
     if (!session) return;
     setLoading(true);
     try {
@@ -54,9 +56,9 @@ export default function EditProfileScreen() {
         if (error) throw new Error(error.message);
       }
       await refreshProfile();
-      Alert.alert('Fait', 'Profil mis à jour !', [{ text: 'OK', onPress: () => router.back() }]);
+      Alert.alert(t('editProfile.done'), t('editProfile.profileUpdated'), [{ text: t('common.ok'), onPress: () => router.back() }]);
     } catch (err: any) {
-      Alert.alert('Erreur', err.message || 'Impossible de mettre à jour');
+      Alert.alert(t('common.error'), err.message || t('editProfile.errors.updateFailed'));
     } finally {
       setLoading(false);
     }
@@ -64,9 +66,9 @@ export default function EditProfileScreen() {
 
   return (
     <Screen
-      title="Modifier le profil"
-      left={<TouchableOpacity onPress={() => router.back()}><Text style={styles.cancel}>Annuler</Text></TouchableOpacity>}
-      right={<TouchableOpacity onPress={save} disabled={loading}><Text style={[styles.save, loading && { opacity: 0.5 }]}>{loading ? '...' : 'Sauver'}</Text></TouchableOpacity>}
+      title={t('editProfile.title')}
+      left={<TouchableOpacity onPress={() => router.back()}><Text style={styles.cancel}>{t('common.cancel')}</Text></TouchableOpacity>}
+      right={<TouchableOpacity onPress={save} disabled={loading}><Text style={[styles.save, loading && { opacity: 0.5 }]}>{loading ? '...' : t('editProfile.save')}</Text></TouchableOpacity>}
     >
       <TouchableOpacity style={styles.avatarWrap} onPress={pickImage}>
         {avatarUri ? (
@@ -78,19 +80,19 @@ export default function EditProfileScreen() {
         )}
         <View style={styles.avatarBadge}><Feather name="camera" size={13} color={colors.white} /></View>
       </TouchableOpacity>
-      <Text style={styles.avatarHint}>Appuie pour changer la photo</Text>
+      <Text style={styles.avatarHint}>{t('editProfile.changePhotoHint')}</Text>
 
-      <Text style={styles.sectionTitle}>Informations</Text>
-      <Text style={styles.label}>Nom d'utilisateur</Text>
+      <Text style={styles.sectionTitle}>{t('editProfile.information')}</Text>
+      <Text style={styles.label}>{t('editProfile.username')}</Text>
       <TextInput style={styles.input} value={username} onChangeText={setUsername} autoCapitalize="none" placeholderTextColor={colors.gray} />
-      <Text style={styles.label}>Email</Text>
+      <Text style={styles.label}>{t('editProfile.email')}</Text>
       <TextInput style={styles.input} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholderTextColor={colors.gray} />
 
-      <Text style={[styles.sectionTitle, { marginTop: 12 }]}>Changer le mot de passe</Text>
-      <Text style={styles.sectionHint}>Laisse vide pour ne pas modifier</Text>
-      <Text style={styles.label}>Nouveau mot de passe</Text>
+      <Text style={[styles.sectionTitle, { marginTop: 12 }]}>{t('editProfile.changePassword')}</Text>
+      <Text style={styles.sectionHint}>{t('editProfile.leaveBlankHint')}</Text>
+      <Text style={styles.label}>{t('editProfile.newPassword')}</Text>
       <TextInput style={styles.input} value={password} onChangeText={setPassword} secureTextEntry placeholder="••••••••" placeholderTextColor={colors.gray} />
-      <Text style={styles.label}>Confirmer le mot de passe</Text>
+      <Text style={styles.label}>{t('editProfile.confirmPassword')}</Text>
       <TextInput style={styles.input} value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry placeholder="••••••••" placeholderTextColor={colors.gray} />
     </Screen>
   );

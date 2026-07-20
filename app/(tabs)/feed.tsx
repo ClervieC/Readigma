@@ -6,21 +6,25 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { radius, fonts, shadows, ColorPalette } from '../../theme';
 import { useTheme } from '../../context/ThemeContext';
 import * as feed from '../../lib/feed';
 import NotificationBell from '../../components/NotificationBell';
 import { onScrollToTop } from '../../lib/tabScrollEmitter';
+import i18n from '../../lib/i18n';
 
-function timeAgo(dateStr: string) {
+// Plain function (not a component) — takes `t` as a param rather than its
+// own useTranslation(), same reasoning as getGreetingKey in (tabs)/index.tsx.
+function timeAgo(dateStr: string, t: typeof i18n.t) {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
   const days = Math.floor(diff / 86400000);
-  if (mins < 1) return 'À l\'instant';
-  if (mins < 60) return `Il y a ${mins}min`;
-  if (hours < 24) return `Il y a ${hours}h`;
-  return `Il y a ${days}j`;
+  if (mins < 1) return t('feed.timeJustNow');
+  if (mins < 60) return t('feed.timeMinutes', { count: mins });
+  if (hours < 24) return t('feed.timeHours', { count: hours });
+  return t('feed.timeDays', { count: days });
 }
 
 // Each activity type gets its own accent color so the feed reads at a glance
@@ -45,6 +49,7 @@ function ActivityCard({ item, last, onUserPress, onBookPress, onLike, onCommentA
   styles: any;
   colors: ColorPalette;
 }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [comments, setComments] = useState<feed.FeedComment[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
@@ -74,11 +79,11 @@ function ActivityCard({ item, last, onUserPress, onBookPress, onLike, onCommentA
 
   const getActivityText = () => {
     switch (item.activity_type) {
-      case 'reaction': return `a réagi à sa lecture`;
-      case 'progress_update': return `a lu ${Math.round(item.metadata?.percent || 0)}% de`;
-      case 'finished': return `a terminé`;
-      case 'started': return `a commencé à lire`;
-      default: return `a mis à jour`;
+      case 'reaction': return t('feed.activityReaction');
+      case 'progress_update': return t('feed.activityProgress', { percent: Math.round(item.metadata?.percent || 0) });
+      case 'finished': return t('feed.activityFinished');
+      case 'started': return t('feed.activityStarted');
+      default: return t('feed.activityDefault');
     }
   };
 
@@ -96,7 +101,7 @@ function ActivityCard({ item, last, onUserPress, onBookPress, onLike, onCommentA
           <Text style={styles.username}>{item.username}</Text>
           <Text style={[styles.activityText, { color: accent.color }]}>{getActivityText()}</Text>
         </TouchableOpacity>
-        <Text style={styles.timeAgo}>{timeAgo(item.created_at)}</Text>
+        <Text style={styles.timeAgo}>{timeAgo(item.created_at, t)}</Text>
       </View>
 
       {item.book_title ? (
@@ -122,7 +127,7 @@ function ActivityCard({ item, last, onUserPress, onBookPress, onLike, onCommentA
           <Feather name="check-circle" size={16} color={colors.success} />
           <View style={{ flex: 1 }}>
             <Text style={styles.finishedText}>
-              Livre terminé{item.metadata?.rating ? ` · ${item.metadata.rating}★` : ''}
+              {t('feed.finishedLabel')}{item.metadata?.rating ? ` · ${item.metadata.rating}★` : ''}
             </Text>
             {item.metadata?.comment ? <Text style={styles.finishedComment}>"{item.metadata.comment}"</Text> : null}
           </View>
@@ -131,12 +136,12 @@ function ActivityCard({ item, last, onUserPress, onBookPress, onLike, onCommentA
 
       {item.activity_type === 'reaction' && item.emoji ? (
         <View style={styles.reactionBox}>
-          <View style={styles.reactionEmojiWrap}>
-            <Text style={styles.reactionEmoji}>{item.emoji}</Text>
+          <View style={[styles.reactionEmojiWrap, [...item.emoji].length > 1 && styles.reactionEmojiWrapMulti]}>
+            <Text style={[styles.reactionEmoji, [...item.emoji].length > 2 && styles.reactionEmojiSmall]}>{item.emoji}</Text>
           </View>
           <View style={{ flex: 1 }}>
             {item.note ? <Text style={styles.reactionNote}>{item.note}</Text> : null}
-            {item.reaction_percent ? <Text style={styles.reactionMeta}>à {Math.round(item.reaction_percent)}% du livre</Text> : null}
+            {item.reaction_percent ? <Text style={styles.reactionMeta}>{t('feed.percentOfBook', { percent: Math.round(item.reaction_percent) })}</Text> : null}
           </View>
         </View>
       ) : null}
@@ -148,7 +153,7 @@ function ActivityCard({ item, last, onUserPress, onBookPress, onLike, onCommentA
           </View>
           <Text style={styles.progressText}>
             {Math.round(item.metadata?.percent || 0)}%
-            {item.metadata?.current_page ? ` · Page ${item.metadata.current_page}` : ''}
+            {item.metadata?.current_page ? ` · ${t('feed.pageLabel', { page: item.metadata.current_page })}` : ''}
           </Text>
         </View>
       ) : null}
@@ -181,7 +186,7 @@ function ActivityCard({ item, last, onUserPress, onBookPress, onLike, onCommentA
               style={styles.commentInput}
               value={commentText}
               onChangeText={setCommentText}
-              placeholder="Écrire un commentaire..."
+              placeholder={t('feed.commentPlaceholder')}
               placeholderTextColor={colors.gray}
               onSubmitEditing={submitComment}
               returnKeyType="send"
@@ -200,6 +205,7 @@ export default function FeedScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const styles = makeStyles(colors);
+  const { t } = useTranslation();
   const [feedItems, setFeedItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -241,21 +247,21 @@ export default function FeedScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.title}>Fil</Text>
-          <Text style={styles.subtitle}>Activités de tes amis</Text>
+          <Text style={styles.title}>{t('feed.title')}</Text>
+          <Text style={styles.subtitle}>{t('feed.subtitle')}</Text>
         </View>
         <NotificationBell />
       </View>
 
       <ScrollView ref={scrollRef} style={styles.scroll} showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadFeed(true)} tintColor={colors.purple} />}>
-        {loading && <Text style={styles.loadingText}>Chargement...</Text>}
+        {loading && <Text style={styles.loadingText}>{t('feed.loading')}</Text>}
 
         {!loading && feedItems.length === 0 && (
           <View style={styles.emptyState}>
             <Feather name="inbox" size={40} color={colors.gray} />
-            <Text style={styles.emptyTitle}>Rien pour l'instant</Text>
-            <Text style={styles.emptyText}>Ajoute des amis pour voir leur activité ici !</Text>
+            <Text style={styles.emptyTitle}>{t('feed.emptyTitle')}</Text>
+            <Text style={styles.emptyText}>{t('feed.emptyText')}</Text>
           </View>
         )}
 
@@ -308,8 +314,10 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   finishedText: { color: colors.success, fontSize: 13, fontWeight: '700' },
   finishedComment: { color: colors.gray, fontSize: 12, marginTop: 4, fontStyle: 'italic' },
   reactionBox: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.purpleGlow, borderRadius: radius.sm, padding: 10 },
-  reactionEmojiWrap: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  reactionEmojiWrap: { minWidth: 40, height: 40, paddingHorizontal: 8, borderRadius: 20, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  reactionEmojiWrapMulti: { borderRadius: 14 },
   reactionEmoji: { fontSize: 22 },
+  reactionEmojiSmall: { fontSize: 16 },
   reactionNote: { flex: 1, fontSize: 13, color: colors.white },
   reactionMeta: { fontSize: 10, color: colors.gray },
   progressBox: { gap: 6, backgroundColor: colors.card2, borderRadius: radius.sm, padding: 10 },
