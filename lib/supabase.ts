@@ -8,12 +8,9 @@ const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: AsyncStorage,
+    ...(Platform.OS !== 'web' && { storage: AsyncStorage }),
     autoRefreshToken: true,
     persistSession: true,
-    // Lets a clicked email-confirmation link land on the web app with the
-    // session already picked up from the URL fragment. Only meaningful on
-    // web — there's no browser location on native.
     detectSessionInUrl: Platform.OS === 'web',
   },
 });

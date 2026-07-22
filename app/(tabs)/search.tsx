@@ -28,6 +28,7 @@ const STATUS_OPTIONS: { status: string; labelKey: string }[] = [
   { status: 'to_read', labelKey: 'search.addToToRead' },
   { status: 'reading', labelKey: 'search.currentlyReading' },
   { status: 'done', labelKey: 'search.alreadyRead' },
+  { status: 'dnf', labelKey: 'search.alreadyDnf' },
 ];
 
 const BookItem = ({ book, onPress, added, last, colors, styles }: { book: any; onPress: (book: any) => void; added: boolean; last: boolean; colors: ColorPalette; styles: any }) => {
@@ -200,6 +201,7 @@ export default function SearchScreen() {
     to_read: 'search.addedToRead',
     reading: 'search.addedToReading',
     done: 'search.addedToDone',
+    dnf: 'search.addedToDnf',
   };
 
   const addBook = (book: any, status: string = 'to_read') => {

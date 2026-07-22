@@ -124,10 +124,12 @@
     "addToToRead": "Ajouter à ma pile à lire",
     "currentlyReading": "Je suis en train de lire",
     "alreadyRead": "Je l'ai déjà lu",
+    "alreadyDnf": "Je l'ai déjà abandonné (DNF)",
     "addToList": "Ajouter à ma liste",
     "reviewsHeader": "Avis des lecteurs",
     "addedToRead": "\"{{title}}\" ajouté à ta pile",
     "addedToDone": "\"{{title}}\" ajouté aux lus",
+    "addedToDnf": "\"{{title}}\" marqué comme abandonné (DNF)",
     "addError": "Erreur lors de l'ajout",
     "trending": {
       "fantasy": "🐉 Fantasy incontournables",
