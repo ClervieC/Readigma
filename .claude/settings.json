@@ -112,7 +112,25 @@
       "Bash(NODE_PATH=/Users/clervie/Desktop/Projects/Epify/node_modules node check_all.js)",
       "Bash(NODE_PATH=/Users/clervie/Desktop/Projects/Epify/node_modules node check_discover2.js)",
       "Bash(curl -s -o /dev/null -w \"HTTP status: %{http_code}\\\\n\" \"https://catalogue.bnf.fr/api/SRU?version=1.2&operation=searchRetrieve&query=%28bib.title%20all%20%22roman%22%29&maximumRecords=1&recordSchema=dublincore\" --max-time 15)",
-      "Bash(curl -s -D - -o /dev/null \"https://catalogue.bnf.fr/api/SRU?version=1.2&operation=searchRetrieve&query=%28bib.title%20all%20%22roman%22%29&maximumRecords=1&recordSchema=dublincore\" -H \"Origin: https://readigma.example.com\" --max-time 15)"
+      "Bash(curl -s -D - -o /dev/null \"https://catalogue.bnf.fr/api/SRU?version=1.2&operation=searchRetrieve&query=%28bib.title%20all%20%22roman%22%29&maximumRecords=1&recordSchema=dublincore\" -H \"Origin: https://readigma.example.com\" --max-time 15)",
+      "Bash(python3 -c \"import json,sys; print\\(json.load\\(sys.stdin\\).get\\('scripts',{}\\)\\)\")",
+      "Bash(chmod +x \"/Users/clervie/Desktop/Projects/Readigma/scripts/db-dump-source.sh\" \"/Users/clervie/Desktop/Projects/Readigma/scripts/db-restore-target.sh\")",
+      "Bash(bash -n \"/Users/clervie/Desktop/Projects/Readigma/scripts/db-dump-source.sh\")",
+      "Bash(bash -n \"/Users/clervie/Desktop/Projects/Readigma/scripts/db-restore-target.sh\")",
+      "Bash(printf '#!/usr/bin/env bash\\\\n# it'\"'\"'s a test\\\\necho hi\\\\n')",
+      "Bash(bash -n /tmp/t1.sh)",
+      "Bash(printf '#!/usr/bin/env bash\\\\necho \"project'\"'\"'s value\"\\\\n')",
+      "Bash(bash -n /tmp/t2.sh)",
+      "Bash(printf '#!/usr/bin/env bash\\\\necho \"Set SOURCE_DB_URL to the source project'\"'\"'s direct Postgres connection string\"\\\\n')",
+      "Bash(printf '#!/usr/bin/env bash\\\\n: \"${SOURCE_DB_URL:?Set SOURCE_DB_URL to the source project'\"'\"'s direct Postgres connection string}\"\\\\n')",
+      "Bash(bash -n /tmp/t4.sh)",
+      "Bash(printf '#!/usr/bin/env bash\\\\n: \"${SOURCE_DB_URL:?Set SOURCE_DB_URL to the source project direct Postgres connection string}\"\\\\n')",
+      "Bash(bash -n /tmp/t5.sh)",
+      "Bash(printf '#!/usr/bin/env bash\\\\nX=\"${FOO:?abc def}\"\\\\necho hi\\\\n')",
+      "Bash(bash -n /tmp/t6.sh)",
+      "Bash(printf '#!/usr/bin/env bash\\\\nX=\"${FOO:?it'\"'\"'s ok}\"\\\\necho hi\\\\n')",
+      "Bash(bash --version)",
+      "Bash(python3 -c \"import json; json.load\\(open\\('lib/locales/fr.json'\\)\\); json.load\\(open\\('lib/locales/en.json'\\)\\); print\\('JSON OK'\\)\")"
     ],
     "additionalDirectories": [
       "/Users/clervie/Desktop/Projects/Readigma/mobile/assets"

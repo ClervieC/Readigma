@@ -1031,6 +1031,29 @@ language sql security invoker stable as $$
 $$;
 
 -- ============================================================================
+-- Grants — see db/migrations/036_public_schema_grants.sql for why these are
+-- explicit rather than left to whatever a given Supabase host provisions by
+-- default.
+-- ============================================================================
+grant usage on schema public to anon, authenticated, service_role;
+grant select, insert, update, delete on all tables in schema public to anon, authenticated, service_role;
+grant execute on all functions in schema public to anon, authenticated, service_role;
+grant usage, select on all sequences in schema public to anon, authenticated, service_role;
+
+alter default privileges in schema public grant select, insert, update, delete on tables to anon, authenticated, service_role;
+alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
+alter default privileges in schema public grant usage, select on sequences to anon, authenticated, service_role;
+
+-- Almost every security-invoker function above also calls auth.uid() —
+-- schema-qualified, into `auth`, not `public`. USAGE on schema `auth` is a
+-- separate privilege from EXECUTE on auth.uid() itself: without it, Postgres
+-- refuses to resolve anything in that schema for the calling role at all
+-- ("permission denied for schema auth", 42501 → 403 via PostgREST), even
+-- though EXECUTE on the function was granted. Supabase Cloud provisions this
+-- for every project by default; it isn't guaranteed on a self-hosted stack.
+grant usage on schema auth to anon, authenticated, service_role;
+
+-- ============================================================================
 -- One-time data: promote the dev/owner account to admin so there's someone
 -- who can triage book_suggestions/admin_messages and add books manually
 -- through app/admin.tsx. No-op if that account doesn't exist yet.

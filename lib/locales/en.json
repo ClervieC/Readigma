@@ -127,10 +127,12 @@
     "addToToRead": "Add to my to-read pile",
     "currentlyReading": "I'm currently reading it",
     "alreadyRead": "I've already read it",
+    "alreadyDnf": "I already DNF'd it",
     "addToList": "Add to my list",
     "reviewsHeader": "Reader reviews",
     "addedToRead": "\"{{title}}\" added to your pile",
     "addedToDone": "\"{{title}}\" added to read books",
+    "addedToDnf": "\"{{title}}\" marked as DNF",
     "addError": "Error while adding",
     "trending": {
       "fantasy": "🐉 Must-read fantasy",
