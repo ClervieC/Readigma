@@ -12,6 +12,7 @@ import {
   Alert,
   useWindowDimensions,
   ActivityIndicator,
+  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -34,6 +35,7 @@ import * as badges from "../../lib/badges";
 import { formatDuration } from "../../lib/timer";
 import Pill from "../../components/Pill";
 import Button from "../../components/Button";
+import StarRating from "../../components/StarRating";
 import NotificationBell from "../../components/NotificationBell";
 import ProgressBar from "../../components/ProgressBar";
 import { onScrollToTop } from "../../lib/tabScrollEmitter";
@@ -168,15 +170,26 @@ function ReadingBookCard({
     cancelCountdown,
   } = useTimer();
   const [finishing, setFinishing] = useState(false);
+  const [showFinishModal, setShowFinishModal] = useState(false);
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState("");
 
-  // A lightweight "mark done" straight from the card — no rating/comment
-  // prompt here (that's still available from the book's own detail page);
-  // this is for the common case of just wanting it off the "en cours" list.
+  // Tapping "Fini la lecture" opens the rating prompt immediately (see the
+  // Modal below) instead of silently marking the book done — same rating/
+  // comment fields as the book's own detail page (StarRating supports
+  // quarter-star precision), just reachable straight from this card.
   const finishBook = () => {
     setFinishing(true);
     userBooks
-      .updateBook(book.book_id, { status: "done" })
-      .then(() => onFinish(book.book_id))
+      .updateBook(book.book_id, {
+        status: "done",
+        rating: rating || undefined,
+        comment: comment || undefined,
+      })
+      .then(() => {
+        setShowFinishModal(false);
+        onFinish(book.book_id);
+      })
       .catch(() =>
         Alert.alert(t("common.error"), t("discover.errors.finishBookFailed")),
       )
@@ -419,16 +432,43 @@ function ReadingBookCard({
 
       <TouchableOpacity
         style={styles.finishReadingBtn}
-        onPress={finishBook}
-        disabled={finishing}
+        onPress={() => setShowFinishModal(true)}
       >
-        {finishing ? (
-          <ActivityIndicator size="small" color={colors.teal} />
-        ) : (
-          <Feather name="check-circle" size={14} color={colors.teal} />
-        )}
+        <Feather name="check-circle" size={14} color={colors.teal} />
         <Text style={styles.finishReadingBtnText}>{t("book.finishReading")}</Text>
       </TouchableOpacity>
+
+      <Modal visible={showFinishModal} transparent animationType="slide">
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowFinishModal(false)}
+        >
+          <TouchableOpacity style={styles.modalSheet} activeOpacity={1}>
+            <View style={styles.handle} />
+            <Text style={styles.modalTitle}>{t("book.youFinished")}</Text>
+            <Text style={styles.modalSubtitle}>{book.title}</Text>
+            <Text style={styles.ratingLabel}>{t("book.ratingOptional")}</Text>
+            <StarRating rating={rating} onChange={setRating} colors={colors} />
+            <TextInput
+              style={[styles.noteInput, { marginTop: 16 }]}
+              value={comment}
+              onChangeText={setComment}
+              placeholder={t("book.reviewOptionalPlaceholder")}
+              placeholderTextColor={colors.gray}
+              multiline
+              maxLength={500}
+            />
+            <Button
+              label={t("book.finishReadingBtn")}
+              onPress={finishBook}
+              disabled={finishing}
+              loading={finishing}
+              style={{ marginTop: 16 }}
+            />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -978,6 +1018,48 @@ const makeStyles = (colors: ColorPalette) =>
       fontSize: 13,
       fontWeight: "600",
       color: colors.teal,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.6)",
+      justifyContent: "flex-end",
+    },
+    modalSheet: {
+      backgroundColor: colors.card,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      padding: 20,
+      paddingBottom: 40,
+    },
+    handle: {
+      width: 36,
+      height: 4,
+      backgroundColor: colors.divider,
+      borderRadius: 2,
+      alignSelf: "center",
+      marginBottom: 16,
+    },
+    modalTitle: {
+      fontSize: 17,
+      fontFamily: fonts.headingBold,
+      color: colors.white,
+      textAlign: "center",
+    },
+    modalSubtitle: {
+      fontSize: 12,
+      color: colors.muted,
+      textAlign: "center",
+      marginBottom: 20,
+    },
+    ratingLabel: { fontSize: 13, color: colors.muted, marginBottom: 8 },
+    noteInput: {
+      backgroundColor: colors.card2,
+      borderRadius: radius.sm,
+      padding: 12,
+      color: colors.white,
+      fontSize: 14,
+      minHeight: 80,
+      marginBottom: 12,
     },
     filterRow: { marginBottom: 20 },
     randCard: {
