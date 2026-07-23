@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, getCurrentUserId } from './supabase';
 
 export type BadgeStats = {
@@ -170,6 +171,54 @@ export function countEarnedTiers(progress: BadgeProgress[]): number {
 // the user already unlocked (and may have already placed on their shelf)
 // must never be revoked. Call this whenever the library screen loads;
 // returns the resulting (possibly unchanged) unlocked count.
+const SEEN_TIERS_KEY = 'readigma_badge_seen_tiers';
+
+export type NewlyEarnedBadge = { categoryId: string; titleKey: string; tierLabelKey: string };
+
+// Compares current badge progress against the last-seen tier per category
+// (persisted locally) and returns every tier crossed since then — used by
+// components/BadgeToast.tsx to announce a badge the instant it's earned, no
+// matter which screen the reader happens to be on. Updates the persisted
+// baseline before returning, so the same tier is never announced twice.
+//
+// The very first call on a device seeds the baseline from wherever the
+// reader currently stands *without* returning anything — otherwise a
+// long-time reader would get flooded with toasts for every badge tier they
+// already had the moment this feature shipped.
+export async function checkNewlyEarnedBadges(): Promise<NewlyEarnedBadge[]> {
+  const stats = await getBadgeStats();
+  const progress = computeBadgeProgress(stats);
+  const raw = await AsyncStorage.getItem(SEEN_TIERS_KEY);
+
+  if (raw === null) {
+    const seed: Record<string, number> = {};
+    for (const p of progress) seed[p.category.id] = p.earnedTierIndex;
+    await AsyncStorage.setItem(SEEN_TIERS_KEY, JSON.stringify(seed));
+    return [];
+  }
+
+  const seen: Record<string, number> = JSON.parse(raw);
+  const nextSeen = { ...seen };
+  const newlyEarned: NewlyEarnedBadge[] = [];
+
+  for (const p of progress) {
+    const lastSeen = seen[p.category.id] ?? -1;
+    for (let i = lastSeen + 1; i <= p.earnedTierIndex; i++) {
+      newlyEarned.push({
+        categoryId: p.category.id,
+        titleKey: p.category.title,
+        tierLabelKey: p.category.tiers[i].label,
+      });
+    }
+    if (p.earnedTierIndex > lastSeen) nextSeen[p.category.id] = p.earnedTierIndex;
+  }
+
+  if (newlyEarned.length > 0) {
+    await AsyncStorage.setItem(SEEN_TIERS_KEY, JSON.stringify(nextSeen));
+  }
+  return newlyEarned;
+}
+
 export async function syncDecorationUnlocks(): Promise<number> {
   const userId = await getCurrentUserId();
   if (!userId) return 0;

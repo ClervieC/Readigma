@@ -20,12 +20,12 @@ import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
 import Animated, {
   FadeInDown,
+  FadeOutUp,
   ZoomIn,
   LinearTransition,
   useSharedValue,
   useAnimatedStyle,
   withSpring,
-  interpolate,
   runOnJS,
 } from "react-native-reanimated";
 import { fonts, shadows, ColorPalette } from "../../theme";
@@ -1022,35 +1022,30 @@ export default function LibraryScreen() {
   // reappear on an upward one, freeing up space for the shelf — same idea as
   // most feed apps' collapsing toolbars. In reorder mode they stay hidden
   // outright regardless of scroll direction, since that mode already needs
-  // all the vertical room it can get (see the toolbarHidden effect below).
-  const toolbarHidden = useSharedValue(0);
-  // Measured once from the toolbar's natural layout (see its onLayout
-  // below), then used to animate height 0 <-> natural instead of just
-  // fading it — collapsing all the way so the shelf actually gains the
-  // freed-up space rather than leaving a blank gap.
-  const toolbarHeight = useSharedValue(0);
+  // all the vertical room it can get (see the reorderMode effect below).
+  // Actually unmounted (not just animated to zero size) when collapsed —
+  // an ancestor's height/overflow doesn't change a descendant's own layout
+  // box, so a purely visual collapse would still leave the search input
+  // sitting there at full size for anything checking "is this on screen"
+  // (assistive tech, e2e tests) even though a sighted user can't see it.
+  const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
   const lastScrollYRef = useRef(0);
   const SCROLL_HIDE_THRESHOLD = 12;
   const handleToolbarScroll = (y: number) => {
     if (reorderMode) return;
     const delta = y - lastScrollYRef.current;
     if (y <= 0) {
-      toolbarHidden.value = withSpring(0, { damping: 20, stiffness: 200 });
+      setToolbarCollapsed(false);
     } else if (delta > SCROLL_HIDE_THRESHOLD) {
-      toolbarHidden.value = withSpring(1, { damping: 20, stiffness: 200 });
+      setToolbarCollapsed(true);
       lastScrollYRef.current = y;
     } else if (delta < -SCROLL_HIDE_THRESHOLD) {
-      toolbarHidden.value = withSpring(0, { damping: 20, stiffness: 200 });
+      setToolbarCollapsed(false);
       lastScrollYRef.current = y;
     }
   };
-  const toolbarAnimatedStyle = useAnimatedStyle(() => ({
-    height: toolbarHeight.value === 0 ? undefined : interpolate(toolbarHidden.value, [0, 1], [toolbarHeight.value, 0]),
-    opacity: interpolate(toolbarHidden.value, [0, 1], [1, 0]),
-    overflow: "hidden",
-  }));
   useEffect(() => {
-    toolbarHidden.value = withSpring(reorderMode ? 1 : 0, { damping: 20, stiffness: 200 });
+    setToolbarCollapsed(reorderMode);
     lastScrollYRef.current = 0;
   }, [reorderMode]);
   const autoScrollDirRef = useRef<0 | 1 | -1>(0);
@@ -2592,6 +2587,7 @@ export default function LibraryScreen() {
                   setPoppedBook(null);
                 }}
                 hitSlop={6}
+                accessibilityLabel={t("library.editModeTitle")}
                 style={[
                   styles.editToggle,
                   reorderMode && {
@@ -2714,48 +2710,45 @@ export default function LibraryScreen() {
             </View>
           )}
 
-          <Animated.View
-            style={toolbarAnimatedStyle}
-            onLayout={(e) => {
-              if (toolbarHeight.value === 0) toolbarHeight.value = e.nativeEvent.layout.height;
-            }}
-          >
-            <View style={styles.searchBar}>
-              <Feather name="search" size={17} color={colors.gray} />
-              <TextInput
-                style={styles.searchInput}
-                value={query}
-                onChangeText={setQuery}
-                placeholder={t("library.searchPlaceholder")}
-                placeholderTextColor={colors.gray}
-                autoCapitalize="none"
-              />
-              {query ? (
-                <TouchableOpacity onPress={() => setQuery("")}>
-                  <Feather name="x" size={16} color={colors.gray} />
-                </TouchableOpacity>
-              ) : null}
-            </View>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.tabs}
-              contentContainerStyle={{ gap: 8 }}
-            >
-              {TABS.map((tab) => (
-                <Pill
-                  key={tab.value}
-                  active={activeTab === tab.value}
-                  onPress={() => {
-                    setActiveTab(tab.value);
-                    setPoppedBook(null);
-                  }}
-                  label={`${t(tab.labelKey)}${counts[tab.value] ? ` · ${counts[tab.value]}` : ""}`}
+          {!toolbarCollapsed && (
+            <Animated.View entering={FadeInDown.duration(180)} exiting={FadeOutUp.duration(150)}>
+              <View style={styles.searchBar}>
+                <Feather name="search" size={17} color={colors.gray} />
+                <TextInput
+                  style={styles.searchInput}
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder={t("library.searchPlaceholder")}
+                  placeholderTextColor={colors.gray}
+                  autoCapitalize="none"
                 />
-              ))}
-            </ScrollView>
-          </Animated.View>
+                {query ? (
+                  <TouchableOpacity onPress={() => setQuery("")}>
+                    <Feather name="x" size={16} color={colors.gray} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.tabs}
+                contentContainerStyle={{ gap: 8 }}
+              >
+                {TABS.map((tab) => (
+                  <Pill
+                    key={tab.value}
+                    active={activeTab === tab.value}
+                    onPress={() => {
+                      setActiveTab(tab.value);
+                      setPoppedBook(null);
+                    }}
+                    label={`${t(tab.labelKey)}${counts[tab.value] ? ` · ${counts[tab.value]}` : ""}`}
+                  />
+                ))}
+              </ScrollView>
+            </Animated.View>
+          )}
 
           {loading ? (
             <Text style={styles.emptyText}>{t("feed.loading")}</Text>

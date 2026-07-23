@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { fonts, radius, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -18,13 +19,15 @@ export default function OnboardingScreen() {
   const { completeOnboarding } = useAuth();
   const router = useRouter();
   const styles = makeStyles(colors);
+  const { t } = useTranslation();
 
-  const STEPS: { icon: keyof typeof Feather.glyphMap; iconColor: string; title: string; desc: string }[] = [
-    { icon: 'feather', iconColor: colors.lavender, title: 'Bienvenue sur\nReadigma', desc: 'Ton compagnon de lecture. Suis ta progression, découvre de nouveaux livres et partage ton aventure littéraire.' },
-    { icon: 'shuffle', iconColor: colors.teal, title: 'Découvre\nton prochain livre', desc: 'Tu ne sais pas quoi lire ? Readigma pioche dans ta pile "À lire" et te fait une suggestion au hasard.' },
-    { icon: 'book-open', iconColor: colors.lavender, title: 'Gère ta\nbibliothèque', desc: 'Organise tes livres par statut : À lire, En cours, Terminé ou Abandonné. Personnalise ton étagère en déplaçant tes livres et en y ajoutant des cadres photo.' },
-    { icon: 'message-circle', iconColor: colors.pink, title: 'Réactions\nen temps réel', desc: 'Note tes émotions au fil de ta lecture avec des emojis et des notes. Crée ton journal de bord de lecteur.' },
-    { icon: 'users', iconColor: colors.success, title: 'Suis d\'autres\nlecteurs', desc: 'Suis les lecteurs qui t\'intéressent, vois ce qu\'ils lisent et partage tes coups de cœur dans le fil d\'actualité.' },
+  const STEPS: { icon: keyof typeof Feather.glyphMap; iconColor: string; titleKey: string; descKey: string }[] = [
+    { icon: 'feather', iconColor: colors.lavender, titleKey: 'onboarding.steps.welcome.title', descKey: 'onboarding.steps.welcome.desc' },
+    { icon: 'shuffle', iconColor: colors.teal, titleKey: 'onboarding.steps.discover.title', descKey: 'onboarding.steps.discover.desc' },
+    { icon: 'book-open', iconColor: colors.lavender, titleKey: 'onboarding.steps.library.title', descKey: 'onboarding.steps.library.desc' },
+    { icon: 'award', iconColor: colors.warning, titleKey: 'onboarding.steps.decorations.title', descKey: 'onboarding.steps.decorations.desc' },
+    { icon: 'message-circle', iconColor: colors.pink, titleKey: 'onboarding.steps.reactions.title', descKey: 'onboarding.steps.reactions.desc' },
+    { icon: 'users', iconColor: colors.success, titleKey: 'onboarding.steps.friends.title', descKey: 'onboarding.steps.friends.desc' },
   ];
 
   const [step, setStep] = useState(0);
@@ -52,7 +55,7 @@ export default function OnboardingScreen() {
       <View style={styles.skipRow}>
         {!isLast && (
           <TouchableOpacity onPress={onDone}>
-            <Text style={styles.skip}>Passer</Text>
+            <Text style={styles.skip}>{t('onboarding.skip')}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -66,8 +69,8 @@ export default function OnboardingScreen() {
                 <Feather name={s.icon} size={38} color={s.iconColor} />
               </View>
             </View>
-            <Text style={styles.title}>{s.title}</Text>
-            <Text style={styles.desc}>{s.desc}</Text>
+            <Text style={styles.title}>{t(s.titleKey)}</Text>
+            <Text style={styles.desc}>{t(s.descKey)}</Text>
           </View>
         ))}
       </ScrollView>
@@ -84,7 +87,7 @@ export default function OnboardingScreen() {
             );
           })}
         </View>
-        <Button label={isLast ? 'C\'est parti' : 'Suivant'} onPress={next} />
+        <Button label={isLast ? t('onboarding.done') : t('onboarding.next')} onPress={next} />
       </View>
     </SafeAreaView>
   );

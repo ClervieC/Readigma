@@ -1,6 +1,8 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import * as timer from '../lib/timer';
 import * as books from '../lib/books';
+
+const COUNTDOWN_SECONDS = 3;
 
 type TimerContextType = {
   session: timer.ReadingSession | null;
@@ -9,6 +11,12 @@ type TimerContextType = {
   elapsedSeconds: number;
   start: (bookId: string) => Promise<timer.ReadingSession>;
   stop: () => Promise<void>;
+  // "Démarrage dans 3... 2... 1..." before a session actually starts — see
+  // startWithCountdown below. null outside of a countdown.
+  countdown: number | null;
+  countdownBookId: string | null;
+  startWithCountdown: (bookId: string) => void;
+  cancelCountdown: () => void;
 };
 
 const TimerContext = createContext<TimerContextType>(null!);
@@ -21,6 +29,9 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const [bookTitle, setBookTitle] = useState<string | null>(null);
   const [bookCover, setBookCover] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [countdownBookId, setCountdownBookId] = useState<string | null>(null);
+  const countdownTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadBookMeta = async (bookId: string) => {
     const meta = await books.getBookMeta(bookId).catch(() => null);
@@ -62,8 +73,44 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     setBookCover(null);
   };
 
+  const cancelCountdown = () => {
+    if (countdownTimeoutRef.current) clearTimeout(countdownTimeoutRef.current);
+    countdownTimeoutRef.current = null;
+    setCountdown(null);
+    setCountdownBookId(null);
+  };
+
+  // A brief "Démarrage dans 3..." beat before the session actually starts —
+  // gives a reader a moment to actually get settled/find their page instead
+  // of the clock silently already running the instant they tap Start.
+  const startWithCountdown = (bookId: string) => {
+    cancelCountdown();
+    setCountdownBookId(bookId);
+    setCountdown(COUNTDOWN_SECONDS);
+
+    const tick = (remaining: number) => {
+      countdownTimeoutRef.current = setTimeout(() => {
+        if (remaining <= 1) {
+          countdownTimeoutRef.current = null;
+          setCountdown(null);
+          setCountdownBookId(null);
+          start(bookId).catch(() => {});
+        } else {
+          setCountdown(remaining - 1);
+          tick(remaining - 1);
+        }
+      }, 1000);
+    };
+    tick(COUNTDOWN_SECONDS);
+  };
+
+  useEffect(() => () => { if (countdownTimeoutRef.current) clearTimeout(countdownTimeoutRef.current); }, []);
+
   return (
-    <TimerContext.Provider value={{ session, bookTitle, bookCover, elapsedSeconds, start, stop }}>
+    <TimerContext.Provider value={{
+      session, bookTitle, bookCover, elapsedSeconds, start, stop,
+      countdown, countdownBookId, startWithCountdown, cancelCountdown,
+    }}>
       {children}
     </TimerContext.Provider>
   );

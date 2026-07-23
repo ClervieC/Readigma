@@ -30,6 +30,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useTimer } from "../../context/TimerContext";
 import * as userBooks from "../../lib/userBooks";
 import * as books from "../../lib/books";
+import * as badges from "../../lib/badges";
 import { formatDuration } from "../../lib/timer";
 import Pill from "../../components/Pill";
 import Button from "../../components/Button";
@@ -160,8 +161,11 @@ function ReadingBookCard({
   const {
     session: timerSession,
     elapsedSeconds,
-    start: startTimer,
     stop: stopTimer,
+    countdown,
+    countdownBookId,
+    startWithCountdown,
+    cancelCountdown,
   } = useTimer();
   const [finishing, setFinishing] = useState(false);
 
@@ -196,12 +200,21 @@ function ReadingBookCard({
   const [timerLoading, setTimerLoading] = useState(false);
 
   const isTimingThisBook = timerSession?.book_id === book.book_id;
+  const isCountingDown = countdown !== null && countdownBookId === book.book_id;
 
   const toggleTimer = () => {
-    setTimerLoading(true);
-    (isTimingThisBook ? stopTimer() : startTimer(book.book_id))
-      .catch(() => Alert.alert(t("common.error"), t("discover.errors.timerFailed")))
-      .finally(() => setTimerLoading(false));
+    if (isCountingDown) {
+      cancelCountdown();
+      return;
+    }
+    if (isTimingThisBook) {
+      setTimerLoading(true);
+      stopTimer()
+        .catch(() => Alert.alert(t("common.error"), t("discover.errors.timerFailed")))
+        .finally(() => setTimerLoading(false));
+      return;
+    }
+    startWithCountdown(book.book_id);
   };
 
   const updateReadingProgress = () => {
@@ -373,7 +386,10 @@ function ReadingBookCard({
         )}
 
         <TouchableOpacity
-          style={[styles.timerBtn, isTimingThisBook && styles.timerBtnActive]}
+          style={[
+            styles.timerBtn,
+            (isTimingThisBook || isCountingDown) && styles.timerBtnActive,
+          ]}
           onPress={toggleTimer}
           disabled={timerLoading}
         >
@@ -381,18 +397,22 @@ function ReadingBookCard({
             <ActivityIndicator size="small" color={colors.purple} />
           ) : (
             <Feather
-              name={isTimingThisBook ? "pause" : "play"}
+              name={isCountingDown ? "x" : isTimingThisBook ? "pause" : "play"}
               size={13}
-              color={isTimingThisBook ? "white" : colors.purple}
+              color={isTimingThisBook || isCountingDown ? "white" : colors.purple}
             />
           )}
           <Text
             style={[
               styles.timerBtnText,
-              isTimingThisBook && styles.timerBtnTextActive,
+              (isTimingThisBook || isCountingDown) && styles.timerBtnTextActive,
             ]}
           >
-            {isTimingThisBook ? formatDuration(elapsedSeconds) : t("discover.timerShort")}
+            {isCountingDown
+              ? t("discover.startingIn", { count: countdown })
+              : isTimingThisBook
+                ? formatDuration(elapsedSeconds)
+                : t("discover.timerShort")}
           </Text>
         </TouchableOpacity>
       </View>
@@ -432,6 +452,7 @@ export default function DiscoverScreen() {
   const [readingBooks, setReadingBooks] = useState<userBooks.UserBook[]>([]);
   const [activeReadingIndex, setActiveReadingIndex] = useState(0);
   const [error, setError] = useState("");
+  const [streakDays, setStreakDays] = useState(0);
   const spinAnim = useRef(new RNAnimated.Value(0)).current;
   const scrollRef = useRef<ScrollView>(null);
 
@@ -457,6 +478,10 @@ export default function DiscoverScreen() {
       userBooks
         .getMyBooks("reading")
         .then(setReadingBooks)
+        .catch(() => {});
+      badges
+        .getBadgeStats()
+        .then((s) => setStreakDays(s.streak_days))
         .catch(() => {});
     }, []),
   );
@@ -559,6 +584,15 @@ export default function DiscoverScreen() {
         </View>
         <NotificationBell />
       </View>
+
+      {streakDays > 0 && (
+        <View style={styles.streakBanner}>
+          <Feather name="zap" size={13} color={colors.warning} />
+          <Text style={styles.streakBannerText}>
+            {t("discover.streakDays", { count: streakDays })}
+          </Text>
+        </View>
+      )}
 
       <ScrollView
         ref={scrollRef}
@@ -800,6 +834,19 @@ const makeStyles = (colors: ColorPalette) =>
     },
     greeting: { fontSize: 11, color: colors.gray },
     logo: { fontSize: 19, fontFamily: fonts.headingBold, color: colors.purple },
+    streakBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      alignSelf: "flex-start",
+      marginHorizontal: 20,
+      marginBottom: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: radius.md,
+      backgroundColor: colors.card2,
+    },
+    streakBannerText: { fontSize: 11, fontWeight: "600", color: colors.warning },
     scroll: { flex: 1, paddingHorizontal: 20 },
     eyebrow: {
       fontSize: 10,

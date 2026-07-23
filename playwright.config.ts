@@ -15,6 +15,12 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     viewport: { width: 420, height: 900 }, // matches the app's phone-first layout
+    // The whole suite asserts French copy. lib/i18n.ts resolves the app's
+    // language from the device/browser locale (falling back to English for
+    // anything unsupported) — Chromium's default `en-US` locale used to
+    // accidentally match through to French before fallbackLng was changed
+    // to 'en', so this pins it explicitly rather than relying on that.
+    locale: 'fr-FR',
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },

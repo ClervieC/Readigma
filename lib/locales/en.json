@@ -71,7 +71,10 @@
     "percentRead": "{{percent}}% read",
     "page": "page",
     "total": "total",
-    "percentPlaceholder": "% read"
+    "percentPlaceholder": "% read",
+    "streakDays_one": "{{count}} day streak",
+    "streakDays_other": "{{count}} day streak",
+    "startingIn": "{{count}}..."
   },
   "profile": {
     "title": "Profile",
@@ -137,7 +140,9 @@
       "frenchAuthors": "🇫🇷 French authors"
     },
     "yourStatus": "Your status",
-    "addedToReading": "\"{{title}}\" marked as currently reading"
+    "addedToReading": "\"{{title}}\" marked as currently reading",
+    "didNotFinish": "I did not finish it (DNF)",
+    "addedToDnf": "\"{{title}}\" added as did-not-finish"
   },
   "book": {
     "editSuggestion": "Suggest an edit",
@@ -215,7 +220,8 @@
       "chooseEmoji": "Choose at least one emoji!",
       "addFailed": "Couldn't add"
     },
-    "formatAudiobook": "Audiobook"
+    "formatAudiobook": "Audiobook",
+    "startingIn": "Starting in..."
   },
   "follows": {
     "title": "Reader friends",
@@ -401,7 +407,8 @@
           "Living encyclopedia"
         ]
       }
-    }
+    },
+    "newBadgeUnlocked": "New badge unlocked!"
   },
   "help": {
     "title": "Help",
@@ -778,6 +785,37 @@
       "titleRequired": "Title is required",
       "backfillFailed": "The sweep failed.",
       "repopulateFailed": "The repopulate failed."
+    }
+  },
+  "onboarding": {
+    "skip": "Skip",
+    "next": "Next",
+    "done": "Let's go",
+    "steps": {
+      "welcome": {
+        "title": "Welcome to\nReadigma",
+        "desc": "Your reading companion. Track your progress, discover new books, and share your reading journey."
+      },
+      "discover": {
+        "title": "Discover\nyour next book",
+        "desc": "Not sure what to read? Readigma picks from your 'To read' pile and makes a random suggestion."
+      },
+      "library": {
+        "title": "Manage your\nlibrary",
+        "desc": "Organize your books by status: To read, Reading, Finished, or DNF. Customize your shelf by moving books around and adding photo frames."
+      },
+      "decorations": {
+        "title": "Unlock\ndecorations",
+        "desc": "Your library starts with 4 decoration slots. Earn reading badges (books finished, day streaks, genres explored...) to unlock even more."
+      },
+      "reactions": {
+        "title": "Real-time\nreactions",
+        "desc": "Track your emotions as you read with emojis and notes. Build your reader logbook."
+      },
+      "friends": {
+        "title": "Follow other\nreaders",
+        "desc": "Follow readers you're interested in, see what they're reading, and share your favorites in the feed."
+      }
     }
   }
 }

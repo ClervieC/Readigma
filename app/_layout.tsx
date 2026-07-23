@@ -10,6 +10,7 @@ import { AuthProvider, useAuth } from '../context/AuthContext';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { TimerProvider } from '../context/TimerContext';
 import TimerBubble from '../components/TimerBubble';
+import BadgeToast from '../components/BadgeToast';
 import { ColorPalette } from '../theme';
 // Side-effect import: initializes i18next synchronously with its `resources`
 // (no lazy backend), so every screen's useTranslation() is ready to render
@@ -80,6 +81,7 @@ function RootNavigation() {
         <Stack.Screen name="terms" />
       </Stack>
       {session && <TimerBubble />}
+      {session && <BadgeToast />}
     </>
   );
 }

@@ -71,7 +71,10 @@
     "percentRead": "{{percent}}% lu",
     "page": "page",
     "total": "total",
-    "percentPlaceholder": "% lu"
+    "percentPlaceholder": "% lu",
+    "streakDays_one": "{{count}} jour de suite",
+    "streakDays_other": "{{count}} jours de suite",
+    "startingIn": "{{count}}..."
   },
   "profile": {
     "title": "Profil",
@@ -137,7 +140,9 @@
       "frenchAuthors": "🇫🇷 Auteurs français"
     },
     "yourStatus": "Ton statut",
-    "addedToReading": "\"{{title}}\" marqué comme en cours de lecture"
+    "addedToReading": "\"{{title}}\" marqué comme en cours de lecture",
+    "didNotFinish": "Je ne l'ai pas fini (DNF)",
+    "addedToDnf": "\"{{title}}\" ajouté comme abandonné"
   },
   "book": {
     "editSuggestion": "Proposer une modification",
@@ -215,7 +220,8 @@
       "chooseEmoji": "Choisis au moins un emoji !",
       "addFailed": "Impossible d'ajouter"
     },
-    "formatAudiobook": "Livre audio"
+    "formatAudiobook": "Livre audio",
+    "startingIn": "Démarrage dans..."
   },
   "follows": {
     "title": "Amis lecteurs",
@@ -401,7 +407,8 @@
           "Encyclopédie vivante"
         ]
       }
-    }
+    },
+    "newBadgeUnlocked": "Nouveau badge débloqué !"
   },
   "help": {
     "title": "Aide",
@@ -778,6 +785,37 @@
       "titleRequired": "Le titre est requis",
       "backfillFailed": "Le balayage a échoué.",
       "repopulateFailed": "Le repeuplement a échoué."
+    }
+  },
+  "onboarding": {
+    "skip": "Passer",
+    "next": "Suivant",
+    "done": "C'est parti",
+    "steps": {
+      "welcome": {
+        "title": "Bienvenue sur\nReadigma",
+        "desc": "Ton compagnon de lecture. Suis ta progression, découvre de nouveaux livres et partage ton aventure littéraire."
+      },
+      "discover": {
+        "title": "Découvre\nton prochain livre",
+        "desc": "Tu ne sais pas quoi lire ? Readigma pioche dans ta pile \"À lire\" et te fait une suggestion au hasard."
+      },
+      "library": {
+        "title": "Gère ta\nbibliothèque",
+        "desc": "Organise tes livres par statut : À lire, En cours, Terminé ou Abandonné. Personnalise ton étagère en déplaçant tes livres et en y ajoutant des cadres photo."
+      },
+      "decorations": {
+        "title": "Débloque des\ndécorations",
+        "desc": "Ta bibliothèque démarre avec 4 emplacements de décoration. Gagne des badges en lisant (livres terminés, série de jours, genres explorés...) pour en débloquer encore plus."
+      },
+      "reactions": {
+        "title": "Réactions\nen temps réel",
+        "desc": "Note tes émotions au fil de ta lecture avec des emojis et des notes. Crée ton journal de bord de lecteur."
+      },
+      "friends": {
+        "title": "Suis d'autres\nlecteurs",
+        "desc": "Suis les lecteurs qui t'intéressent, vois ce qu'ils lisent et partage tes coups de cœur dans le fil d'actualité."
+      }
     }
   }
 }

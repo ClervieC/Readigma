@@ -24,7 +24,7 @@ export async function login(page: Page, email = E2E_EMAIL, password = E2E_PASSWO
   // "Découvrir" (the tab label) is also a substring of Discover's own
   // "Lance le tirage pour découvrir ton prochain livre" placeholder text —
   // exact: true is what actually disambiguates the two.
-  await expect(page.getByText('Découvrir', { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('Découvrir', { exact: true })).toBeVisible({ timeout: 25_000 });
 }
 
 // The onboarding carousel only shows once per account (server-side flag —

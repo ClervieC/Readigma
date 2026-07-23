@@ -184,9 +184,13 @@ export default function BookDetailScreen() {
   const {
     session: activeSession,
     elapsedSeconds,
-    start: startGlobalTimer,
     stop: stopGlobalTimer,
+    countdown,
+    countdownBookId,
+    startWithCountdown,
+    cancelCountdown,
   } = useTimer();
+  const isCountingDown = countdown !== null && countdownBookId === id;
 
   useEffect(() => {
     if (!id) return;
@@ -308,12 +312,13 @@ export default function BookDetailScreen() {
   const startTimer = () => {
     setTimerLoading(true);
     ensureReading()
-      .then(() => startGlobalTimer(id))
+      .then(() => startWithCountdown(id))
       .catch(() => Alert.alert(t("common.error"), t("book.errors.startTimer")))
       .finally(() => setTimerLoading(false));
   };
 
   const stopTimer = () => {
+    if (isCountingDown) { cancelCountdown(); return; }
     if (!activeSession) return;
     setTimerLoading(true);
     stopGlobalTimer()
@@ -803,6 +808,18 @@ export default function BookDetailScreen() {
                         variant="danger"
                         onPress={stopTimer}
                         disabled={timerLoading}
+                      />
+                    </>
+                  ) : isCountingDown ? (
+                    <>
+                      <Text style={styles.timerFace}>{countdown}</Text>
+                      <Text style={styles.timerCountdownLabel}>
+                        {t("book.startingIn")}
+                      </Text>
+                      <Button
+                        label={t("common.cancel")}
+                        variant="ghost"
+                        onPress={cancelCountdown}
                       />
                     </>
                   ) : (
@@ -1329,6 +1346,13 @@ const makeStyles = (colors: ColorPalette) =>
       textAlign: "center",
       marginBottom: 14,
       fontVariant: ["tabular-nums"],
+    },
+    timerCountdownLabel: {
+      fontSize: 12,
+      color: colors.muted,
+      textAlign: "center",
+      marginTop: -8,
+      marginBottom: 14,
     },
     timerTotal: {
       fontSize: 12,
