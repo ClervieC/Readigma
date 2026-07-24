@@ -10,6 +10,12 @@ let scriptRequested = false;
 export function ensureAdSenseScript() {
   if (scriptRequested || !ADSENSE_CLIENT_ID || typeof document === 'undefined') return;
   scriptRequested = true;
+  // scripts/inject-adsense-html.js already bakes this same tag into the
+  // static dist/index.html at build time (needed for Google's verification
+  // crawler, which doesn't run this app's JS) — checking the DOM, not just
+  // the in-memory flag above, is what stops this from loading it a second
+  // time on top of that one.
+  if (document.querySelector('script[src*="adsbygoogle.js"]')) return;
   const script = document.createElement('script');
   script.async = true;
   script.crossOrigin = 'anonymous';
