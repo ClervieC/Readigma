@@ -931,6 +931,10 @@ export default function LibraryScreen() {
   const { t } = useTranslation();
   const { width, height } = useWindowDimensions();
   const [activeTab, setActiveTab] = useState("to_read");
+  // Only meaningful for the "to_read" tab — possession (owned vs wishlist)
+  // is independent of reading status, but not worth surfacing as a filter
+  // on reading/done/dnf shelves where a book is owned by definition.
+  const [ownedFilter, setOwnedFilter] = useState<"all" | "owned" | "wishlist">("all");
   const [query, setQuery] = useState("");
   const [allBooks, setAllBooks] = useState<any[]>([]);
   const [allFrames, setAllFrames] = useState<shelfFrames.ShelfFrame[]>([]);
@@ -1129,11 +1133,40 @@ export default function LibraryScreen() {
   // the user just made.
   const pendingWritesRef = useRef(0);
 
+  // Shared by both "screen regained focus" (below) and "reorder mode just
+  // toggled off" (the effect further down) — same virtualized-FlatList
+  // problem either way: right after it (re)appears, scrollToOffset only
+  // knows an *estimate* of where offset y actually is, so a single jump
+  // lands roughly right and then visibly corrects itself as real rows
+  // measure in. Retrying while hidden (restoringScroll) turns that into a
+  // clean reveal already in the right place instead of a flash-then-jump.
+  const restoreScrollPosition = () => {
+    const y = scrollOffsetRef.current;
+    if (y <= 0) return () => {};
+    if (reorderMode) {
+      requestAnimationFrame(() => {
+        reorderScrollRef.current?.scrollTo({ y, animated: false });
+      });
+      return () => {};
+    }
+    setRestoringScroll(true);
+    const attempts = [0, 50, 150, 300];
+    const timers = attempts.map((delay) =>
+      setTimeout(() => {
+        listRef.current?.scrollToOffset({ offset: y, animated: false });
+        if (delay === attempts[attempts.length - 1]) setRestoringScroll(false);
+      }, delay),
+    );
+    return () => timers.forEach(clearTimeout);
+  };
+
   useFocusEffect(
     useCallback(() => {
-      requestAnimationFrame(() =>
-        listRef.current?.scrollToOffset({ offset: 0, animated: false }),
-      );
+      // Regaining focus after pushing/popping the book detail screen (or any
+      // other pushed route) should land back exactly where you were, not
+      // snap to the top — only a genuinely fresh mount has nothing to
+      // restore (scrollOffsetRef is still 0 then, so this is a no-op).
+      const cleanup = restoreScrollPosition();
       loadBooks();
       loadFrames();
       badges
@@ -1150,7 +1183,8 @@ export default function LibraryScreen() {
           if (count > 0) loadBooks();
         })
         .catch(() => {});
-    }, []),
+      return cleanup;
+    }, [reorderMode]),
   );
 
   useEffect(
@@ -1172,32 +1206,7 @@ export default function LibraryScreen() {
       isMountRef.current = false;
       return;
     }
-    const y = scrollOffsetRef.current;
-    if (reorderMode) {
-      // The ScrollView renders every row up front, so its real content
-      // height is already correct the moment it mounts — one jump is enough.
-      requestAnimationFrame(() => {
-        reorderScrollRef.current?.scrollTo({ y, animated: false });
-      });
-    } else if (y > 0) {
-      // The FlatList is virtualized and has no getItemLayout (shelf rows
-      // aren't a fixed height), so right after mount it only knows an
-      // *estimate* of where offset y actually is — jumping once lands
-      // roughly right, then visibly corrects itself as real rows measure
-      // in. Doing that correction while hidden (see restoringScroll on the
-      // FlatList's style) is what turns "flashes at the top, then jumps"
-      // into a clean reveal already in the right place.
-      setRestoringScroll(true);
-      const attempts = [0, 50, 150, 300];
-      const timers = attempts.map((delay) =>
-        setTimeout(() => {
-          listRef.current?.scrollToOffset({ offset: y, animated: false });
-          if (delay === attempts[attempts.length - 1])
-            setRestoringScroll(false);
-        }, delay),
-      );
-      return () => timers.forEach(clearTimeout);
-    }
+    return restoreScrollPosition();
   }, [reorderMode]);
 
   // Floating "scroll to top" button — scrolls whichever of the four
@@ -1560,6 +1569,12 @@ export default function LibraryScreen() {
         .filter((b) => b.status === activeTab)
         .filter(
           (b) =>
+            activeTab !== "to_read" ||
+            ownedFilter === "all" ||
+            (ownedFilter === "owned" ? b.owned : !b.owned),
+        )
+        .filter(
+          (b) =>
             !q ||
             b.title?.toLowerCase().includes(q) ||
             b.author?.toLowerCase().includes(q),
@@ -1588,7 +1603,7 @@ export default function LibraryScreen() {
             new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
           return sortOrder === "asc" ? diff : -diff;
         }),
-    [allBooks, activeTab, q, sortOrder],
+    [allBooks, activeTab, ownedFilter, q, sortOrder],
   );
   const counts: any = {};
   allBooks.forEach((b) => {
@@ -1650,6 +1665,7 @@ export default function LibraryScreen() {
     const doRemove = () => {
       userBooks.removeBook(selectedBook.book_id).then(() => {
         setSelectedBook(null);
+        setPoppedBook(null);
         loadBooks();
       });
     };
@@ -2562,7 +2578,11 @@ export default function LibraryScreen() {
                 <Feather
                   name="sliders"
                   size={17}
-                  color={sortOrder === "manual" ? colors.gray : colors.purple}
+                  color={
+                    sortOrder === "manual" && ownedFilter === "all"
+                      ? colors.gray
+                      : colors.purple
+                  }
                 />
               </TouchableOpacity>
               <TouchableOpacity
@@ -3558,7 +3578,7 @@ export default function LibraryScreen() {
               )}
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.sheetRow}
+              style={[styles.sheetRow, activeTab === "to_read" && styles.sheetDivider]}
               onPress={() => {
                 setSortOrder("author");
                 setShowSortSheet(false);
@@ -3575,6 +3595,39 @@ export default function LibraryScreen() {
                 />
               )}
             </TouchableOpacity>
+
+            {activeTab === "to_read" && (
+              <>
+                <Text style={[styles.sheetTitle, { marginTop: 16, marginBottom: 4 }]}>
+                  {t("library.filterTitle")}
+                </Text>
+                {[
+                  { value: "all" as const, icon: "layers" as const, labelKey: "library.ownedFilters.all" },
+                  { value: "owned" as const, icon: "check-circle" as const, labelKey: "library.ownedFilters.owned" },
+                  { value: "wishlist" as const, icon: "heart" as const, labelKey: "library.ownedFilters.wishlist" },
+                ].map((f, i, arr) => (
+                  <TouchableOpacity
+                    key={f.value}
+                    style={[styles.sheetRow, i < arr.length - 1 && styles.sheetDivider]}
+                    onPress={() => {
+                      setOwnedFilter(f.value);
+                      setShowSortSheet(false);
+                    }}
+                  >
+                    <Feather name={f.icon} size={16} color={colors.white} />
+                    <Text style={styles.sheetBtnText}>{t(f.labelKey)}</Text>
+                    {ownedFilter === f.value && (
+                      <Feather
+                        name="check"
+                        size={16}
+                        color={colors.purple}
+                        style={{ marginLeft: "auto" }}
+                      />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </>
+            )}
           </TouchableOpacity>
         </TouchableOpacity>
       )}

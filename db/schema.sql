@@ -100,6 +100,9 @@ create table user_books (
                                                                -- divider in reorder mode)
   shelf_gap_before boolean not null default false,            -- horizontal empty space before a book
   shelf_gap_after boolean not null default false,             -- horizontal empty space after a book
+  owned            boolean not null default true,             -- false = wishlist (want it, don't have
+                                                                 -- it yet) — independent of `status`;
+                                                                 -- only meaningful for 'to_read'
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now(),
   unique (user_id, book_id),

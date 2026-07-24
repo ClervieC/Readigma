@@ -11,6 +11,7 @@ import { radius, fonts, shadows, ColorPalette } from '../../theme';
 import { useTheme } from '../../context/ThemeContext';
 import * as feed from '../../lib/feed';
 import NotificationBell from '../../components/NotificationBell';
+import AdBanner from '../../components/AdBanner';
 import { onScrollToTop } from '../../lib/tabScrollEmitter';
 import i18n from '../../lib/i18n';
 
@@ -266,12 +267,17 @@ export default function FeedScreen() {
         )}
 
         {feedItems.map((item, i) => (
-          <ActivityCard key={i} item={item} styles={styles} colors={colors} last={i === feedItems.length - 1}
-            onUserPress={(userId, username) => router.push({ pathname: '/friends/[id]', params: { id: userId, username } })}
-            onBookPress={(bookId) => router.push(`/book/${bookId}`)}
-            onLike={() => handleLike(item.id)}
-            onCommentAdded={() => handleCommentAdded(item.id)}
-          />
+          <View key={i}>
+            <ActivityCard item={item} styles={styles} colors={colors} last={i === feedItems.length - 1}
+              onUserPress={(userId, username) => router.push({ pathname: '/friends/[id]', params: { id: userId, username } })}
+              onBookPress={(bookId) => router.push(`/book/${bookId}`)}
+              onLike={() => handleLike(item.id)}
+              onCommentAdded={() => handleCommentAdded(item.id)}
+            />
+            {/* Every 5 posts — AdBanner itself no-ops without consent/ids, so
+                this stays cheap to always render. */}
+            {(i + 1) % 5 === 0 && <AdBanner />}
+          </View>
         ))}
 
         <View style={{ height: 20 }} />

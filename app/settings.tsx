@@ -1,10 +1,11 @@
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { fonts, ColorPalette } from '../theme';
 import { useTheme, ThemeMode } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { useAdConsent } from '../context/AdConsentContext';
 import { setAppLanguage, AppLanguage } from '../lib/i18n';
 import Screen from '../components/Screen';
 import Row from '../components/Row';
@@ -32,6 +33,7 @@ const SETTINGS: { icon: keyof typeof Feather.glyphMap; labelKey: string; route: 
 export default function SettingsScreen() {
   const { signOut } = useAuth();
   const { colors, isDark, mode, setMode } = useTheme();
+  const { consent, setConsent } = useAdConsent();
   const router = useRouter();
   const styles = makeStyles(colors);
   const { t, i18n } = useTranslation();
@@ -69,6 +71,19 @@ export default function SettingsScreen() {
             ))}
           </View>
         </View>
+
+        {Platform.OS === 'web' && (
+          <View style={styles.themeRow}>
+            <View style={styles.themeLabelRow}>
+              <Feather name="target" size={18} color={colors.white} />
+              <Text style={styles.settingLabel}>{t('settings.ads')}</Text>
+            </View>
+            <View style={styles.themeOptions}>
+              <Pill label={t('ads.consentAccept')} active={consent === 'granted'} onPress={() => setConsent('granted')} />
+              <Pill label={t('ads.consentDecline')} active={consent === 'denied'} onPress={() => setConsent('denied')} />
+            </View>
+          </View>
+        )}
 
         <Row last onPress={signOut} icon={<Feather name="log-out" size={18} color={colors.error} />}>
           <Text style={[styles.settingLabel, { color: colors.error }]}>{t('settings.logout')}</Text>

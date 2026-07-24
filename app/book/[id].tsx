@@ -10,6 +10,7 @@ import {
   Modal,
   ActivityIndicator,
   Image,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -269,6 +270,33 @@ export default function BookDetailScreen() {
       .finally(() => setTimerLoading(false));
   };
 
+  const removeFromLibrary = () => {
+    const doRemove = () => {
+      userBooks.removeBook(id).then(() => router.back());
+    };
+    // RN Web's Alert.alert only ever renders a single-button window.alert —
+    // multi-button/destructive-style configs like this one are silently
+    // dropped, so the confirm dialog (and thus the remove callback) never
+    // appeared on web at all. window.confirm is the web-native equivalent —
+    // same workaround as app/(tabs)/library.tsx's removeBook.
+    if (Platform.OS === "web") {
+      if (window.confirm(t("library.confirmRemoveBook"))) doRemove();
+      return;
+    }
+    Alert.alert(t("library.remove"), t("library.confirmRemoveBook"), [
+      { text: t("common.cancel"), style: "cancel" },
+      { text: t("library.remove"), style: "destructive", onPress: doRemove },
+    ]);
+  };
+
+  const setOwned = (owned: boolean) => {
+    if (currentBook.owned === owned) return;
+    userBooks
+      .updateBook(id, { owned })
+      .then(() => setCurrentBook((cur: any) => ({ ...cur, owned })))
+      .catch(() => Alert.alert(t("common.error"), t("book.errors.updateFailed")));
+  };
+
   const toggleFormat = (format: "physical" | "ereader" | "audiobook") => {
     const current: string[] = currentBook.formats ?? [];
     const formats = current.includes(format)
@@ -478,6 +506,20 @@ export default function BookDetailScreen() {
                   {t("book.reportBook")}
                 </Text>
               </TouchableOpacity>
+              {currentBook.status && (
+                <TouchableOpacity
+                  style={styles.menuRow}
+                  onPress={() => {
+                    setShowMoreMenu(false);
+                    removeFromLibrary();
+                  }}
+                >
+                  <Feather name="trash-2" size={16} color={colors.error} />
+                  <Text style={[styles.menuRowText, { color: colors.error }]}>
+                    {t("library.remove")}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           </TouchableOpacity>
         </Modal>
@@ -709,6 +751,25 @@ export default function BookDetailScreen() {
                   })}
                 </View>
               </Card>
+
+              {currentBook.status === "to_read" && (
+                <Card title={t("book.ownership")} styles={styles}>
+                  <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+                    <Pill
+                      label={t("book.owned")}
+                      active={currentBook.owned}
+                      onPress={() => setOwned(true)}
+                      tone="gilt"
+                    />
+                    <Pill
+                      label={t("book.wishlist")}
+                      active={!currentBook.owned}
+                      onPress={() => setOwned(false)}
+                      tone="gilt"
+                    />
+                  </View>
+                </Card>
+              )}
 
               <Card title={t("book.format")} styles={styles}>
                 <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>

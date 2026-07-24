@@ -9,8 +9,10 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { TimerProvider } from '../context/TimerContext';
+import { AdConsentProvider } from '../context/AdConsentContext';
 import TimerBubble from '../components/TimerBubble';
 import BadgeToast from '../components/BadgeToast';
+import AdConsentBanner from '../components/AdConsentBanner';
 import { ColorPalette } from '../theme';
 // Side-effect import: initializes i18next synchronously with its `resources`
 // (no lazy backend), so every screen's useTranslation() is ready to render
@@ -82,6 +84,7 @@ function RootNavigation() {
       </Stack>
       {session && <TimerBubble />}
       {session && <BadgeToast />}
+      {session && <AdConsentBanner />}
     </>
   );
 }
@@ -199,8 +202,10 @@ export default function RootLayout() {
         <ThemeProvider>
           <AuthProvider>
             <TimerProvider>
-              <RootNavigation />
-              <ThemedStatusBar />
+              <AdConsentProvider>
+                <RootNavigation />
+                <ThemedStatusBar />
+              </AdConsentProvider>
             </TimerProvider>
           </AuthProvider>
         </ThemeProvider>

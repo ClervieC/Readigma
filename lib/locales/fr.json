@@ -25,7 +25,14 @@
     "language": "Langue",
     "french": "Français",
     "english": "English",
+    "ads": "Publicité",
     "logout": "Se déconnecter"
+  },
+  "ads": {
+    "consentText": "Readigma affiche des publicités (Google AdSense) sur la version web pour financer l'app. Elles ne s'affichent que si tu acceptes — sinon l'app reste entièrement utilisable sans pub.",
+    "consentLearnMore": "En savoir plus",
+    "consentDecline": "Refuser",
+    "consentAccept": "Accepter"
   },
   "discover": {
     "greetingMorning": "Bonjour",
@@ -170,6 +177,9 @@
     "statusReading": "En cours",
     "statusDone": "Lu",
     "statusDnf": "DNF",
+    "ownership": "Possession",
+    "owned": "Je le possède",
+    "wishlist": "Wishlist",
     "format": "Format",
     "formatPhysical": "Physique",
     "formatEreader": "Liseuse",
@@ -465,15 +475,19 @@
       },
       {
         "title": "Utilisation des données",
-        "body": "Ces données servent uniquement à faire fonctionner l'application : afficher ta bibliothèque, ton fil d'actualité, tes statistiques de lecture et les profils des lecteurs que tu suis. Readigma ne vend ni ne partage tes données avec des tiers à des fins publicitaires."
+        "body": "Ces données servent à faire fonctionner l'application : afficher ta bibliothèque, ton fil d'actualité, tes statistiques de lecture et les profils des lecteurs que tu suis. Readigma ne vend aucune de tes données. La seule exception est la publicité sur la version web (voir \"Cookies et publicité\" ci-dessous), et uniquement si tu l'acceptes."
       },
       {
         "title": "Visibilité de tes informations",
         "body": "Ton nom d'utilisateur, ton avatar, ta bibliothèque et tes avis sur les livres sont visibles par tout utilisateur inscrit. Ton fil d'activité (livres terminés, réactions, mises à jour de progression) n'est en revanche visible que par les personnes qui te suivent."
       },
       {
+        "title": "Cookies et publicité",
+        "body": "Sur la version web, Readigma peut afficher des publicités via Google AdSense pour financer l'app. Aucun cookie publicitaire n'est déposé et aucune donnée n'est partagée avec Google tant que tu n'as pas explicitement accepté via la bannière proposée au premier lancement — refuser n'enlève aucune fonctionnalité. Tu peux changer d'avis à tout moment dans Réglages → Publicité. Voir la politique de confidentialité de Google : https://policies.google.com/privacy."
+      },
+      {
         "title": "Services externes",
-        "body": "Les couvertures et informations de livres proviennent d'Open Library, de la Bibliothèque nationale de France (BnF) et de Google Books. Readigma utilise Supabase pour l'hébergement des données et l'authentification, et Expo pour les notifications push."
+        "body": "Les couvertures et informations de livres proviennent d'Open Library, de la Bibliothèque nationale de France (BnF) et de Google Books. Readigma utilise Supabase pour l'hébergement des données et l'authentification, Expo pour les notifications push, et Google AdSense pour la publicité sur la version web (uniquement avec ton consentement)."
       },
       {
         "title": "Conservation et suppression",
@@ -538,6 +552,12 @@
       "reading": "En cours",
       "read": "Lu",
       "dnf": "Pas fini (DNF)"
+    },
+    "filterTitle": "Afficher",
+    "ownedFilters": {
+      "all": "Tous",
+      "owned": "Possédés",
+      "wishlist": "Wishlist"
     },
     "noMoreDecorations": "Plus de décoration disponible",
     "unlockFirstDecoration": "Débloque ta première décoration en obtenant un badge (livres lus, série de lecture...).",

@@ -19,6 +19,7 @@ export type UserBook = {
   shelf_break_before: boolean | null;
   shelf_gap_before: boolean | null;
   shelf_gap_after: boolean | null;
+  owned: boolean;
   created_at: string;
   title: string;
   author: string;
@@ -218,7 +219,7 @@ export async function mergeDuplicates(): Promise<number> {
 
 export async function updateBook(
   bookId: string,
-  patch: { status?: string; rating?: number; comment?: string; formats?: ('physical' | 'ereader' | 'audiobook')[]; progress_mode?: 'pages' | 'percent' }
+  patch: { status?: string; rating?: number; comment?: string; formats?: ('physical' | 'ereader' | 'audiobook')[]; progress_mode?: 'pages' | 'percent'; owned?: boolean }
 ) {
   const userId = await requireUserId();
   const { data, error } = await supabase
@@ -328,6 +329,7 @@ export async function getBookDetail(bookId: string) {
     total_pages: userBook?.total_pages ?? 0,
     progress_percent: userBook?.progress_percent ?? 0,
     progress_mode: userBook?.progress_mode ?? 'pages',
+    owned: userBook?.owned ?? true,
   };
 }
 
