@@ -483,7 +483,7 @@
       },
       {
         "title": "Cookies et publicité",
-        "body": "Sur la version web, Readigma peut afficher des publicités via Google AdSense pour financer l'app. Aucun cookie publicitaire n'est déposé et aucune donnée n'est partagée avec Google tant que tu n'as pas explicitement accepté via la bannière proposée au premier lancement — refuser n'enlève aucune fonctionnalité. Tu peux changer d'avis à tout moment dans Réglages → Publicité. Voir la politique de confidentialité de Google : https://policies.google.com/privacy."
+        "body": "Sur la version web, Readigma charge le script de vérification Google AdSense sur chaque page (requis par Google, sans cookie ni publicité associée). Aucune publicité ne s'affiche et aucun cookie publicitaire n'est déposé tant que tu n'as pas explicitement accepté via la bannière proposée au premier lancement — refuser n'enlève aucune fonctionnalité. Tu peux changer d'avis à tout moment dans Réglages → Publicité. Voir la politique de confidentialité de Google : https://policies.google.com/privacy."
       },
       {
         "title": "Services externes",

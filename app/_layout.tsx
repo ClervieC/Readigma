@@ -21,6 +21,7 @@ import { ColorPalette } from '../theme';
 // the device-locale guess it starts with.
 import '../lib/i18n';
 import { loadSavedLanguage } from '../lib/i18n';
+import { ensureAdSenseScript } from '../lib/adsense';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -192,6 +193,14 @@ export default function RootLayout() {
     addMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
     addMeta('apple-mobile-web-app-title', 'Readigma');
     return () => tags.forEach(t => t.remove());
+  }, []);
+
+  // AdSense requires this verification script present on every page,
+  // unconditionally — a no-op if EXPO_PUBLIC_ADSENSE_CLIENT_ID isn't set.
+  // Actual ad requests (components/AdBanner.tsx) stay gated behind consent.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    ensureAdSenseScript();
   }, []);
 
   if (!fontsLoaded) return null;
