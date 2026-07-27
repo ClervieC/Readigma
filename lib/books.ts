@@ -555,6 +555,41 @@ export async function getPopular(): Promise<NormalizedBook[]> {
 }
 
 export async function addBookToDb(book: NormalizedBook) {
+  const isbn = book.isbn?.replace(/[^0-9Xx]/g, '') || null;
+
+  // Every search provider mints its own external_id for the same real-world
+  // book (Open Library/BnF/Google Books never agree), so upserting on
+  // external_id alone lets the same book get inserted into `books` more
+  // than once — e.g. adding it from a Google Books result after it's
+  // already in the catalog via an Open Library result. When the ISBN is
+  // known, check for an existing row under that ISBN first and just
+  // complement whatever it's missing, instead of creating a second row.
+  if (isbn) {
+    const { data: existing, error: findError } = await supabase
+      .from('books')
+      .select('*')
+      .eq('isbn', isbn)
+      .maybeSingle();
+    if (findError) throw new Error(findError.message);
+    if (existing) {
+      const patch: Record<string, any> = {};
+      if (!existing.cover_url && book.cover_url) patch.cover_url = book.cover_url;
+      if (!existing.description && book.description) patch.description = book.description;
+      if ((!existing.genres || existing.genres.length === 0) && book.genres?.length) patch.genres = book.genres;
+      if (!existing.published_year && book.published_year) patch.published_year = book.published_year;
+      if (!existing.series && book.series) patch.series = book.series;
+      if (Object.keys(patch).length === 0) return existing;
+      const { data, error } = await supabase
+        .from('books')
+        .update(patch)
+        .eq('id', existing.id)
+        .select('*')
+        .single();
+      if (error) throw new Error(error.message);
+      return data;
+    }
+  }
+
   const { data, error } = await supabase
     .from('books')
     .upsert(
@@ -571,6 +606,7 @@ export async function addBookToDb(book: NormalizedBook) {
         // series set manually on the detail screen); sending an explicit
         // `null` here would wipe that out on every re-add.
         series: book.series || undefined,
+        isbn: isbn || undefined,
         approved: true,
       },
       { onConflict: 'external_id' }

@@ -127,7 +127,7 @@ export default function UserProfileScreen() {
             { num: stats.done_count ?? 0,    label: t('profile.statsRead'),    color: colors.success },
             { num: stats.reading_count ?? 0, label: t('profile.statsReading'), color: colors.cyan },
             { num: stats.to_read_count ?? 0, label: t('profile.statsToRead'),  color: colors.lavender },
-            { num: stats.avg_rating ? Number(stats.avg_rating).toFixed(1) + '★' : '—', label: t('profile.statsAvg'), color: colors.warning },
+            { num: stats.avg_rating ? Number(stats.avg_rating).toFixed(2) + '★' : '—', label: t('profile.statsAvg'), color: colors.warning },
           ].map((s, i) => (
             <View key={i} style={styles.statBox}>
               <Text style={[styles.statNum, { color: s.color }]}>{s.num}</Text>

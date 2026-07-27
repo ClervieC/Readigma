@@ -29,24 +29,7 @@ import Button from "../../components/Button";
 import Pill from "../../components/Pill";
 import ProgressBar from "../../components/ProgressBar";
 import StarRating from "../../components/StarRating";
-
-const EMOJIS = [
-  "😱",
-  "🥰",
-  "😭",
-  "🤯",
-  "😍",
-  "🦋",
-  "😤",
-  "🫶",
-  "💀",
-  "🔥",
-  "😢",
-  "🤩",
-  "😮",
-  "💔",
-  "⭐",
-];
+import { REACTION_EMOJIS as EMOJIS } from "../../lib/emojis";
 
 const STATUS_OPTIONS: {
   labelKey: string;
@@ -547,7 +530,7 @@ export default function BookDetailScreen() {
               <View style={styles.ratingBadgeRow}>
                 <Feather name="star" size={11} color={colors.teal} />
                 <Text style={styles.ratingBadgeText}>
-                  {ratingStats.avg_rating?.toFixed(1)} ·{" "}
+                  {ratingStats.avg_rating?.toFixed(2)} ·{" "}
                   {ratingStats.ratings_count}
                 </Text>
               </View>
@@ -1042,7 +1025,7 @@ export default function BookDetailScreen() {
                 {ratingStats.ratings_count > 0 && (
                   <View style={styles.communityHeader}>
                     <Text style={styles.communityAvg}>
-                      {ratingStats.avg_rating?.toFixed(1)}
+                      {ratingStats.avg_rating?.toFixed(2)}
                     </Text>
                     <Feather name="star" size={20} color={colors.teal} />
                     <Text style={styles.communityCount}>
@@ -1143,6 +1126,7 @@ export default function BookDetailScreen() {
               multiline
               maxLength={200}
             />
+            <Text style={styles.charCount}>{reactionNote.length}/200</Text>
             <TouchableOpacity
               style={styles.publicToggle}
               onPress={() => setIsPublic(!isPublic)}
@@ -1184,6 +1168,7 @@ export default function BookDetailScreen() {
               multiline
               maxLength={500}
             />
+            <Text style={styles.charCount}>{comment.length}/500</Text>
             <Button label={t("book.finishReadingBtn")} onPress={finishBook} />
           </TouchableOpacity>
         </TouchableOpacity>
@@ -1535,6 +1520,13 @@ const makeStyles = (colors: ColorPalette) =>
       color: colors.white,
       fontSize: 14,
       minHeight: 80,
+      marginBottom: 12,
+    },
+    charCount: {
+      fontSize: 11,
+      color: colors.gray,
+      textAlign: "right",
+      marginTop: -8,
       marginBottom: 12,
     },
     publicToggle: {

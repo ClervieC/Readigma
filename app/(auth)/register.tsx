@@ -74,7 +74,10 @@ export default function RegisterScreen() {
 
 const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  scroll: { flexGrow: 1, justifyContent: 'center', padding: 28 },
+  // maxWidth keeps the form (and its inputs) from stretching edge-to-edge
+  // on wide/web viewports — width + alignSelf center it within that cap
+  // instead of just clamping the left edge.
+  scroll: { flexGrow: 1, justifyContent: 'center', padding: 28, maxWidth: 400, width: '100%', alignSelf: 'center' },
   top: { alignItems: 'center', marginBottom: 48 },
   logo: { fontSize: 22, fontFamily: fonts.headingBold, color: colors.purple, letterSpacing: 1 },
   tagline: { fontSize: 12, color: colors.gray, marginTop: 6 },

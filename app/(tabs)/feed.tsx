@@ -56,6 +56,13 @@ function ActivityCard({ item, last, onUserPress, onBookPress, onLike, onCommentA
   const [loadingComments, setLoadingComments] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [posting, setPosting] = useState(false);
+  // A long finish comment or reaction note used to just push the card as
+  // tall as it needed to be, making cards of wildly uneven height as you
+  // scroll — capped at 3 lines with a "Lire la suite" toggle instead. Only
+  // ever one or the other is present on a given card (finished vs.
+  // reaction), so a single flag covers both.
+  const [noteExpanded, setNoteExpanded] = useState(false);
+  const TRUNCATE_THRESHOLD = 140;
 
   const toggleComments = () => {
     const next = !expanded;
@@ -130,7 +137,20 @@ function ActivityCard({ item, last, onUserPress, onBookPress, onLike, onCommentA
             <Text style={styles.finishedText}>
               {t('feed.finishedLabel')}{item.metadata?.rating ? ` · ${item.metadata.rating}★` : ''}
             </Text>
-            {item.metadata?.comment ? <Text style={styles.finishedComment}>"{item.metadata.comment}"</Text> : null}
+            {item.metadata?.comment ? (
+              <>
+                <Text style={styles.finishedComment} numberOfLines={noteExpanded ? undefined : 3}>
+                  "{item.metadata.comment}"
+                </Text>
+                {item.metadata.comment.length > TRUNCATE_THRESHOLD && (
+                  <TouchableOpacity onPress={() => setNoteExpanded(v => !v)} hitSlop={6}>
+                    <Text style={styles.readMoreText}>
+                      {noteExpanded ? t('book.readLess') : t('book.readMore')}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            ) : null}
           </View>
         </View>
       ) : null}
@@ -141,7 +161,20 @@ function ActivityCard({ item, last, onUserPress, onBookPress, onLike, onCommentA
             <Text style={[styles.reactionEmoji, [...item.emoji].length > 2 && styles.reactionEmojiSmall]}>{item.emoji}</Text>
           </View>
           <View style={{ flex: 1 }}>
-            {item.note ? <Text style={styles.reactionNote}>{item.note}</Text> : null}
+            {item.note ? (
+              <>
+                <Text style={styles.reactionNote} numberOfLines={noteExpanded ? undefined : 3}>
+                  {item.note}
+                </Text>
+                {item.note.length > TRUNCATE_THRESHOLD && (
+                  <TouchableOpacity onPress={() => setNoteExpanded(v => !v)} hitSlop={6}>
+                    <Text style={styles.readMoreText}>
+                      {noteExpanded ? t('book.readLess') : t('book.readMore')}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            ) : null}
             {item.reaction_percent ? <Text style={styles.reactionMeta}>{t('feed.percentOfBook', { percent: Math.round(item.reaction_percent) })}</Text> : null}
           </View>
         </View>
@@ -319,6 +352,7 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   finishedBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.purpleGlow, borderRadius: radius.sm, padding: 10 },
   finishedText: { color: colors.success, fontSize: 13, fontWeight: '700' },
   finishedComment: { color: colors.gray, fontSize: 12, marginTop: 4, fontStyle: 'italic' },
+  readMoreText: { color: colors.lavender, fontSize: 11, fontWeight: '600', marginTop: 4 },
   reactionBox: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.purpleGlow, borderRadius: radius.sm, padding: 10 },
   reactionEmojiWrap: { minWidth: 40, height: 40, paddingHorizontal: 8, borderRadius: 20, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   reactionEmojiWrapMulti: { borderRadius: 14 },

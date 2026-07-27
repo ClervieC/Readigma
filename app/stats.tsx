@@ -110,7 +110,7 @@ export default function StatsScreen() {
             />
             <StatCard
               icon="star"
-              value={overview.avg_rating != null ? overview.avg_rating.toFixed(1) : '—'}
+              value={overview.avg_rating != null ? overview.avg_rating.toFixed(2) : '—'}
               label={t('stats.avgRatingGiven')}
               colors={colors} styles={styles} width={statCardWidth}
             />

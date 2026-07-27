@@ -32,6 +32,7 @@ import { useTimer } from "../../context/TimerContext";
 import * as userBooks from "../../lib/userBooks";
 import * as books from "../../lib/books";
 import * as badges from "../../lib/badges";
+import { REACTION_EMOJIS } from "../../lib/emojis";
 import { formatDuration } from "../../lib/timer";
 import Pill from "../../components/Pill";
 import Button from "../../components/Button";
@@ -211,6 +212,20 @@ function ReadingBookCard({
   );
   const [progressLoading, setProgressLoading] = useState(false);
   const [timerLoading, setTimerLoading] = useState(false);
+  // Lets a reaction be added right when progress is updated, instead of
+  // only being reachable from the book's own detail page — the two go
+  // together often enough (log a page, log how it made you feel) that
+  // making it a separate trip felt like unnecessary friction.
+  const [showEmotionModal, setShowEmotionModal] = useState(false);
+  const [selectedEmojis, setSelectedEmojis] = useState<string[]>([]);
+  const [emotionNote, setEmotionNote] = useState("");
+  const [postingEmotion, setPostingEmotion] = useState(false);
+
+  const toggleEmoji = (emoji: string) => {
+    setSelectedEmojis((prev) =>
+      prev.includes(emoji) ? prev.filter((e) => e !== emoji) : [...prev, emoji],
+    );
+  };
 
   const isTimingThisBook = timerSession?.book_id === book.book_id;
   const isCountingDown = countdown !== null && countdownBookId === book.book_id;
@@ -267,6 +282,55 @@ function ReadingBookCard({
         Alert.alert(t("common.error"), t("discover.errors.updateProgressFailed")),
       )
       .finally(() => setProgressLoading(false));
+  };
+
+  // Saves whatever progress is currently in the fields (same computation as
+  // updateReadingProgress) together with the reaction, so tapping the emoji
+  // button doesn't silently drop an edited-but-not-yet-saved page/percent.
+  const submitEmotion = () => {
+    if (selectedEmojis.length === 0) {
+      Alert.alert(t("common.error"), t("book.errors.chooseEmoji"));
+      return;
+    }
+    let percent = book.progress_percent || 0,
+      pages = book.current_page || 0;
+    const total = parseInt(totalInput) || book.total_pages || 0;
+    if (progressMode === "pages") {
+      pages = parseInt(pageInput) || pages;
+      if (total > 0) percent = Math.round((pages / total) * 100 * 100) / 100;
+    } else {
+      percent = parseFloat(percentInput) || percent;
+    }
+    setPostingEmotion(true);
+    Promise.all([
+      userBooks.updateProgress(book.book_id, {
+        current_page: pages || undefined,
+        total_pages: total || undefined,
+        progress_percent: percent,
+      }),
+      userBooks.addReaction(book.book_id, {
+        emoji: selectedEmojis.join(""),
+        note: emotionNote || undefined,
+        progress_percent: percent,
+        page_number: pages || undefined,
+        is_public: true,
+      }),
+    ])
+      .then(() => {
+        onUpdate({
+          ...book,
+          current_page: pages || book.current_page,
+          total_pages: total || book.total_pages,
+          progress_percent: percent,
+        });
+        setShowEmotionModal(false);
+        setSelectedEmojis([]);
+        setEmotionNote("");
+      })
+      .catch(() =>
+        Alert.alert(t("common.error"), t("discover.errors.updateProgressFailed")),
+      )
+      .finally(() => setPostingEmotion(false));
   };
 
   return (
@@ -362,6 +426,13 @@ function ReadingBookCard({
                 <Feather name="check" size={15} color={colors.purple} />
               )}
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.progressBtn}
+              onPress={() => setShowEmotionModal(true)}
+              hitSlop={6}
+            >
+              <Feather name="smile" size={15} color={colors.purple} />
+            </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.pagesRow}>
@@ -394,6 +465,13 @@ function ReadingBookCard({
               ) : (
                 <Feather name="check" size={15} color={colors.purple} />
               )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.progressBtn}
+              onPress={() => setShowEmotionModal(true)}
+              hitSlop={6}
+            >
+              <Feather name="smile" size={15} color={colors.purple} />
             </TouchableOpacity>
           </View>
         )}
@@ -459,12 +537,66 @@ function ReadingBookCard({
               multiline
               maxLength={500}
             />
+            <Text style={styles.charCount}>{comment.length}/500</Text>
             <Button
               label={t("book.finishReadingBtn")}
               onPress={finishBook}
               disabled={finishing}
               loading={finishing}
               style={{ marginTop: 16 }}
+            />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal visible={showEmotionModal} transparent animationType="slide">
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowEmotionModal(false)}
+        >
+          <TouchableOpacity style={styles.modalSheet} activeOpacity={1}>
+            <View style={styles.handle} />
+            <Text style={styles.modalTitle}>{t("book.howDoYouFeel")}</Text>
+            <Text style={styles.modalSubtitle}>{book.title}</Text>
+            {selectedEmojis.length > 0 && (
+              <TouchableOpacity
+                style={styles.clearEmojisBtn}
+                onPress={() => setSelectedEmojis([])}
+              >
+                <Feather name="x-circle" size={13} color={colors.muted} />
+                <Text style={styles.clearEmojisText}>{t("book.clearAll")}</Text>
+              </TouchableOpacity>
+            )}
+            <View style={styles.emojiGrid}>
+              {REACTION_EMOJIS.map((emoji) => (
+                <TouchableOpacity
+                  key={emoji}
+                  style={[
+                    styles.emojiBtn,
+                    selectedEmojis.includes(emoji) && styles.emojiBtnSelected,
+                  ]}
+                  onPress={() => toggleEmoji(emoji)}
+                >
+                  <Text style={styles.emojiText}>{emoji}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TextInput
+              style={styles.noteInput}
+              value={emotionNote}
+              onChangeText={setEmotionNote}
+              placeholder={t("book.addNotePlaceholder")}
+              placeholderTextColor={colors.gray}
+              multiline
+              maxLength={200}
+            />
+            <Text style={styles.charCount}>{emotionNote.length}/200</Text>
+            <Button
+              label={t("book.add")}
+              onPress={submitEmotion}
+              disabled={postingEmotion}
+              loading={postingEmotion}
             />
           </TouchableOpacity>
         </TouchableOpacity>
@@ -1061,6 +1193,39 @@ const makeStyles = (colors: ColorPalette) =>
       minHeight: 80,
       marginBottom: 12,
     },
+    charCount: {
+      fontSize: 11,
+      color: colors.gray,
+      textAlign: "right",
+      marginTop: -8,
+      marginBottom: 12,
+    },
+    clearEmojisBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      alignSelf: "center",
+      marginTop: -12,
+      marginBottom: 12,
+    },
+    clearEmojisText: { fontSize: 12, color: colors.muted, fontWeight: "600" },
+    emojiGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      justifyContent: "center",
+      marginBottom: 16,
+    },
+    emojiBtn: {
+      width: 44,
+      height: 44,
+      borderRadius: 10,
+      backgroundColor: colors.card2,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    emojiBtnSelected: { borderWidth: 1, borderColor: colors.purple },
+    emojiText: { fontSize: 22 },
     filterRow: { marginBottom: 20 },
     randCard: {
       borderRadius: radius.lg,

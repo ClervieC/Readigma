@@ -533,7 +533,7 @@ export default function SearchScreen() {
                         <View style={styles.ratingBadgeRow}>
                           <Feather name="star" size={11} color={colors.teal} />
                           <Text style={styles.ratingBadgeText}>
-                            {selectedBook.ratingStats.avg_rating?.toFixed(1)} ·{" "}
+                            {selectedBook.ratingStats.avg_rating?.toFixed(2)} ·{" "}
                             {selectedBook.ratingStats.ratings_count}
                           </Text>
                         </View>

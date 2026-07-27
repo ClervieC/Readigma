@@ -177,13 +177,44 @@ export async function setUserRole(id: string, role: 'user' | 'admin') {
 }
 
 export async function addBookManually(book: BookFormFields) {
+  const isbn = book.isbn.trim() || null;
+
+  // Same reasoning as lib/books.ts's addBookToDb: a matching ISBN means
+  // it's the same real-world book, so complement the existing catalog row
+  // instead of blind-inserting a duplicate under a new manual_ external_id
+  // (easy to hit here specifically when approving a suggestion whose ISBN
+  // is already in the catalog under a different source's external_id).
+  if (isbn) {
+    const { data: existing, error: findError } = await supabase
+      .from('books')
+      .select('*')
+      .eq('isbn', isbn)
+      .maybeSingle();
+    if (findError) throw new Error(findError.message);
+    if (existing) {
+      const patch: Record<string, any> = {};
+      if (!existing.cover_url && book.cover_url.trim()) patch.cover_url = book.cover_url.trim();
+      if (!existing.description && book.description.trim()) patch.description = book.description.trim();
+      const genres = book.genres.split(',').map(g => g.trim()).filter(Boolean);
+      if ((!existing.genres || existing.genres.length === 0) && genres.length) patch.genres = genres;
+      if (!existing.published_year && book.published_year.trim()) patch.published_year = parseInt(book.published_year, 10);
+      if (!existing.series && book.series.trim()) patch.series = book.series.trim();
+      if (existing.series_index == null && book.series_index.trim()) patch.series_index = parseFloat(book.series_index);
+      if (Object.keys(patch).length > 0) {
+        const { error } = await supabase.from('books').update(patch).eq('id', existing.id);
+        if (error) throw new Error(error.message);
+      }
+      return;
+    }
+  }
+
   const externalId = `manual_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const coverUrl = book.cover_url.trim() || (book.isbn.trim() ? await findCoverByIsbn(book.isbn.trim()) : null);
+  const coverUrl = book.cover_url.trim() || (isbn ? await findCoverByIsbn(isbn) : null);
   const { error } = await supabase.from('books').insert({
     external_id: externalId,
     title: book.title.trim(),
     author: book.author.trim() || null,
-    isbn: book.isbn.trim() || null,
+    isbn,
     cover_url: coverUrl,
     description: book.description.trim() || null,
     genres: book.genres.split(',').map(g => g.trim()).filter(Boolean),

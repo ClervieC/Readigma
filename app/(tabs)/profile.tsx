@@ -52,7 +52,7 @@ export default function ProfileScreen() {
   const getAvgRating = () => {
     const rated = allBooks.filter(b => b.rating);
     if (!rated.length) return '—';
-    return (rated.reduce((sum, b) => sum + parseFloat(b.rating), 0) / rated.length).toFixed(1) + '★';
+    return (rated.reduce((sum, b) => sum + parseFloat(b.rating), 0) / rated.length).toFixed(2) + '★';
   };
 
   const formatTotal = formatStats.physical_count + formatStats.ereader_count + formatStats.audiobook_count;
