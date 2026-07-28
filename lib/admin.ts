@@ -176,6 +176,42 @@ export async function setUserRole(id: string, role: 'user' | 'admin') {
   if (error) throw new Error(error.message);
 }
 
+// Backs app/admin-edit-book.tsx — an admin editing an existing catalog book
+// (reached from the "..." menu on app/book/[id].tsx) writes straight to
+// `books`, unlike lib/bookEdits.ts's submitBookEdit which only ever queues a
+// suggestion for later admin approval.
+export async function getBookById(bookId: string): Promise<BookFormFields & { id: string }> {
+  const { data, error } = await supabase.from('books').select('*').eq('id', bookId).single();
+  if (error) throw new Error(error.message);
+  return {
+    id: data.id,
+    title: data.title ?? '',
+    author: data.author ?? '',
+    isbn: data.isbn ?? '',
+    cover_url: data.cover_url ?? '',
+    description: data.description ?? '',
+    genres: (data.genres ?? []).join(', '),
+    published_year: data.published_year != null ? String(data.published_year) : '',
+    series: data.series ?? '',
+    series_index: data.series_index != null ? String(data.series_index) : '',
+  };
+}
+
+export async function updateBookDirect(bookId: string, book: BookFormFields) {
+  const { error } = await supabase.from('books').update({
+    title: book.title.trim(),
+    author: book.author.trim() || null,
+    isbn: book.isbn.trim() || null,
+    cover_url: book.cover_url.trim() || null,
+    description: book.description.trim() || null,
+    genres: book.genres.split(',').map(g => g.trim()).filter(Boolean),
+    published_year: book.published_year.trim() ? parseInt(book.published_year, 10) : null,
+    series: book.series.trim() || null,
+    series_index: book.series_index.trim() ? parseFloat(book.series_index) : null,
+  }).eq('id', bookId);
+  if (error) throw new Error(error.message);
+}
+
 export async function addBookManually(book: BookFormFields) {
   const isbn = book.isbn.trim() || null;
 

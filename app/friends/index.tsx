@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, TextInput, Alert
+  StyleSheet, TextInput
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
@@ -10,8 +10,10 @@ import { useTranslation } from 'react-i18next';
 import { fonts, ColorPalette } from '../../theme';
 import { useTheme } from '../../context/ThemeContext';
 import * as follows from '../../lib/follows';
+import { alert } from '../../lib/alert';
 import Row from '../../components/Row';
 import Pill from '../../components/Pill';
+import AtmosphericBackground from '../../components/AtmosphericBackground';
 
 export default function FollowsScreen() {
   const { colors } = useTheme();
@@ -40,7 +42,7 @@ export default function FollowsScreen() {
   const toggleFollow = (userId: string, username: string) => {
     const action = followingIds.has(userId) ? follows.unfollowUser(userId) : follows.followUser(userId);
     action.then(loadFollowing).catch(() =>
-      Alert.alert(t('common.error'), followingIds.has(userId) ? t('follows.errors.unfollow') : t('follows.errors.follow', { username }))
+      alert(t('common.error'), followingIds.has(userId) ? t('follows.errors.unfollow') : t('follows.errors.follow', { username }))
     );
   };
 
@@ -48,6 +50,7 @@ export default function FollowsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <AtmosphericBackground tint="pink" />
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}><Feather name="arrow-left" size={20} color={colors.white} /></TouchableOpacity>
         <Text style={styles.headerTitle}>{t('follows.title')}</Text>

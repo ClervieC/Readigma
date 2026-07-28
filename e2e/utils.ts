@@ -25,6 +25,19 @@ export async function login(page: Page, email = E2E_EMAIL, password = E2E_PASSWO
   // "Lance le tirage pour découvrir ton prochain livre" placeholder text —
   // exact: true is what actually disambiguates the two.
   await expect(page.getByText('Découvrir', { exact: true })).toBeVisible({ timeout: 25_000 });
+  await dismissAdConsentIfPresent(page);
+}
+
+// components/AdConsentBanner.tsx only shows once per session (until
+// answered) but sits at zIndex: 1000 — high enough to sit on top of other
+// screens' own popups/modals that were never designed with it in mind.
+// Declining it up front here, once, for every spec via the shared login()
+// helper avoids duplicating this dismissal in every individual test file.
+export async function dismissAdConsentIfPresent(page: Page) {
+  const decline = page.getByText('Refuser', { exact: true });
+  if (await decline.count().then(c => c > 0).catch(() => false)) {
+    await decline.click();
+  }
 }
 
 // The onboarding carousel only shows once per account (server-side flag —

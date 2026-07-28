@@ -6,6 +6,7 @@ import { Feather } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { fonts, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
+import AtmosphericBackground, { AtmosphereTint } from './AtmosphericBackground';
 
 type ScreenProps = {
   title?: string;
@@ -14,12 +15,19 @@ type ScreenProps = {
   right?: React.ReactNode;
   scroll?: boolean;
   children: React.ReactNode;
+  // Opt-in only — defaults to off so every existing caller keeps its flat
+  // background exactly as before. Screens explicitly redone as part of the
+  // visual pass (see app/(tabs)/shared-readings.tsx) pass this to get the
+  // same soft top-down wash the tab roots have. `true` uses the default
+  // purple tint; pass a specific AtmosphereTint to match that screen's own
+  // accent instead.
+  atmosphere?: boolean | AtmosphereTint;
 };
 
 // Shared page shell: a thin, centered header (back chevron + title + an
 // optional right-side accessory) over a scrollable body. Every screen but
 // the tab roots uses this instead of hand-rolling the same header markup.
-export default function Screen({ title, back, left, right, scroll = true, children }: ScreenProps) {
+export default function Screen({ title, back, left, right, scroll = true, children, atmosphere }: ScreenProps) {
   const router = useRouter();
   const { colors } = useTheme();
   const styles = makeStyles(colors);
@@ -46,6 +54,9 @@ export default function Screen({ title, back, left, right, scroll = true, childr
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {atmosphere ? (
+        <AtmosphericBackground tint={typeof atmosphere === 'string' ? atmosphere : undefined} />
+      ) : null}
       <Animated.View entering={FadeIn.duration(220)}>{header}</Animated.View>
       {scroll ? (
         <ScrollView style={styles.content} contentContainerStyle={styles.contentInner} showsVerticalScrollIndicator={false}>

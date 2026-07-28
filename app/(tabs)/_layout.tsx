@@ -7,7 +7,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="index" />
       <Tabs.Screen name="feed" />
       <Tabs.Screen name="library" />
-      <Tabs.Screen name="search" />
+      <Tabs.Screen name="shared-readings" />
       <Tabs.Screen name="profile" />
     </Tabs>
   );

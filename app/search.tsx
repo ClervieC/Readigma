@@ -14,15 +14,14 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
-import { radius, fonts, ColorPalette } from "../../theme";
-import { useTheme } from "../../context/ThemeContext";
-import * as books from "../../lib/books";
-import * as userBooks from "../../lib/userBooks";
-import Row from "../../components/Row";
-import Pill from "../../components/Pill";
-import Button from "../../components/Button";
-import NotificationBell from "../../components/NotificationBell";
-import { onScrollToTop } from "../../lib/tabScrollEmitter";
+import { fonts, ColorPalette } from "../theme";
+import { useTheme } from "../context/ThemeContext";
+import * as books from "../lib/books";
+import * as userBooks from "../lib/userBooks";
+import Row from "../components/Row";
+import Pill from "../components/Pill";
+import Button from "../components/Button";
+import AtmosphericBackground from "../components/AtmosphericBackground";
 
 // Tags here are display-only (not tappable, unlike the popup/detail
 // screens) — the result row is already a tap target for opening that popup,
@@ -172,17 +171,10 @@ export default function SearchScreen() {
   useEffect(() => {
     loadTrending();
   }, []);
-  useEffect(
-    () =>
-      onScrollToTop("search", () =>
-        scrollRef.current?.scrollTo({ y: 0, animated: true }),
-      ),
-    [],
-  );
 
   // Deliberately doesn't clear query/results on blur — tapping a result's
   // cover/title (openBookDetail) or "..." menu navigates away to a real
-  // route (not just the popup closing), and coming back via the tab/back
+  // route (not just the popup closing), and coming back via the back
   // button should land on the same search, not an empty one.
   useFocusEffect(
     useCallback(() => {
@@ -349,9 +341,16 @@ export default function SearchScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
+      <AtmosphericBackground tint="teal" />
       <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Feather name="arrow-left" size={20} color={colors.white} />
+        </TouchableOpacity>
         <Text style={styles.title}>{t("search.title")}</Text>
-        <NotificationBell />
+        <View style={{ width: 20 }} />
       </View>
 
       <View style={styles.searchBar}>
@@ -365,6 +364,7 @@ export default function SearchScreen() {
           returnKeyType="search"
           onSubmitEditing={search}
           autoCapitalize="none"
+          autoFocus
         />
         {query ? (
           <TouchableOpacity

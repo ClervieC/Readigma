@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { fonts, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import { submitSuggestion } from '../lib/suggestions';
+import { alert } from '../lib/alert';
 import Screen from '../components/Screen';
 import Button from '../components/Button';
 import BookForm, { BookFormFields, EMPTY_BOOK_FORM } from '../components/BookForm';
@@ -19,16 +20,16 @@ export default function SuggestBookScreen() {
   const [loading, setLoading] = useState(false);
 
   const submit = () => {
-    if (!book.title.trim() || !book.author.trim()) { Alert.alert(t('common.error'), t('suggestBook.errors.titleAndAuthorRequired')); return; }
+    if (!book.title.trim() || !book.author.trim()) { alert(t('common.error'), t('suggestBook.errors.titleAndAuthorRequired')); return; }
     setLoading(true);
     submitSuggestion(book).then(() => {
       setLoading(false);
-      Alert.alert(t('suggestBook.sent'), t('suggestBook.sentMessage'), [{ text: t('common.ok'), onPress: () => router.back() }]);
-    }).catch(() => { setLoading(false); Alert.alert(t('common.error'), t('suggestBook.errors.sendFailed')); });
+      alert(t('suggestBook.sent'), t('suggestBook.sentMessage'), [{ text: t('common.ok'), onPress: () => router.back() }]);
+    }).catch(() => { setLoading(false); alert(t('common.error'), t('suggestBook.errors.sendFailed')); });
   };
 
   return (
-    <Screen back title={t('suggestBook.title')}>
+    <Screen back title={t('suggestBook.title')} atmosphere="teal">
       <View style={styles.hero}>
         <Feather name="send" size={28} color={colors.purple} />
         <Text style={styles.heroTitle}>{t('suggestBook.heroTitle')}</Text>

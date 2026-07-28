@@ -11,7 +11,7 @@ export default function PrivacyScreen() {
   const SECTIONS = t('privacy.sections', { returnObjects: true }) as { title: string; body: string }[];
 
   return (
-    <Screen back title={t('privacy.title')}>
+    <Screen back title={t('privacy.title')} atmosphere="purple">
       <Text style={styles.updated}>{t('privacy.updated')}</Text>
       {SECTIONS.map((s, i) => (
         <View key={i} style={styles.section}>

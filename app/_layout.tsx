@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react';
-import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
+import { View, Text, TextInput, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts, Fraunces_600SemiBold, Fraunces_700Bold } from '@expo-google-fonts/fraunces';
+import { Karla_400Regular, Karla_500Medium, Karla_600SemiBold, Karla_700Bold } from '@expo-google-fonts/karla';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '../context/AuthContext';
@@ -13,6 +14,7 @@ import { AdConsentProvider } from '../context/AdConsentContext';
 import TimerBubble from '../components/TimerBubble';
 import BadgeToast from '../components/BadgeToast';
 import AdConsentBanner from '../components/AdConsentBanner';
+import AlertHost from '../components/AlertHost';
 import { ColorPalette } from '../theme';
 // Side-effect import: initializes i18next synchronously with its `resources`
 // (no lazy backend), so every screen's useTranslation() is ready to render
@@ -73,6 +75,9 @@ function RootNavigation() {
         <Stack.Screen name="goal" />
         <Stack.Screen name="friends/index" />
         <Stack.Screen name="friends/[id]" />
+        <Stack.Screen name="shared-readings/create" />
+        <Stack.Screen name="shared-readings/propose" />
+        <Stack.Screen name="shared-readings/[id]" />
         <Stack.Screen name="suggest-book" />
         <Stack.Screen name="notifications" />
         <Stack.Screen name="edit-profile" />
@@ -86,6 +91,7 @@ function RootNavigation() {
       {session && <TimerBubble />}
       {session && <BadgeToast />}
       {session && <AdConsentBanner />}
+      <AlertHost />
     </>
   );
 }
@@ -105,7 +111,36 @@ export default function RootLayout() {
   // Native splash stays up until this resolves (RootNavigation's own effect
   // then keeps it up further, until auth's initial session check finishes) —
   // never renders a fallback system-serif flash of the heading font.
-  const [fontsLoaded] = useFonts({ Fraunces_600SemiBold, Fraunces_700Bold });
+  const [fontsLoaded] = useFonts({
+    Fraunces_600SemiBold,
+    Fraunces_700Bold,
+    Karla_400Regular,
+    Karla_500Medium,
+    Karla_600SemiBold,
+    Karla_700Bold,
+  });
+
+  // Applies Karla app-wide as the default body typeface without having to
+  // touch every screen's own Text styles — almost none of them set an
+  // explicit fontFamily (they relied on the platform default), so this is
+  // the only way a font swap actually reaches them. Custom fonts don't
+  // synthesize bold the way the system font does, so a plain fontWeight
+  // alongside no fontFamily now renders as Karla's regular weight rather
+  // than a bolded system font — a deliberate, accepted trade-off for a
+  // distinctive body typeface over pixel-perfect weight everywhere.
+  useEffect(() => {
+    if (!fontsLoaded) return;
+    (Text as any).defaultProps = (Text as any).defaultProps || {};
+    (Text as any).defaultProps.style = [
+      { fontFamily: 'Karla_400Regular' },
+      (Text as any).defaultProps.style,
+    ];
+    (TextInput as any).defaultProps = (TextInput as any).defaultProps || {};
+    (TextInput as any).defaultProps.style = [
+      { fontFamily: 'Karla_400Regular' },
+      (TextInput as any).defaultProps.style,
+    ];
+  }, [fontsLoaded]);
 
   // RN Web renders every TouchableOpacity as a focusable <div tabindex="0">
   // with no `role` attribute at all, so clicking one (a Pill, a Button...)
@@ -162,10 +197,8 @@ export default function RootLayout() {
     document.head.appendChild(style);
   }, []);
 
-  // web.output is "single" (a plain client-rendered SPA — "static"/"server"
-  // output crashes this app's Supabase/AsyncStorage init under Node SSR), so
-  // app/+html.tsx's build-time head customization never runs; these tags
-  // only exist if injected after the JS loads, here. By the time someone
+  // There's no app/+html.tsx for build-time head customization, so these
+  // tags only exist if injected after the JS loads, here. By the time someone
   // opens Safari's share sheet to "Add to Home Screen" the page has already
   // rendered, so the apple-touch-icon link below is present in the DOM and
   // gets picked up correctly despite being added at runtime, not build time.

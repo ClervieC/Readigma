@@ -11,7 +11,7 @@ export default function TermsScreen() {
   const SECTIONS = t('terms.sections', { returnObjects: true }) as { title: string; body: string }[];
 
   return (
-    <Screen back title={t('terms.title')}>
+    <Screen back title={t('terms.title')} atmosphere="purple">
       <Text style={styles.updated}>{t('terms.updated')}</Text>
       {SECTIONS.map((s, i) => (
         <View key={i} style={styles.section}>

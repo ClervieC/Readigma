@@ -1,15 +1,17 @@
 import { useState, useCallback, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, FlatList, Alert,
+  KeyboardAvoidingView, Platform, FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AtmosphericBackground from '../components/AtmosphericBackground';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { fonts, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import * as supportChat from '../lib/supportChat';
+import { alert } from '../lib/alert';
 
 // `locale` is the current i18n language (see useTranslation()'s i18n.language
 // below), not hardcoded — this is what makes the timestamp itself (not just
@@ -66,12 +68,13 @@ export default function ContactScreen() {
     }).catch(() => {
       setSending(false);
       setText(body);
-      Alert.alert(t('common.error'), t('contact.errors.sendFailed'));
+      alert(t('common.error'), t('contact.errors.sendFailed'));
     });
   };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <AtmosphericBackground tint="pink" />
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Feather name="arrow-left" size={20} color={colors.white} />

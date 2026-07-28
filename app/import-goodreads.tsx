@@ -48,7 +48,7 @@ export default function ImportGoodreadsScreen() {
   };
 
   return (
-    <Screen back title={t('importGoodreads.title')}>
+    <Screen back title={t('importGoodreads.title')} atmosphere="teal">
       <View style={styles.hero}>
         <Feather name="upload" size={28} color={colors.purple} />
         <Text style={styles.heroTitle}>{t('importGoodreads.heroTitle')}</Text>

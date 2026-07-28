@@ -7,10 +7,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { radius, fonts, shadows, ColorPalette } from '../../theme';
 import { useTheme } from '../../context/ThemeContext';
 import * as feed from '../../lib/feed';
 import NotificationBell from '../../components/NotificationBell';
+import SearchButton from '../../components/SearchButton';
+import AtmosphericBackground from '../../components/AtmosphericBackground';
 import AdBanner from '../../components/AdBanner';
 import { onScrollToTop } from '../../lib/tabScrollEmitter';
 import i18n from '../../lib/i18n';
@@ -279,12 +282,16 @@ export default function FeedScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <AtmosphericBackground tint="pink" />
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>{t('feed.title')}</Text>
           <Text style={styles.subtitle}>{t('feed.subtitle')}</Text>
         </View>
-        <NotificationBell />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 18 }}>
+          <SearchButton />
+          <NotificationBell />
+        </View>
       </View>
 
       <ScrollView ref={scrollRef} style={styles.scroll} showsVerticalScrollIndicator={false}
@@ -300,7 +307,7 @@ export default function FeedScreen() {
         )}
 
         {feedItems.map((item, i) => (
-          <View key={i}>
+          <Animated.View key={i} entering={FadeInDown.duration(300).delay(Math.min(i, 8) * 40)}>
             <ActivityCard item={item} styles={styles} colors={colors} last={i === feedItems.length - 1}
               onUserPress={(userId, username) => router.push({ pathname: '/friends/[id]', params: { id: userId, username } })}
               onBookPress={(bookId) => router.push(`/book/${bookId}`)}
@@ -310,7 +317,7 @@ export default function FeedScreen() {
             {/* Every 5 posts — AdBanner itself no-ops without consent/ids, so
                 this stays cheap to always render. */}
             {(i + 1) % 5 === 0 && <AdBanner />}
-          </View>
+          </Animated.View>
         ))}
 
         <View style={{ height: 20 }} />

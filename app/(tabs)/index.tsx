@@ -9,7 +9,6 @@ import {
   Animated as RNAnimated,
   Image,
   TextInput,
-  Alert,
   useWindowDimensions,
   ActivityIndicator,
   Modal,
@@ -32,12 +31,16 @@ import { useTimer } from "../../context/TimerContext";
 import * as userBooks from "../../lib/userBooks";
 import * as books from "../../lib/books";
 import * as badges from "../../lib/badges";
+import * as sharedReadings from "../../lib/sharedReadings";
+import { alert } from "../../lib/alert";
 import { REACTION_EMOJIS } from "../../lib/emojis";
 import { formatDuration } from "../../lib/timer";
 import Pill from "../../components/Pill";
 import Button from "../../components/Button";
 import StarRating from "../../components/StarRating";
 import NotificationBell from "../../components/NotificationBell";
+import SearchButton from "../../components/SearchButton";
+import AtmosphericBackground from "../../components/AtmosphericBackground";
 import ProgressBar from "../../components/ProgressBar";
 import { onScrollToTop } from "../../lib/tabScrollEmitter";
 
@@ -192,7 +195,7 @@ function ReadingBookCard({
         onFinish(book.book_id);
       })
       .catch(() =>
-        Alert.alert(t("common.error"), t("discover.errors.finishBookFailed")),
+        alert(t("common.error"), t("discover.errors.finishBookFailed")),
       )
       .finally(() => setFinishing(false));
   };
@@ -238,7 +241,7 @@ function ReadingBookCard({
     if (isTimingThisBook) {
       setTimerLoading(true);
       stopTimer()
-        .catch(() => Alert.alert(t("common.error"), t("discover.errors.timerFailed")))
+        .catch(() => alert(t("common.error"), t("discover.errors.timerFailed")))
         .finally(() => setTimerLoading(false));
       return;
     }
@@ -259,7 +262,7 @@ function ReadingBookCard({
     } else {
       percent = parseFloat(percentInput) || 0;
       if (percent > 100) {
-        Alert.alert(t("common.error"), t("book.errors.percentOver100"));
+        alert(t("common.error"), t("book.errors.percentOver100"));
         return;
       }
     }
@@ -279,7 +282,7 @@ function ReadingBookCard({
         }),
       )
       .catch(() =>
-        Alert.alert(t("common.error"), t("discover.errors.updateProgressFailed")),
+        alert(t("common.error"), t("discover.errors.updateProgressFailed")),
       )
       .finally(() => setProgressLoading(false));
   };
@@ -289,7 +292,7 @@ function ReadingBookCard({
   // button doesn't silently drop an edited-but-not-yet-saved page/percent.
   const submitEmotion = () => {
     if (selectedEmojis.length === 0) {
-      Alert.alert(t("common.error"), t("book.errors.chooseEmoji"));
+      alert(t("common.error"), t("book.errors.chooseEmoji"));
       return;
     }
     let percent = book.progress_percent || 0,
@@ -328,7 +331,7 @@ function ReadingBookCard({
         setEmotionNote("");
       })
       .catch(() =>
-        Alert.alert(t("common.error"), t("discover.errors.updateProgressFailed")),
+        alert(t("common.error"), t("discover.errors.updateProgressFailed")),
       )
       .finally(() => setPostingEmotion(false));
   };
@@ -625,6 +628,7 @@ export default function DiscoverScreen() {
   const [activeReadingIndex, setActiveReadingIndex] = useState(0);
   const [error, setError] = useState("");
   const [streakDays, setStreakDays] = useState(0);
+  const [activeSharedReadings, setActiveSharedReadings] = useState<sharedReadings.SharedReading[]>([]);
   const spinAnim = useRef(new RNAnimated.Value(0)).current;
   const scrollRef = useRef<ScrollView>(null);
 
@@ -654,6 +658,10 @@ export default function DiscoverScreen() {
       badges
         .getBadgeStats()
         .then((s) => setStreakDays(s.streak_days))
+        .catch(() => {});
+      sharedReadings
+        .getMySharedReadings()
+        .then(setActiveSharedReadings)
         .catch(() => {});
     }, []),
   );
@@ -749,12 +757,16 @@ export default function DiscoverScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
+      <AtmosphericBackground />
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>{t(getGreetingKey())},</Text>
           <Text style={styles.logo}>{profile?.username || "Readigma"}</Text>
         </View>
-        <NotificationBell />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 18 }}>
+          <SearchButton />
+          <NotificationBell />
+        </View>
       </View>
 
       {streakDays > 0 && (
@@ -764,6 +776,24 @@ export default function DiscoverScreen() {
             {t("discover.streakDays", { count: streakDays })}
           </Text>
         </View>
+      )}
+
+      {activeSharedReadings.length > 0 && (
+        <TouchableOpacity
+          style={styles.streakBanner}
+          onPress={() =>
+            activeSharedReadings.length === 1
+              ? router.push(`/shared-readings/${activeSharedReadings[0].id}`)
+              : router.push("/(tabs)/shared-readings")
+          }
+        >
+          <Feather name="users" size={13} color={colors.purple} />
+          <Text style={styles.streakBannerText} numberOfLines={1}>
+            {activeSharedReadings.length === 1
+              ? t("discover.sharedReadingActive", { title: activeSharedReadings[0].book?.title })
+              : t("discover.sharedReadingActiveCount", { count: activeSharedReadings.length })}
+          </Text>
+        </TouchableOpacity>
       )}
 
       <ScrollView

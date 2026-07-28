@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { fonts, ColorPalette } from '../../theme';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { alert } from '../../lib/alert';
 import Button from '../../components/Button';
+import AtmosphericBackground from '../../components/AtmosphericBackground';
 
 export default function ConfirmEmailScreen() {
   const { colors } = useTheme();
@@ -34,13 +36,14 @@ export default function ConfirmEmailScreen() {
     setResending(true);
     supabase.auth.resend({ type: 'signup', email: params.email }).then(({ error }) => {
       setResending(false);
-      if (error) Alert.alert('Erreur', error.message);
-      else Alert.alert('Envoyé', 'Email de confirmation renvoyé.');
+      if (error) alert('Erreur', error.message);
+      else alert('Envoyé', 'Email de confirmation renvoyé.');
     });
   };
 
   return (
     <View style={styles.container}>
+      <AtmosphericBackground tint="purple" />
       <View style={styles.card}>
         <Feather name="mail" size={32} color={colors.purple} />
         <Text style={styles.title}>Vérifie tes emails</Text>

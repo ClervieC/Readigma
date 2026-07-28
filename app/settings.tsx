@@ -39,7 +39,7 @@ export default function SettingsScreen() {
   const { t, i18n } = useTranslation();
 
   return (
-    <Screen back title={t('settings.title')}>
+    <Screen back title={t('settings.title')} atmosphere="lavender">
       <View>
         {SETTINGS.map(item => (
           <Row key={item.route} onPress={() => router.push(item.route as any)} chevron

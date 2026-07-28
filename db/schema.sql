@@ -103,10 +103,18 @@ create table user_books (
   owned            boolean not null default true,             -- false = wishlist (want it, don't have
                                                                  -- it yet) — independent of `status`;
                                                                  -- only meaningful for 'to_read'
+  spine_photo_url  text,                                       -- user's own photo of their physical
+                                                                 -- copy's spine, in the "book-spines"
+                                                                 -- Storage bucket — distinct from
+                                                                 -- books.cover_url (the catalog's
+                                                                 -- front-cover art, shared by everyone)
+  shelf_face       varchar(10) not null default 'spine',        -- 'spine' | 'cover' — which face the
+                                                                 -- shelf currently shows for this book
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now(),
   unique (user_id, book_id),
-  constraint rating_range check (rating is null or (rating >= 0 and rating <= 5))
+  constraint rating_range check (rating is null or (rating >= 0 and rating <= 5)),
+  constraint shelf_face_check check (shelf_face in ('spine', 'cover'))
 );
 
 -- A decorative piece dropped into a status's shelf alongside its books —
@@ -216,7 +224,7 @@ create table admin_thread_messages (
 create table reports (
   id           uuid primary key default gen_random_uuid(),
   reporter_id  uuid not null references profiles(id) on delete cascade,
-  target_type  varchar(10) not null check (target_type in ('book', 'user')),
+  target_type  varchar(30) not null check (target_type in ('book', 'user', 'shared_reading_message', 'book_review')),
   target_id    uuid not null, -- books.id or profiles.id depending on target_type
   reason       text not null,
   details      text,
@@ -293,6 +301,187 @@ create trigger reading_sessions_before_write
   before insert or update on reading_sessions
   for each row execute function reading_sessions_before_write();
 
+-- Shared readings (MVP): a group reads the same book together, with a
+-- discussion feed gated by each reader's own progress — see
+-- db/migrations/038_shared_readings.sql for the full reasoning behind the
+-- scope cuts (no schedules/analytics/votes yet, percent-only gating).
+create table shared_readings (
+  id               uuid primary key default gen_random_uuid(),
+  book_id          uuid not null references books(id) on delete cascade,
+  creator_id       uuid not null references profiles(id) on delete cascade,
+  is_public        boolean not null default true,
+  max_participants int,
+  starts_at        date,
+  ends_at          date,
+  -- Text Q&A "live" window the creator opens/closes — no actual video/audio
+  -- streaming, see db/migrations/045_shared_reading_live_and_quiz.sql.
+  is_live          boolean not null default false,
+  created_at       timestamptz not null default now()
+);
+
+create table shared_reading_members (
+  id                uuid primary key default gen_random_uuid(),
+  shared_reading_id uuid not null references shared_readings(id) on delete cascade,
+  user_id           uuid not null references profiles(id) on delete cascade,
+  joined_at         timestamptz not null default now(),
+  -- Rating of the shared-reading *experience* itself, distinct from the
+  -- book's own personal rating (user_books.rating) — see
+  -- db/migrations/040_shared_reading_ratings.sql.
+  rating            numeric(3,2) check (rating is null or (rating >= 0 and rating <= 5)),
+  unique (shared_reading_id, user_id)
+);
+
+create table shared_reading_messages (
+  id                uuid primary key default gen_random_uuid(),
+  shared_reading_id uuid not null references shared_readings(id) on delete cascade,
+  user_id           uuid not null references profiles(id) on delete cascade,
+  content           text not null,
+  percent_threshold numeric(5,2) not null default 0,
+  created_at        timestamptz not null default now()
+);
+
+create or replace function add_shared_reading_creator_as_member() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  insert into shared_reading_members (shared_reading_id, user_id) values (new.id, new.creator_id);
+  return new;
+end;
+$$;
+
+create trigger shared_readings_add_creator
+  after insert on shared_readings
+  for each row execute function add_shared_reading_creator_as_member();
+
+-- Starting a shared reading — as its creator (auto-added above) or by
+-- joining one someone else made — puts that book on the reader's own "En
+-- cours" (reading) shelf automatically, since that's now what they're
+-- actually doing.
+create or replace function add_shared_reading_member_book_to_reading() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  v_book_id uuid;
+begin
+  select book_id into v_book_id from shared_readings where id = new.shared_reading_id;
+  if v_book_id is null then
+    return new;
+  end if;
+  insert into user_books (user_id, book_id, status)
+  values (new.user_id, v_book_id, 'reading')
+  on conflict (user_id, book_id) do update set status = 'reading';
+  return new;
+end;
+$$;
+
+create trigger shared_reading_members_add_book_to_reading
+  after insert on shared_reading_members
+  for each row execute function add_shared_reading_member_book_to_reading();
+
+create or replace function check_shared_reading_capacity() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  v_max int;
+  v_count int;
+begin
+  select max_participants into v_max from shared_readings where id = new.shared_reading_id;
+  if v_max is not null then
+    select count(*) into v_count from shared_reading_members where shared_reading_id = new.shared_reading_id;
+    if v_count >= v_max then
+      raise exception 'Cette lecture commune est complète';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+create trigger shared_reading_members_capacity
+  before insert on shared_reading_members
+  for each row execute function check_shared_reading_capacity();
+
+-- Used by shared_readings_select below instead of a raw correlated subquery
+-- on shared_reading_members — that table's own SELECT policy references
+-- shared_readings right back, and a direct subquery on either side re-
+-- triggers the other's RLS forever ("infinite recursion detected in policy",
+-- 42P17). Security definer breaks the cycle: this runs as its owner and
+-- never re-enters shared_reading_members' own policy — see
+-- db/migrations/047_fix_shared_readings_rls_recursion.sql.
+create or replace function is_shared_reading_member(p_reading_id uuid) returns boolean
+language sql security definer set search_path = public stable as $$
+  select exists (
+    select 1 from shared_reading_members m
+    where m.shared_reading_id = p_reading_id and m.user_id = auth.uid()
+  );
+$$;
+
+-- Chapter-less "82% reacted 🤯" — see db/migrations/039_shared_reading_reactions.sql
+-- for why reactions are bucketed into 5-point percent buckets.
+create table shared_reading_reactions (
+  id                uuid primary key default gen_random_uuid(),
+  shared_reading_id uuid not null references shared_readings(id) on delete cascade,
+  user_id           uuid not null references profiles(id) on delete cascade,
+  percent_bucket    int not null check (percent_bucket >= 0 and percent_bucket <= 100),
+  emoji             text not null,
+  created_at        timestamptz not null default now(),
+  unique (shared_reading_id, user_id, percent_bucket)
+);
+
+-- "Predict, then reveal who was right" — see
+-- db/migrations/041_shared_reading_theories.sql for why this is gated by
+-- resolution (self-reported by the author) rather than percent, unlike
+-- messages/reactions.
+create table shared_reading_theories (
+  id                uuid primary key default gen_random_uuid(),
+  shared_reading_id uuid not null references shared_readings(id) on delete cascade,
+  user_id           uuid not null references profiles(id) on delete cascade,
+  content           text not null,
+  is_correct        boolean,
+  created_at        timestamptz not null default now(),
+  resolved_at       timestamptz
+);
+
+-- "Vote for the next book" — attached to an existing shared reading (its
+-- members propose/vote), not a standalone recurring "club" entity. See
+-- db/migrations/042_shared_reading_book_votes.sql.
+create table shared_reading_book_proposals (
+  id                uuid primary key default gen_random_uuid(),
+  shared_reading_id uuid not null references shared_readings(id) on delete cascade,
+  book_id           uuid not null references books(id) on delete cascade,
+  proposed_by       uuid not null references profiles(id) on delete cascade,
+  created_at        timestamptz not null default now(),
+  unique (shared_reading_id, book_id)
+);
+
+create table shared_reading_book_votes (
+  id                uuid primary key default gen_random_uuid(),
+  proposal_id       uuid not null references shared_reading_book_proposals(id) on delete cascade,
+  shared_reading_id uuid not null references shared_readings(id) on delete cascade,
+  user_id           uuid not null references profiles(id) on delete cascade,
+  created_at        timestamptz not null default now(),
+  unique (shared_reading_id, user_id)
+);
+
+-- Real scored multiple-choice question, distinct from
+-- shared_reading_book_votes (a plain popularity poll) — creator-only, part
+-- of the BookToker creator space. See
+-- db/migrations/045_shared_reading_live_and_quiz.sql.
+create table shared_reading_quizzes (
+  id                uuid primary key default gen_random_uuid(),
+  shared_reading_id uuid not null references shared_readings(id) on delete cascade,
+  created_by        uuid not null references profiles(id) on delete cascade,
+  question          text not null,
+  options           text[] not null,
+  correct_option    int not null,
+  created_at        timestamptz not null default now()
+);
+
+create table shared_reading_quiz_answers (
+  id               uuid primary key default gen_random_uuid(),
+  quiz_id          uuid not null references shared_reading_quizzes(id) on delete cascade,
+  user_id          uuid not null references profiles(id) on delete cascade,
+  selected_option  int not null,
+  created_at       timestamptz not null default now(),
+  unique (quiz_id, user_id)
+);
+
 -- Replaces what the old Express `PUT /me/books/:bookId` and
 -- `PUT /me/books/:bookId/progress` handlers computed in JS: quarter-point
 -- rating rounding, recomputing progress_percent from pages when both are
@@ -321,6 +510,11 @@ begin
   if tg_op = 'UPDATE' and new.status is distinct from old.status then
     if new.status = 'done' then
       new.finished_at = now();
+      -- shelf_position (if any) was earned on the shelf it's leaving —
+      -- meaningless, and possibly colliding, on the "done" shelf. Clearing
+      -- it lets it fall back to finished_at-DESC ordering (top of "read",
+      -- most recent finish first) until manually repositioned there.
+      new.shelf_position = null;
     elsif new.status = 'reading' and old.started_at is null then
       new.started_at = now();
     end if;
@@ -386,6 +580,15 @@ alter table book_edit_suggestions enable row level security;
 alter table feed_likes enable row level security;
 alter table feed_comments enable row level security;
 alter table reading_sessions enable row level security;
+alter table shared_readings enable row level security;
+alter table shared_reading_members enable row level security;
+alter table shared_reading_messages enable row level security;
+alter table shared_reading_reactions enable row level security;
+alter table shared_reading_theories enable row level security;
+alter table shared_reading_book_proposals enable row level security;
+alter table shared_reading_book_votes enable row level security;
+alter table shared_reading_quizzes enable row level security;
+alter table shared_reading_quiz_answers enable row level security;
 
 -- profiles: usernames/avatars are the app's public identity, readable by any
 -- signed-in user (needed for friend search, feed authorship, friend requests).
@@ -418,6 +621,24 @@ create policy books_insert_any on books for insert
   to authenticated with check (true);
 create policy books_update_any on books for update
   to authenticated using (true);
+
+-- book-spines Storage bucket: a user's own photo of their physical copy's
+-- spine (user_books.spine_photo_url). Public for reads, same trust level as
+-- a cover image; writes are restricted to the uploader's own folder via the
+-- "<user_id>/..." path convention (mirrors the RLS pattern used everywhere
+-- else in this schema for user-owned data).
+insert into storage.buckets (id, name, public)
+values ('book-spines', 'book-spines', true)
+on conflict (id) do nothing;
+
+create policy book_spines_read on storage.objects for select
+  using (bucket_id = 'book-spines');
+create policy book_spines_insert on storage.objects for insert
+  to authenticated with check (bucket_id = 'book-spines' and (storage.foldername(name))[1] = auth.uid()::text);
+create policy book_spines_update on storage.objects for update
+  to authenticated using (bucket_id = 'book-spines' and (storage.foldername(name))[1] = auth.uid()::text);
+create policy book_spines_delete on storage.objects for delete
+  to authenticated using (bucket_id = 'book-spines' and (storage.foldername(name))[1] = auth.uid()::text);
 
 -- user_books, reading_reactions, activity_feed, reading_goals: strictly
 -- owner-only at the table level. Friends only ever see a narrow, specific
@@ -530,6 +751,174 @@ create policy feed_comments_owner_delete on feed_comments for delete
 -- reading_sessions: owner-only, same shape as user_books/reading_reactions.
 create policy reading_sessions_owner on reading_sessions for all
   to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- shared_readings: visible if public, or to the creator, or to anyone
+-- already a member (covers private readings the creator added someone to).
+create policy shared_readings_select on shared_readings for select
+  to authenticated using (
+    is_public
+    or creator_id = auth.uid()
+    or is_shared_reading_member(id)
+  );
+create policy shared_readings_insert on shared_readings for insert
+  to authenticated with check (creator_id = auth.uid());
+create policy shared_readings_update on shared_readings for update
+  to authenticated using (creator_id = auth.uid());
+create policy shared_readings_delete on shared_readings for delete
+  to authenticated using (creator_id = auth.uid());
+
+-- shared_reading_members: two separate insert policies (self-join a public
+-- reading, or the creator adding someone to their own reading) combine via
+-- OR, same pattern as profiles_update_self/profiles_update_admin above.
+create policy shared_reading_members_select on shared_reading_members for select
+  to authenticated using (
+    user_id = auth.uid()
+    or exists (
+      select 1 from shared_readings r
+      where r.id = shared_reading_members.shared_reading_id
+        and (r.is_public or r.creator_id = auth.uid())
+    )
+  );
+create policy shared_reading_members_insert_self on shared_reading_members for insert
+  to authenticated with check (
+    user_id = auth.uid()
+    and exists (select 1 from shared_readings r where r.id = shared_reading_id and r.is_public)
+  );
+create policy shared_reading_members_insert_creator on shared_reading_members for insert
+  to authenticated with check (
+    exists (select 1 from shared_readings r where r.id = shared_reading_id and r.creator_id = auth.uid())
+  );
+create policy shared_reading_members_delete_self on shared_reading_members for delete
+  to authenticated using (user_id = auth.uid());
+create policy shared_reading_members_delete_creator on shared_reading_members for delete
+  to authenticated using (
+    exists (select 1 from shared_readings r where r.id = shared_reading_id and r.creator_id = auth.uid())
+  );
+
+-- shared_reading_messages: the table itself only exposes a reader's own
+-- posts (mirrors activity_feed_owner_select) — cross-member visibility with
+-- the percent gate applied lives entirely in get_shared_reading_messages(),
+-- a security definer function, same division of labor as get_feed().
+create policy shared_reading_messages_select_own on shared_reading_messages for select
+  to authenticated using (user_id = auth.uid());
+create policy shared_reading_messages_insert on shared_reading_messages for insert
+  to authenticated with check (
+    user_id = auth.uid()
+    and exists (
+      select 1 from shared_reading_members m
+      where m.shared_reading_id = shared_reading_messages.shared_reading_id and m.user_id = auth.uid()
+    )
+  );
+create policy shared_reading_messages_delete_own on shared_reading_messages for delete
+  to authenticated using (user_id = auth.uid());
+-- Needed for an admin to read a reported message — the policy above
+-- deliberately only exposes a reader's own rows otherwise.
+create policy shared_reading_messages_select_admin on shared_reading_messages for select
+  to authenticated using (
+    exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
+  );
+
+-- shared_reading_reactions: same split as shared_reading_messages — raw
+-- table exposes only the reader's own reactions, aggregate stats (gated by
+-- percent) live in get_shared_reading_reaction_stats().
+create policy shared_reading_reactions_select_own on shared_reading_reactions for select
+  to authenticated using (user_id = auth.uid());
+create policy shared_reading_reactions_insert on shared_reading_reactions for insert
+  to authenticated with check (
+    user_id = auth.uid()
+    and exists (
+      select 1 from shared_reading_members m
+      where m.shared_reading_id = shared_reading_reactions.shared_reading_id and m.user_id = auth.uid()
+    )
+  );
+create policy shared_reading_reactions_update_own on shared_reading_reactions for update
+  to authenticated using (user_id = auth.uid());
+
+-- shared_reading_theories: visible to its author always, to everyone else
+-- only once resolved (is_correct set) — no RPC needed, this doesn't depend
+-- on any reader's own progress the way messages/reactions do.
+create policy shared_reading_theories_select on shared_reading_theories for select
+  to authenticated using (
+    user_id = auth.uid()
+    or (
+      is_correct is not null
+      and exists (
+        select 1 from shared_reading_members m
+        where m.shared_reading_id = shared_reading_theories.shared_reading_id and m.user_id = auth.uid()
+      )
+    )
+  );
+create policy shared_reading_theories_insert on shared_reading_theories for insert
+  to authenticated with check (
+    user_id = auth.uid()
+    and exists (
+      select 1 from shared_reading_members m
+      where m.shared_reading_id = shared_reading_theories.shared_reading_id and m.user_id = auth.uid()
+    )
+  );
+create policy shared_reading_theories_update_own on shared_reading_theories for update
+  to authenticated using (user_id = auth.uid());
+
+create policy shared_reading_book_proposals_select on shared_reading_book_proposals for select
+  to authenticated using (
+    exists (
+      select 1 from shared_reading_members m
+      where m.shared_reading_id = shared_reading_book_proposals.shared_reading_id and m.user_id = auth.uid()
+    )
+  );
+create policy shared_reading_book_proposals_insert on shared_reading_book_proposals for insert
+  to authenticated with check (
+    proposed_by = auth.uid()
+    and exists (
+      select 1 from shared_reading_members m
+      where m.shared_reading_id = shared_reading_book_proposals.shared_reading_id and m.user_id = auth.uid()
+    )
+  );
+
+create policy shared_reading_book_votes_select on shared_reading_book_votes for select
+  to authenticated using (
+    exists (
+      select 1 from shared_reading_members m
+      where m.shared_reading_id = shared_reading_book_votes.shared_reading_id and m.user_id = auth.uid()
+    )
+  );
+create policy shared_reading_book_votes_insert on shared_reading_book_votes for insert
+  to authenticated with check (
+    user_id = auth.uid()
+    and exists (
+      select 1 from shared_reading_members m
+      where m.shared_reading_id = shared_reading_book_votes.shared_reading_id and m.user_id = auth.uid()
+    )
+  );
+create policy shared_reading_book_votes_delete_own on shared_reading_book_votes for delete
+  to authenticated using (user_id = auth.uid());
+
+create policy shared_reading_quizzes_select on shared_reading_quizzes for select
+  to authenticated using (
+    exists (
+      select 1 from shared_reading_members m
+      where m.shared_reading_id = shared_reading_quizzes.shared_reading_id and m.user_id = auth.uid()
+    )
+  );
+create policy shared_reading_quizzes_insert on shared_reading_quizzes for insert
+  to authenticated with check (
+    created_by = auth.uid()
+    and exists (
+      select 1 from shared_readings r where r.id = shared_reading_id and r.creator_id = auth.uid()
+    )
+  );
+
+create policy shared_reading_quiz_answers_select_own on shared_reading_quiz_answers for select
+  to authenticated using (user_id = auth.uid());
+create policy shared_reading_quiz_answers_insert on shared_reading_quiz_answers for insert
+  to authenticated with check (
+    user_id = auth.uid()
+    and exists (
+      select 1 from shared_reading_quizzes q
+      join shared_reading_members m on m.shared_reading_id = q.shared_reading_id and m.user_id = auth.uid()
+      where q.id = quiz_id
+    )
+  );
 
 -- ============================================================================
 -- Functions (replace old Express business logic, called via the Data API's
@@ -847,9 +1236,9 @@ language sql security definer set search_path = public stable as $$
 $$;
 
 create or replace function book_reviews(p_book_id uuid)
-returns table (username text, avatar_url text, rating numeric, comment text, finished_at timestamptz)
+returns table (review_id uuid, username text, avatar_url text, rating numeric, comment text, finished_at timestamptz)
 language sql security definer set search_path = public stable as $$
-  select p.username, p.avatar_url, ub.rating, ub.comment, ub.finished_at
+  select ub.id, p.username, p.avatar_url, ub.rating, ub.comment, ub.finished_at
   from user_books ub
   join profiles p on p.id = ub.user_id
   where ub.book_id = p_book_id
@@ -1031,6 +1420,196 @@ language sql security invoker stable as $$
        from user_books ub
        join books b on b.id = ub.book_id
        where ub.user_id = auth.uid() and ub.status = 'done' and b.author is not null);
+$$;
+
+-- Member roster with each person's live progress on the reading's book —
+-- guards its own access instead of relying on shared_reading_members' RLS,
+-- since this also needs to read *other* members' rows.
+create or replace function get_shared_reading_roster(p_reading_id uuid)
+returns table(user_id uuid, username varchar, avatar_url text, progress_percent numeric, rating numeric, status varchar)
+language plpgsql security definer set search_path = public as $$
+declare
+  v_book_id uuid;
+begin
+  if not exists (
+    select 1 from shared_readings r
+    left join shared_reading_members m on m.shared_reading_id = r.id and m.user_id = auth.uid()
+    where r.id = p_reading_id and (r.is_public or r.creator_id = auth.uid() or m.user_id is not null)
+  ) then
+    raise exception 'Accès refusé';
+  end if;
+
+  select book_id into v_book_id from shared_readings where id = p_reading_id;
+
+  return query
+    select p.id, p.username, p.avatar_url, coalesce(ub.progress_percent, 0), srm.rating, ub.status
+    from shared_reading_members srm
+    join profiles p on p.id = srm.user_id
+    left join user_books ub on ub.user_id = srm.user_id and ub.book_id = v_book_id
+    where srm.shared_reading_id = p_reading_id
+    order by coalesce(ub.progress_percent, 0) desc;
+end;
+$$;
+
+-- The anti-spoiler read path: only returns messages at or before the
+-- caller's own progress on this reading's book.
+create or replace function get_shared_reading_messages(p_reading_id uuid)
+returns table(id uuid, user_id uuid, username varchar, avatar_url text, content text, percent_threshold numeric, created_at timestamptz)
+language plpgsql security definer set search_path = public as $$
+declare
+  v_book_id uuid;
+  v_my_percent numeric;
+begin
+  select shared_readings.book_id into v_book_id from shared_readings where shared_readings.id = p_reading_id;
+  select coalesce(user_books.progress_percent, 0) into v_my_percent
+    from user_books where user_books.user_id = auth.uid() and user_books.book_id = v_book_id;
+  v_my_percent := coalesce(v_my_percent, 0);
+
+  return query
+    select m.id, m.user_id, p.username, p.avatar_url, m.content, m.percent_threshold, m.created_at
+    from shared_reading_messages m
+    join profiles p on p.id = m.user_id
+    where m.shared_reading_id = p_reading_id
+      and m.percent_threshold <= v_my_percent
+    order by m.percent_threshold asc, m.created_at asc;
+end;
+$$;
+
+create or replace function get_shared_reading_reaction_stats(p_reading_id uuid)
+returns table(percent_bucket int, emoji text, count bigint)
+language plpgsql security definer set search_path = public as $$
+declare
+  v_book_id uuid;
+  v_my_percent numeric;
+begin
+  select book_id into v_book_id from shared_readings where id = p_reading_id;
+  select coalesce(progress_percent, 0) into v_my_percent
+    from user_books where user_id = auth.uid() and book_id = v_book_id;
+  v_my_percent := coalesce(v_my_percent, 0);
+
+  return query
+    select r.percent_bucket, r.emoji, count(*)
+    from shared_reading_reactions r
+    where r.shared_reading_id = p_reading_id
+      and r.percent_bucket <= v_my_percent
+    group by r.percent_bucket, r.emoji
+    order by r.percent_bucket asc;
+end;
+$$;
+
+create or replace function get_shared_reading_proposals(p_reading_id uuid)
+returns table(
+  proposal_id uuid, book_id uuid, title varchar, author varchar, cover_url text,
+  proposed_by uuid, proposed_by_username varchar, vote_count bigint, voted_by_me boolean
+)
+language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (
+    select 1 from shared_reading_members m
+    where m.shared_reading_id = p_reading_id and m.user_id = auth.uid()
+  ) then
+    raise exception 'Accès refusé';
+  end if;
+
+  return query
+    select
+      p.id, b.id, b.title, b.author, b.cover_url,
+      p.proposed_by, pr.username,
+      count(v.id),
+      bool_or(v.user_id = auth.uid())
+    from shared_reading_book_proposals p
+    join books b on b.id = p.book_id
+    join profiles pr on pr.id = p.proposed_by
+    left join shared_reading_book_votes v on v.proposal_id = p.id
+    where p.shared_reading_id = p_reading_id
+    group by p.id, b.id, b.title, b.author, b.cover_url, p.proposed_by, pr.username
+    order by count(v.id) desc, p.created_at asc;
+end;
+$$;
+
+-- Per-reading badges, computed on the fly (no table) — see
+-- db/migrations/043_shared_reading_badges.sql.
+create or replace function get_shared_reading_badges(p_reading_id uuid)
+returns table(badge text, user_id uuid, username varchar)
+language plpgsql security definer set search_path = public as $$
+declare
+  v_book_id uuid;
+begin
+  if not exists (
+    select 1 from shared_reading_members m
+    where m.shared_reading_id = p_reading_id and m.user_id = auth.uid()
+  ) then
+    raise exception 'Accès refusé';
+  end if;
+
+  select r.book_id into v_book_id from shared_readings r where r.id = p_reading_id;
+
+  return query
+    select 'first_arrived', m.user_id, p.username
+    from shared_reading_members m
+    join profiles p on p.id = m.user_id
+    where m.shared_reading_id = p_reading_id
+    order by m.joined_at asc
+    limit 1;
+
+  return query
+    select 'theorist', t.user_id, p.username
+    from shared_reading_theories t
+    join profiles p on p.id = t.user_id
+    where t.shared_reading_id = p_reading_id
+    group by t.user_id, p.username
+    order by count(*) desc
+    limit 1;
+
+  return query
+    select 'commentator', msg.user_id, p.username
+    from shared_reading_messages msg
+    join profiles p on p.id = msg.user_id
+    where msg.shared_reading_id = p_reading_id
+    group by msg.user_id, p.username
+    order by count(*) desc
+    limit 1;
+
+  return query
+    select 'finisher', ub.user_id, p.username
+    from user_books ub
+    join shared_reading_members m on m.user_id = ub.user_id and m.shared_reading_id = p_reading_id
+    join profiles p on p.id = ub.user_id
+    where ub.book_id = v_book_id and ub.progress_percent >= 100;
+
+  return query
+    select 'marathonien', ub.user_id, p.username
+    from user_books ub
+    join shared_reading_members m on m.user_id = ub.user_id and m.shared_reading_id = p_reading_id
+    join profiles p on p.id = ub.user_id
+    where ub.book_id = v_book_id and ub.progress_percent >= 100
+    order by ub.finished_at asc nulls last
+    limit 1;
+end;
+$$;
+
+-- Aggregate quiz result, only visible once the caller has answered — see
+-- db/migrations/045_shared_reading_live_and_quiz.sql.
+create or replace function get_shared_reading_quiz_results(p_quiz_id uuid)
+returns table(selected_option int, count bigint, is_correct boolean)
+language plpgsql security definer set search_path = public as $$
+declare
+  v_correct int;
+begin
+  if not exists (
+    select 1 from shared_reading_quiz_answers where quiz_id = p_quiz_id and user_id = auth.uid()
+  ) then
+    raise exception 'Réponds d''abord pour voir les résultats';
+  end if;
+
+  select correct_option into v_correct from shared_reading_quizzes where id = p_quiz_id;
+
+  return query
+    select a.selected_option, count(*), a.selected_option = v_correct
+    from shared_reading_quiz_answers a
+    where a.quiz_id = p_quiz_id
+    group by a.selected_option;
+end;
 $$;
 
 -- ============================================================================

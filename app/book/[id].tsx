@@ -6,11 +6,9 @@ import {
   TouchableOpacity,
   StyleSheet,
   TextInput,
-  Alert,
   Modal,
   ActivityIndicator,
   Image,
-  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -26,10 +24,12 @@ import { formatDuration } from "../../lib/timer";
 import { useTimer } from "../../context/TimerContext";
 import { useAuth } from "../../context/AuthContext";
 import Button from "../../components/Button";
+import AtmosphericBackground from "../../components/AtmosphericBackground";
 import Pill from "../../components/Pill";
 import ProgressBar from "../../components/ProgressBar";
 import StarRating from "../../components/StarRating";
 import { REACTION_EMOJIS as EMOJIS } from "../../lib/emojis";
+import { alert } from "../../lib/alert";
 
 const STATUS_OPTIONS: {
   labelKey: string;
@@ -214,7 +214,7 @@ export default function BookDetailScreen() {
       .then(() =>
         setCurrentBook((cur: any) => ({ ...cur, series, series_index })),
       )
-      .catch(() => Alert.alert(t("common.error"), t("book.errors.saveSeries")))
+      .catch(() => alert(t("common.error"), t("book.errors.saveSeries")))
       .finally(() => setSavingSeries(false));
   };
 
@@ -222,7 +222,7 @@ export default function BookDetailScreen() {
     books
       .addBookToDb(book)
       .then((row) => router.push(`/book/${row.id}`))
-      .catch(() => Alert.alert(t("common.error"), t("book.errors.openBook")));
+      .catch(() => alert(t("common.error"), t("book.errors.openBook")));
   };
 
   // A book is "being read" the moment you time it, log a page, or react to
@@ -238,7 +238,7 @@ export default function BookDetailScreen() {
     setTimerLoading(true);
     ensureReading()
       .then(() => startWithCountdown(id))
-      .catch(() => Alert.alert(t("common.error"), t("book.errors.startTimer")))
+      .catch(() => alert(t("common.error"), t("book.errors.startTimer")))
       .finally(() => setTimerLoading(false));
   };
 
@@ -249,7 +249,7 @@ export default function BookDetailScreen() {
     stopGlobalTimer()
       .then(() => timer.getBookReadingTime(id))
       .then(setTotalReadingTime)
-      .catch(() => Alert.alert(t("common.error"), t("book.errors.stopTimer")))
+      .catch(() => alert(t("common.error"), t("book.errors.stopTimer")))
       .finally(() => setTimerLoading(false));
   };
 
@@ -257,16 +257,7 @@ export default function BookDetailScreen() {
     const doRemove = () => {
       userBooks.removeBook(id).then(() => router.back());
     };
-    // RN Web's Alert.alert only ever renders a single-button window.alert —
-    // multi-button/destructive-style configs like this one are silently
-    // dropped, so the confirm dialog (and thus the remove callback) never
-    // appeared on web at all. window.confirm is the web-native equivalent —
-    // same workaround as app/(tabs)/library.tsx's removeBook.
-    if (Platform.OS === "web") {
-      if (window.confirm(t("library.confirmRemoveBook"))) doRemove();
-      return;
-    }
-    Alert.alert(t("library.remove"), t("library.confirmRemoveBook"), [
+    alert(t("library.remove"), t("library.confirmRemoveBook"), [
       { text: t("common.cancel"), style: "cancel" },
       { text: t("library.remove"), style: "destructive", onPress: doRemove },
     ]);
@@ -277,7 +268,7 @@ export default function BookDetailScreen() {
     userBooks
       .updateBook(id, { owned })
       .then(() => setCurrentBook((cur: any) => ({ ...cur, owned })))
-      .catch(() => Alert.alert(t("common.error"), t("book.errors.updateFailed")));
+      .catch(() => alert(t("common.error"), t("book.errors.updateFailed")));
   };
 
   const toggleFormat = (format: "physical" | "ereader" | "audiobook") => {
@@ -288,7 +279,7 @@ export default function BookDetailScreen() {
     userBooks
       .updateBook(id, { formats: formats as any })
       .then(() => setCurrentBook((cur: any) => ({ ...cur, formats })))
-      .catch(() => Alert.alert(t("common.error"), t("book.errors.updateFormat")));
+      .catch(() => alert(t("common.error"), t("book.errors.updateFormat")));
   };
 
   const changeProgressMode = (mode: "pages" | "percent") => {
@@ -308,7 +299,7 @@ export default function BookDetailScreen() {
     } else {
       percent = parseFloat(progressPercent) || 0;
       if (percent > 100) {
-        Alert.alert(t("common.error"), t("book.errors.percentOver100"));
+        alert(t("common.error"), t("book.errors.percentOver100"));
         return;
       }
     }
@@ -324,11 +315,11 @@ export default function BookDetailScreen() {
       .then((res: any) => {
         setProgress(res?.progress_percent ?? percent);
         setLoading(false);
-        Alert.alert("✅", t("book.errors.progressUpdated"));
+        alert("✅", t("book.errors.progressUpdated"));
       })
       .catch(() => {
         setLoading(false);
-        Alert.alert(t("common.error"), t("book.errors.updateFailed"));
+        alert(t("common.error"), t("book.errors.updateFailed"));
       });
   };
 
@@ -340,7 +331,7 @@ export default function BookDetailScreen() {
     userBooks
       .addBook(id, status)
       .then(() => setCurrentBook((cur: any) => ({ ...cur, status })))
-      .catch(() => Alert.alert(t("common.error"), t("book.errors.updateFailed")));
+      .catch(() => alert(t("common.error"), t("book.errors.updateFailed")));
   };
 
   const finishBook = () => {
@@ -364,10 +355,10 @@ export default function BookDetailScreen() {
           .getBookReviews(id)
           .then(setReviews)
           .catch(() => {});
-        Alert.alert("🎉", t("book.errors.finishedCongrats"));
+        alert("🎉", t("book.errors.finishedCongrats"));
       })
       .catch((err: any) =>
-        Alert.alert(t("common.error"), err.message || t("book.errors.saveFailed")),
+        alert(t("common.error"), err.message || t("book.errors.saveFailed")),
       );
   };
 
@@ -379,7 +370,7 @@ export default function BookDetailScreen() {
 
   const addReaction = () => {
     if (selectedEmojis.length === 0) {
-      Alert.alert(t("common.error"), t("book.errors.chooseEmoji"));
+      alert(t("common.error"), t("book.errors.chooseEmoji"));
       return;
     }
     ensureReading()
@@ -398,12 +389,13 @@ export default function BookDetailScreen() {
         setReactionNote("");
         loadReactions();
       })
-      .catch(() => Alert.alert(t("common.error"), t("book.errors.addFailed")));
+      .catch(() => alert(t("common.error"), t("book.errors.addFailed")));
   };
 
   if (loadingBook || !currentBook) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
+        <AtmosphericBackground tint="teal" />
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()}>
             <Feather name="arrow-left" size={20} color={colors.white} />
@@ -427,6 +419,7 @@ export default function BookDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
+      <AtmosphericBackground tint="teal" />
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}
@@ -455,21 +448,39 @@ export default function BookDetailScreen() {
             onPress={() => setShowMoreMenu(false)}
           >
             <View style={styles.menuSheet}>
-              <TouchableOpacity
-                style={styles.menuRow}
-                onPress={() => {
-                  setShowMoreMenu(false);
-                  router.push({
-                    pathname: "/edit-book-suggestion",
-                    params: { bookId: id, title: currentBook.title },
-                  });
-                }}
-              >
-                <Feather name="edit-3" size={16} color={colors.white} />
-                <Text style={styles.menuRowText}>
-                  {t("book.editSuggestion")}
-                </Text>
-              </TouchableOpacity>
+              {profile?.role === "admin" ? (
+                <TouchableOpacity
+                  style={styles.menuRow}
+                  onPress={() => {
+                    setShowMoreMenu(false);
+                    router.push({
+                      pathname: "/admin-edit-book",
+                      params: { bookId: id },
+                    });
+                  }}
+                >
+                  <Feather name="edit-3" size={16} color={colors.white} />
+                  <Text style={styles.menuRowText}>
+                    {t("admin.editBookTitle")}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={styles.menuRow}
+                  onPress={() => {
+                    setShowMoreMenu(false);
+                    router.push({
+                      pathname: "/edit-book-suggestion",
+                      params: { bookId: id, title: currentBook.title },
+                    });
+                  }}
+                >
+                  <Feather name="edit-3" size={16} color={colors.white} />
+                  <Text style={styles.menuRowText}>
+                    {t("book.editSuggestion")}
+                  </Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={styles.menuRow}
                 onPress={() => {
@@ -537,7 +548,7 @@ export default function BookDetailScreen() {
             )}
           </View>
           {/* Same normalizeTags source as the search popup's tag row (see
-              app/(tabs)/search.tsx) — used to only show the first genre here,
+              app/search.tsx) — used to only show the first genre here,
               which was less than what the popup showed for the same book. */}
           {(books.normalizeTags(currentBook.genres, 8).length > 0 ||
             books.normalizeTags(currentBook.tropes, 6).length > 0) && (
@@ -956,7 +967,7 @@ export default function BookDetailScreen() {
                           .getBookReviews(id)
                           .then(setReviews)
                           .catch(() => {});
-                        Alert.alert("✅", t("book.ratingSaved"));
+                        alert("✅", t("book.ratingSaved"));
                       })
                     }
                     style={{ marginTop: 12 }}
@@ -1071,6 +1082,22 @@ export default function BookDetailScreen() {
                           <Text style={styles.reviewComment}>{r.comment}</Text>
                         ) : null}
                       </View>
+                      <TouchableOpacity
+                        onPress={() =>
+                          router.push({
+                            pathname: "/report",
+                            params: {
+                              targetType: "book_review",
+                              targetId: r.review_id,
+                              label: r.comment ? r.comment.slice(0, 80) : `@${r.username}`,
+                            },
+                          })
+                        }
+                        hitSlop={8}
+                        accessibilityLabel={t("book.reportReview")}
+                      >
+                        <Feather name="flag" size={14} color={colors.gray} />
+                      </TouchableOpacity>
                     </View>
                   ))
                 )}

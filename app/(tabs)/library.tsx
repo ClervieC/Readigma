@@ -7,10 +7,10 @@ import {
   FlatList,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   Image,
   useWindowDimensions,
   Platform,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -33,9 +33,12 @@ import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import * as userBooks from "../../lib/userBooks";
 import * as shelfFrames from "../../lib/shelfFrames";
+import { alert } from "../../lib/alert";
 import * as badges from "../../lib/badges";
 import Pill from "../../components/Pill";
 import NotificationBell from "../../components/NotificationBell";
+import SearchButton from "../../components/SearchButton";
+import AtmosphericBackground from "../../components/AtmosphericBackground";
 import { onScrollToTop } from "../../lib/tabScrollEmitter";
 import * as ImagePicker from "expo-image-picker";
 
@@ -191,6 +194,16 @@ function spineTilt(book: any): number {
     : 0;
 }
 
+// A book displayed face-out (shelf_face === "cover") stands like a piece of
+// furniture facing the viewer rather than a spine on the shelf — same
+// footprint as a photo frame (FRAME_WIDTH, see below), never tilted, never
+// auto-piled. Needs an actual cover image to show, so a book flipped to
+// "cover" with no cover_url quietly falls back to the regular spine — see
+// the flip button's comment in renderSpineVisual.
+function isFaceOut(book: any): boolean {
+  return book.shelf_face === "cover" && !!book.cover_url;
+}
+
 // A hung picture is never perfectly level — a small stable tilt (seeded by
 // id, same reasoning as spineTilt) sells the "leaning on the shelf" look,
 // unless the user picked one explicitly (see the tilt button in reorder
@@ -262,8 +275,11 @@ function buildRows(
   };
 
   const pushSpine = (book: any) => {
-    const tiltWidth =
-      spineTilt(book) !== 0 ? SPINE_WIDTH + SPINE_TILT_MARGIN * 2 : SPINE_WIDTH;
+    const tiltWidth = isFaceOut(book)
+      ? FRAME_WIDTH
+      : spineTilt(book) !== 0
+        ? SPINE_WIDTH + SPINE_TILT_MARGIN * 2
+        : SPINE_WIDTH;
     const gapWidth =
       (book.shelf_gap_before ? SHELF_GAP_SIZE : 0) +
       (book.shelf_gap_after ? SHELF_GAP_SIZE : 0);
@@ -320,7 +336,8 @@ function buildRows(
       const canStack =
         books.length - i >= 2 &&
         sinceStack >= 3 &&
-        hashRatio(books[i].book_id) < 0.3;
+        hashRatio(books[i].book_id) < 0.3 &&
+        !books.slice(i, i + STACK_SIZE).some(isFaceOut);
       pushFramesUpTo(i);
       if (canStack) {
         const stackBooks = books.slice(i, i + STACK_SIZE);
@@ -528,7 +545,7 @@ function DraggableGridBook({
     });
 
   const tap = Gesture.Tap().onEnd(() => runOnJS(onTap)());
-  const gesture = disabled ? tap : Gesture.Exclusive(pan, tap);
+  const gesture = disabled ? tap : Gesture.Race(pan, tap);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
@@ -683,8 +700,13 @@ function DraggableShelfBook({
     if (onTap) runOnJS(onTap)();
   });
 
+  // Race, not Exclusive — Exclusive requires pan to explicitly *fail* before
+  // handing off to tap, which on web (react-native-web's pointer-event
+  // handling) was leaving tap stuck waiting and never firing at all, even
+  // for a plain, non-moving click. Race lets whichever gesture actually
+  // reaches its own recognition criteria first win, which fires reliably.
   return (
-    <GestureDetector gesture={onTap ? Gesture.Exclusive(pan, tap) : pan}>
+    <GestureDetector gesture={onTap ? Gesture.Race(pan, tap) : pan}>
       <Animated.View
         ref={(node: any) => registerRef(bookId, node)}
         layout={LinearTransition.springify().damping(18)}
@@ -968,6 +990,12 @@ export default function LibraryScreen() {
     | { step: "menu"; frame: shelfFrames.ShelfFrame | null }
     | { step: "book"; frame: shelfFrames.ShelfFrame | null }
   >(null);
+  // The spine-photo source-choice sheet: which book (if any) is currently
+  // picking "prendre une photo" / "depuis ma galerie" for its spine photo.
+  const [spinePhotoBook, setSpinePhotoBook] = useState<any>(null);
+  const [uploadingSpinePhotoId, setUploadingSpinePhotoId] = useState<
+    string | null
+  >(null);
   // Tap-to-place flow for a brand new frame: a translucent, dashed "ghost"
   // frame sits among the books at `position` (a raw book count) — books
   // shift to make room for it, same as if it were really there — and
@@ -997,6 +1025,15 @@ export default function LibraryScreen() {
   const [spacingSelectedId, setSpacingSelectedId] = useState<string | null>(
     null,
   );
+  // Mobile browsers fire a synthetic "ghost click" ~300ms after the real
+  // touch that opened the toolbar — landing squarely on the full-screen
+  // overlay that just mounted underneath the finger, since it wasn't there
+  // yet when the touch itself started. Without this guard, that delayed
+  // ghost click reads as "tap outside to dismiss" and closes the toolbar a
+  // moment after it opens. Timestamped on open; the overlay's dismiss
+  // handler ignores presses within GHOST_CLICK_GUARD_MS of it.
+  const spacingOpenedAtRef = useRef(0);
+  const GHOST_CLICK_GUARD_MS = 400;
   const [stackTargetId, setStackTargetId] = useState<string | null>(null);
   // Shelf mode's drag-and-drop (see DraggableShelfBook): every mounted
   // tile's own View ref, remeasured fresh into shelfFramesRef right when a
@@ -1174,7 +1211,7 @@ export default function LibraryScreen() {
         .then(setDecorationsUnlocked)
         .catch(() => {});
       // Cleans up any title+author duplicates that predate addBookSmart
-      // (see app/(tabs)/search.tsx) — e.g. the same book once added via two
+      // (see app/search.tsx) — e.g. the same book once added via two
       // different search providers. Runs after the initial paint above and
       // only reloads if it actually found something to merge.
       userBooks
@@ -1280,7 +1317,7 @@ export default function LibraryScreen() {
   // shortcut to the badges screen) instead of silently doing nothing.
   const requireDecorationSlot = () => {
     if (allFrames.length >= decorationsUnlocked) {
-      Alert.alert(
+      alert(
         t("library.noMoreDecorations"),
         decorationsUnlocked === 0
           ? t("library.unlockFirstDecoration")
@@ -1329,7 +1366,7 @@ export default function LibraryScreen() {
     shelfFrames
       .addShelfFrame(activeTab, position, kind)
       .then((created) => setAllFrames((cur) => [...cur, created]))
-      .catch(() => Alert.alert(t("common.error"), t("library.errors.addFrame")));
+      .catch(() => alert(t("common.error"), t("library.errors.addFrame")));
   };
 
   const confirmFramePlacement = () => {
@@ -1343,7 +1380,7 @@ export default function LibraryScreen() {
         ? await ImagePicker.requestCameraPermissionsAsync()
         : await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (permission.status !== "granted") {
-      Alert.alert(
+      alert(
         t("library.permissionDenied"),
         source === "camera"
           ? t("library.cameraAccessNeeded")
@@ -1378,7 +1415,7 @@ export default function LibraryScreen() {
     );
     shelfFrames
       .setShelfFrameContent(editingFrame.id, { imageUrl })
-      .catch(() => Alert.alert(t("common.error"), t("library.errors.editFrame")));
+      .catch(() => alert(t("common.error"), t("library.errors.editFrame")));
   };
 
   const pickFrameBook = (book: any) => {
@@ -1394,7 +1431,98 @@ export default function LibraryScreen() {
     );
     shelfFrames
       .setShelfFrameContent(editingFrame.id, { bookId: book.book_id })
-      .catch(() => Alert.alert(t("common.error"), t("library.errors.editFrame")));
+      .catch(() => alert(t("common.error"), t("library.errors.editFrame")));
+  };
+
+  // Photographs (or, admin-only, picks from the gallery) the reader's own
+  // physical copy's spine — unlike pickFrameImage above, this uploads to
+  // real Storage rather than inlining a base64 data URI, since a full-
+  // resolution camera photo would bloat the user_books row (see
+  // uploadSpinePhoto's comment). Every spine renders at the same fixed
+  // SPINE_WIDTH/SPINE_HEIGHT regardless of the source photo, so a regular
+  // reader just lines the book up against the on-screen stencil (see the
+  // spinePhotoBook sheet below) and the raw shot is used as-is — no crop
+  // step to fumble with. An admin gets the OS crop/reposition screen
+  // instead (locked to the same aspect ratio), and can also pull from the
+  // gallery rather than only the camera.
+  const pickSpinePhoto = async (source: "camera" | "gallery") => {
+    const book = spinePhotoBook;
+    const isAdmin = profile?.role === "admin";
+    setSpinePhotoBook(null);
+    if (!book) return;
+    const permission =
+      source === "camera"
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permission.status !== "granted") {
+      alert(
+        t("library.permissionDenied"),
+        source === "camera"
+          ? t("library.cameraAccessNeeded")
+          : t("library.galleryAccessNeeded"),
+      );
+      return;
+    }
+    const options = {
+      allowsEditing: isAdmin,
+      aspect: [SPINE_WIDTH, SPINE_HEIGHT] as [number, number],
+      quality: 0.7,
+      base64: true as const,
+    };
+    const result =
+      source === "camera"
+        ? await ImagePicker.launchCameraAsync(options)
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ["images"],
+            ...options,
+          });
+    if (result.canceled || !result.assets[0].base64) return;
+    setUploadingSpinePhotoId(book.book_id);
+    // Same reasoning as toggleShelfFace's pendingWritesRef comment — an
+    // upload can take a few seconds, plenty of time for a reload (e.g. from
+    // toggling edit mode mid-upload) to race it and overwrite the eventual
+    // result with pre-upload data.
+    pendingWritesRef.current++;
+    userBooks
+      .uploadSpinePhoto(book.book_id, result.assets[0].base64)
+      .then((url) => {
+        setAllBooks((cur) =>
+          cur.map((b) =>
+            b.book_id === book.book_id
+              ? { ...b, spine_photo_url: url, shelf_face: "spine" }
+              : b,
+          ),
+        );
+      })
+      .catch(() => alert(t("common.error"), t("library.errors.spinePhoto")))
+      .finally(() => {
+        setUploadingSpinePhotoId(null);
+        pendingWritesRef.current--;
+      });
+  };
+
+  // Flips the shelf between the physical spine (photo if taken, else the
+  // faked CoverSliver) and the regular front-cover art — see the toggle
+  // button on renderSpineVisual.
+  const toggleShelfFace = (book: any) => {
+    const next = book.shelf_face === "cover" ? "spine" : "cover";
+    setAllBooks((cur) =>
+      cur.map((b) =>
+        b.book_id === book.book_id ? { ...b, shelf_face: next } : b,
+      ),
+    );
+    // Without this, tapping the edit-mode pencil right after flipping a book
+    // (which re-triggers useFocusEffect's loadBooks, since its callback
+    // depends on reorderMode) could race the PATCH below — the reload would
+    // land first with the still-old shelf_face and stomp this optimistic
+    // update right back to "spine".
+    pendingWritesRef.current++;
+    userBooks
+      .setShelfFace(book.book_id, next)
+      .catch(() => alert(t("common.error"), t("library.errors.shelfFace")))
+      .finally(() => {
+        pendingWritesRef.current--;
+      });
   };
 
   const deleteFrame = (frame: shelfFrames.ShelfFrame) => {
@@ -1402,7 +1530,7 @@ export default function LibraryScreen() {
     setAllFrames((cur) => cur.filter((f) => f.id !== frame.id));
     shelfFrames
       .removeShelfFrame(frame.id)
-      .catch(() => Alert.alert(t("common.error"), t("library.errors.removeFrame")));
+      .catch(() => alert(t("common.error"), t("library.errors.removeFrame")));
   };
 
   const frameImageUri = (frame: shelfFrames.ShelfFrame) =>
@@ -1581,16 +1709,25 @@ export default function LibraryScreen() {
         )
         // "manual" (the default) shows your own arrangement — manually placed
         // books (shelf_position, via reorder mode) first in their saved order,
-        // anything never placed falling back to date added. Explicitly picking
-        // "asc"/"desc" from the sort sheet instead sorts *everything* by date,
-        // ignoring shelf_position for the view — but never touches or clears
-        // it, so switching back to "Mon organisation" restores it exactly.
+        // anything never placed falling back to date added (or, on the "done"
+        // shelf, date finished — the DB trigger clears shelf_position the
+        // moment a book finishes, so it naturally floats to the top there).
+        // Explicitly picking "asc"/"desc" from the sort sheet instead sorts
+        // *everything* by date, ignoring shelf_position for the view — but
+        // never touches or clears it, so switching back to "Mon organisation"
+        // restores it exactly.
         .sort((a, b) => {
           if (sortOrder === "manual") {
             if (a.shelf_position != null && b.shelf_position != null)
               return a.shelf_position - b.shelf_position;
             if (a.shelf_position != null) return -1;
             if (b.shelf_position != null) return 1;
+            if (activeTab === "done") {
+              return (
+                new Date(b.finished_at ?? b.created_at).getTime() -
+                new Date(a.finished_at ?? a.created_at).getTime()
+              );
+            }
             return (
               new Date(b.created_at).getTime() -
               new Date(a.created_at).getTime()
@@ -1636,20 +1773,6 @@ export default function LibraryScreen() {
     () => buildRows(filteredBooks, width - SCREEN_PADDING, framesForRows),
     [filteredBooks, width, framesForRows],
   );
-  // The spacing popup (Gauche/Droite/Nouvelle ligne) floats above the
-  // selected book, and the shelf's first row has no room above it for that
-  // — so extra scroll padding is only reserved right when it's actually
-  // needed (a single book in that first row is selected), not permanently.
-  // Piles deliberately don't get this treatment — their popup just overlays
-  // freely like a single book's, no space reserved/calculated for it.
-  const firstRow = rows[0];
-  const spacingSelectedInFirstRow =
-    !!spacingSelectedId &&
-    firstRow?.type === "books" &&
-    firstRow.slots.some(
-      (slot) =>
-        slot.type === "spine" && slot.book.book_id === spacingSelectedId,
-    );
   const gridColumns = Math.max(
     3,
     Math.floor((width - SCREEN_PADDING + GRID_GAP) / (COVER_WIDTH + GRID_GAP)),
@@ -1669,15 +1792,7 @@ export default function LibraryScreen() {
         loadBooks();
       });
     };
-    // RN Web's Alert.alert only ever renders a single-button window.alert —
-    // multi-button/destructive-style configs like this one are silently
-    // dropped, so the confirm dialog (and thus the remove callback) never
-    // appeared on web at all. window.confirm is the web-native equivalent.
-    if (Platform.OS === "web") {
-      if (window.confirm(t("library.confirmRemoveBook"))) doRemove();
-      return;
-    }
-    Alert.alert(t("library.remove"), t("library.confirmRemoveBook"), [
+    alert(t("library.remove"), t("library.confirmRemoveBook"), [
       { text: t("common.cancel"), style: "cancel" },
       { text: t("library.remove"), style: "destructive", onPress: doRemove },
     ]);
@@ -1698,7 +1813,7 @@ export default function LibraryScreen() {
     pendingWritesRef.current++;
     userBooks
       .saveShelfOrder(ids)
-      .catch(() => Alert.alert(t("common.error"), t("library.errors.saveOrder")))
+      .catch(() => alert(t("common.error"), t("library.errors.saveOrder")))
       .finally(() => {
         pendingWritesRef.current--;
       });
@@ -1721,6 +1836,21 @@ export default function LibraryScreen() {
     const idxA = pileIndices[posInPile];
     const idxB = pileIndices[swapWith];
     [ids[idxA], ids[idxB]] = [ids[idxB], ids[idxA]];
+    persistOrder(ids);
+  };
+
+  // Arrow-based alternative to dragging a standalone (non-piled) book to
+  // reorder it within its own shelf — added alongside drag rather than
+  // replacing it (drag still works well on mobile; arrows are friendlier on
+  // web/desktop, where drag can be flaky). Swaps with the immediate
+  // left/right neighbor in filteredBooks, same as moveBookInPile above but
+  // across the whole shelf instead of just one pile.
+  const moveBookInShelf = (book: any, direction: "left" | "right") => {
+    const ids = filteredBooks.map((b) => b.book_id);
+    const idx = ids.indexOf(book.book_id);
+    const swapWith = direction === "left" ? idx - 1 : idx + 1;
+    if (swapWith < 0 || swapWith >= ids.length) return;
+    [ids[idx], ids[swapWith]] = [ids[swapWith], ids[idx]];
     persistOrder(ids);
   };
 
@@ -1760,7 +1890,7 @@ export default function LibraryScreen() {
         (x) => x.pile_id === existingPileId,
       ).length;
       if (pileSize >= STACK_SIZE) {
-        Alert.alert(
+        alert(
           t("library.pileFull"),
           t("library.pileFullMessage", { count: STACK_SIZE }),
         );
@@ -1800,7 +1930,7 @@ export default function LibraryScreen() {
           }),
         );
       })
-      .catch(() => Alert.alert(t("common.error"), t("library.errors.stackBooks")))
+      .catch(() => alert(t("common.error"), t("library.errors.stackBooks")))
       .finally(() => {
         pendingWritesRef.current--;
       });
@@ -1815,7 +1945,7 @@ export default function LibraryScreen() {
     pendingWritesRef.current++;
     userBooks
       .unstackBook(book.book_id)
-      .catch(() => Alert.alert(t("common.error"), t("library.errors.unstackBook")))
+      .catch(() => alert(t("common.error"), t("library.errors.unstackBook")))
       .finally(() => {
         pendingWritesRef.current--;
       });
@@ -1830,7 +1960,18 @@ export default function LibraryScreen() {
     );
     userBooks
       .setShelfBreak(anchorId, false)
-      .catch(() => Alert.alert(t("common.error"), t("library.errors.removeShelf")));
+      .catch(() => alert(t("common.error"), t("library.errors.removeShelf")));
+  };
+
+  // Shared by the spine and pile onTap handlers below — stamps the open
+  // time so the toolbar's dismiss overlay can ignore a ghost click that
+  // lands on it right after it mounts (see spacingOpenedAtRef's comment).
+  const toggleSpacingSelected = (bookId: string) => {
+    setSpacingSelectedId((current) => {
+      if (current === bookId) return null;
+      spacingOpenedAtRef.current = Date.now();
+      return bookId;
+    });
   };
 
   const toggleShelfGap = (side: "before" | "after") => {
@@ -1846,7 +1987,7 @@ export default function LibraryScreen() {
     );
     userBooks
       .setShelfGap(book.book_id, side, value)
-      .catch(() => Alert.alert(t("common.error"), t("library.errors.editSpacing")));
+      .catch(() => alert(t("common.error"), t("library.errors.editSpacing")));
   };
 
   // Forces the selected book onto its own new shelf row, so it can stand
@@ -1865,7 +2006,7 @@ export default function LibraryScreen() {
     );
     userBooks
       .setShelfBreak(book.book_id, value)
-      .catch(() => Alert.alert(t("common.error"), t("library.errors.editShelf")));
+      .catch(() => alert(t("common.error"), t("library.errors.editShelf")));
   };
 
   // Cycles a spine's tilt: left → right → straight → left. Deliberately
@@ -1883,7 +2024,7 @@ export default function LibraryScreen() {
     userBooks
       .setManualTilt(book.book_id, next)
       .catch(() =>
-        Alert.alert(t("common.error"), t("library.errors.changeTilt")),
+        alert(t("common.error"), t("library.errors.changeTilt")),
       );
   };
 
@@ -1897,7 +2038,7 @@ export default function LibraryScreen() {
     shelfFrames
       .setShelfFrameTilt(frame.id, next)
       .catch(() =>
-        Alert.alert(t("common.error"), t("library.errors.changeTilt")),
+        alert(t("common.error"), t("library.errors.changeTilt")),
       );
   };
 
@@ -2088,11 +2229,11 @@ export default function LibraryScreen() {
     );
     userBooks
       .setShelfBreak(nextBookId, false)
-      .catch(() => Alert.alert(t("common.error"), t("library.errors.moveShelf")));
+      .catch(() => alert(t("common.error"), t("library.errors.moveShelf")));
     if (!newFirstId.startsWith("frame:")) {
       userBooks
         .setShelfBreak(newFirstId, true)
-        .catch(() => Alert.alert(t("common.error"), t("library.errors.moveShelf")));
+        .catch(() => alert(t("common.error"), t("library.errors.moveShelf")));
     }
   };
 
@@ -2169,7 +2310,7 @@ export default function LibraryScreen() {
           (b) => b.pile_id === existingPileId,
         ).length;
         if (pileSize >= STACK_SIZE) {
-          Alert.alert(
+          alert(
             t("library.pileFull"),
             t("library.pileFullMessage", { count: STACK_SIZE }),
           );
@@ -2209,10 +2350,10 @@ export default function LibraryScreen() {
       );
       userBooks
         .setShelfBreak(resolved.anchorId, false)
-        .catch(() => Alert.alert(t("common.error"), t("library.errors.moveShelf")));
+        .catch(() => alert(t("common.error"), t("library.errors.moveShelf")));
       userBooks
         .setShelfBreak(bookId, true)
-        .catch(() => Alert.alert(t("common.error"), t("library.errors.moveShelf")));
+        .catch(() => alert(t("common.error"), t("library.errors.moveShelf")));
     } else {
       const idx = ids.indexOf(bookId);
       transferShelfBreak(ids[idx + 1], bookId);
@@ -2325,7 +2466,7 @@ export default function LibraryScreen() {
     transferShelfBreak(filteredBooks[frame.position]?.book_id, frameKey);
     shelfFrames
       .setShelfFramePosition(frameId, frame.position)
-      .catch(() => Alert.alert(t("common.error"), t("library.errors.moveFrame")));
+      .catch(() => alert(t("common.error"), t("library.errors.moveFrame")));
   };
 
   // Free drag-and-drop for the grid view: converts how far the book moved
@@ -2370,7 +2511,7 @@ export default function LibraryScreen() {
     const ids = filteredBooks.map((b) => b.book_id);
     userBooks
       .saveShelfOrder(ids)
-      .catch(() => Alert.alert(t("common.error"), t("library.errors.saveOrder")));
+      .catch(() => alert(t("common.error"), t("library.errors.saveOrder")));
   };
 
   // Tapping a spine/stack bar "picks up" that book into a centered card,
@@ -2394,11 +2535,14 @@ export default function LibraryScreen() {
     gapBefore = false,
     gapAfter = false,
   ) => {
-    const tilt = spineTilt(book);
+    const faceOut = isFaceOut(book);
+    const tilt = faceOut ? 0 : spineTilt(book);
+    const width = faceOut ? FRAME_WIDTH : SPINE_WIDTH;
     return (
       <View
         style={[
           styles.spineWrap,
+          { width },
           gapBefore && { marginLeft: SHELF_GAP_SIZE },
           gapAfter && { marginRight: SHELF_GAP_SIZE },
           tilt !== 0 && { marginHorizontal: SPINE_TILT_MARGIN },
@@ -2406,38 +2550,10 @@ export default function LibraryScreen() {
           poppedBook?.book_id === book.book_id && styles.slotLifted,
         ]}
       >
-        {reorderMode && spacingSelectedId === book.book_id ? (
-          <View style={styles.spacingBookActions}>
-            <TouchableOpacity
-              style={styles.spacingBookActionBtn}
-              onPress={() => toggleShelfGap("before")}
-            >
-              <Feather name="chevron-left" size={14} color="#FFFFFF" />
-              <Text style={styles.spacingBookActionText}>{t("library.spacingLeft")}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.spacingBookActionBtn}
-              onPress={() => toggleShelfGap("after")}
-            >
-              <Text style={styles.spacingBookActionText}>{t("library.spacingRight")}</Text>
-              <Feather name="chevron-right" size={14} color="#FFFFFF" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.spacingBookActionBtn,
-                book.shelf_break_before && styles.spacingBookActionBtnActive,
-              ]}
-              onPress={toggleShelfBreak}
-            >
-              <Feather name="corner-down-left" size={14} color="#FFFFFF" />
-              <Text style={styles.spacingBookActionText}>{t("library.spacingNewLine")}</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
         <View
           style={[
             styles.spine,
-            { backgroundColor: colors.card2 },
+            { width, backgroundColor: colors.card2 },
             reorderMode &&
               stackTargetId === book.book_id &&
               styles.slotStackTarget,
@@ -2446,30 +2562,45 @@ export default function LibraryScreen() {
               styles.slotStackTarget,
           ]}
         >
-          <CoverSliver
-            uri={book.cover_url}
-            width={SPINE_WIDTH}
-            height={SPINE_HEIGHT}
-          />
-          {reorderMode ? (
-            <TouchableOpacity
-              style={styles.tiltBtn}
-              hitSlop={8}
-              onPress={() => cycleTilt(book)}
-            >
-              <Feather name="rotate-cw" size={11} color="#FFFFFF" />
-            </TouchableOpacity>
+          {faceOut ? (
+            <Image
+              source={{ uri: book.cover_url }}
+              resizeMode="cover"
+              style={[styles.spineFaceImg, { width }]}
+            />
+          ) : book.spine_photo_url ? (
+            <Image
+              source={{ uri: book.spine_photo_url }}
+              resizeMode="cover"
+              style={styles.spineFaceImg}
+            />
+          ) : (
+            <CoverSliver
+              uri={book.cover_url}
+              width={SPINE_WIDTH}
+              height={SPINE_HEIGHT}
+            />
+          )}
+          {uploadingSpinePhotoId === book.book_id ? (
+            <View style={[styles.spinePhotoLoading, { width }]}>
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            </View>
           ) : null}
-          <View style={styles.spineTextBox}>
-            <Text style={styles.spineTitle} numberOfLines={1}>
-              {book.title}
-            </Text>
-            {book.author ? (
-              <Text style={styles.spineAuthor} numberOfLines={1}>
-                {book.author}
+          {/* Tilt and flip live in the edit-mode toolbar now (see
+              spacingToolbar below), not as tiny always-easy-to-miss buttons
+              nested on the tile itself. */}
+          {!faceOut && !book.spine_photo_url ? (
+            <View style={styles.spineTextBox}>
+              <Text style={styles.spineTitle} numberOfLines={1}>
+                {book.title}
               </Text>
-            ) : null}
-          </View>
+              {book.author ? (
+                <Text style={styles.spineAuthor} numberOfLines={1}>
+                  {book.author}
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
         </View>
       </View>
     );
@@ -2528,6 +2659,7 @@ export default function LibraryScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
+      <AtmosphericBackground tint="teal" />
       <View style={styles.header}>
         <Text style={styles.title}>{t("library.title")}</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
@@ -2623,6 +2755,7 @@ export default function LibraryScreen() {
               </TouchableOpacity>
             </>
           )}
+          <SearchButton />
           <NotificationBell />
         </View>
       </View>
@@ -2981,12 +3114,7 @@ export default function LibraryScreen() {
             <ScrollView
               ref={reorderScrollRef}
               style={styles.scroll}
-              // Extra top padding, reserved only while it's actually needed
-              // — the spacing popup (Gauche/Droite/Nouvelle ligne) floats
-              // above the selected book, and the shelf's first row has no
-              // room above it for that.
               contentContainerStyle={{
-                paddingTop: spacingSelectedInFirstRow ? 120 : 0,
                 paddingBottom: 20,
               }}
               showsVerticalScrollIndicator={false}
@@ -3065,11 +3193,7 @@ export default function LibraryScreen() {
                               edgeZoneTop={EDGE_ZONE}
                               edgeZoneBottom={height - EDGE_ZONE}
                               onTap={() =>
-                                setSpacingSelectedId((current) =>
-                                  current === slot.book.book_id
-                                    ? null
-                                    : slot.book.book_id,
-                                )
+                                toggleSpacingSelected(slot.book.book_id)
                               }
                               style={[
                                 slot.gapBefore && {
@@ -3141,59 +3265,6 @@ export default function LibraryScreen() {
                                 </View>
                               </DraggableHandle>
                               <View style={styles.stackWrap}>
-                                {spacingSelectedId === slot.books[0].book_id ? (
-                                  <View style={styles.stackSpacingBookActions}>
-                                    <TouchableOpacity
-                                      style={styles.spacingBookActionBtn}
-                                      onPress={() => toggleShelfGap("before")}
-                                    >
-                                      <Feather
-                                        name="chevron-left"
-                                        size={14}
-                                        color="#FFFFFF"
-                                      />
-                                      <Text
-                                        style={styles.spacingBookActionText}
-                                      >
-                                        Gauche
-                                      </Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                      style={styles.spacingBookActionBtn}
-                                      onPress={() => toggleShelfGap("after")}
-                                    >
-                                      <Text
-                                        style={styles.spacingBookActionText}
-                                      >
-                                        Droite
-                                      </Text>
-                                      <Feather
-                                        name="chevron-right"
-                                        size={14}
-                                        color="#FFFFFF"
-                                      />
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                      style={[
-                                        styles.spacingBookActionBtn,
-                                        slot.books[0].shelf_break_before &&
-                                          styles.spacingBookActionBtnActive,
-                                      ]}
-                                      onPress={toggleShelfBreak}
-                                    >
-                                      <Feather
-                                        name="corner-down-left"
-                                        size={14}
-                                        color="#FFFFFF"
-                                      />
-                                      <Text
-                                        style={styles.spacingBookActionText}
-                                      >
-                                        Nouvelle ligne
-                                      </Text>
-                                    </TouchableOpacity>
-                                  </View>
-                                ) : null}
                                 {slot.books.map((book, i) => (
                                   <DraggableShelfBook
                                     key={book.book_id}
@@ -3213,10 +3284,8 @@ export default function LibraryScreen() {
                                     edgeZoneTop={EDGE_ZONE}
                                     edgeZoneBottom={height - EDGE_ZONE}
                                     onTap={() =>
-                                      setSpacingSelectedId((current) =>
-                                        current === slot.books[0].book_id
-                                          ? null
-                                          : slot.books[0].book_id,
+                                      toggleSpacingSelected(
+                                        slot.books[0].book_id,
                                       )
                                     }
                                   >
@@ -3258,19 +3327,13 @@ export default function LibraryScreen() {
                                           </Text>
                                         ) : null}
                                       </View>
-                                      {book.pile_id ? (
-                                        <TouchableOpacity
-                                          style={styles.unstackBtn}
-                                          hitSlop={8}
-                                          onPress={() => doUnstack(book)}
-                                        >
-                                          <Feather
-                                            name="x"
-                                            size={12}
-                                            color="#FFFFFF"
-                                          />
-                                        </TouchableOpacity>
-                                      ) : null}
+                                      {/* "Retirer de la pile" lives in the
+                                          edit-mode toolbar now — nested here,
+                                          it sat inside this tile's own
+                                          GestureDetector (drag+tap), and even
+                                          gesture-handler's own Touchable
+                                          couldn't reliably win the touch away
+                                          from the pile's tap gesture. */}
                                     </View>
                                   </DraggableShelfBook>
                                 ))}
@@ -3364,102 +3427,6 @@ export default function LibraryScreen() {
         </TouchableOpacity>
       )}
 
-      {poppedBook && (
-        <TouchableOpacity
-          style={styles.pickupOverlay}
-          onPress={() => setPoppedBook(null)}
-          activeOpacity={1}
-        >
-          <Animated.View
-            entering={ZoomIn.duration(220)}
-            style={styles.pickupCard}
-          >
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => router.push(`/book/${poppedBook.book_id}`)}
-            >
-              <View style={styles.pickupCover}>
-                {poppedBook.cover_url ? (
-                  <Image
-                    source={{ uri: poppedBook.cover_url }}
-                    style={styles.bookCoverImg}
-                  />
-                ) : (
-                  <View style={styles.bookCoverFallback}>
-                    <Feather name="book" size={32} color={colors.purple} />
-                    <Text
-                      style={styles.bookCoverFallbackTitle}
-                      numberOfLines={3}
-                    >
-                      {poppedBook.title}
-                    </Text>
-                  </View>
-                )}
-                {poppedBook.rating ? (
-                  <View style={styles.ratingBadge}>
-                    <Text style={styles.ratingBadgeText}>
-                      {poppedBook.rating}★
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-            </TouchableOpacity>
-            <Text style={styles.pickupTitle} numberOfLines={2}>
-              {poppedBook.title}
-            </Text>
-            {poppedBook.author ? (
-              <Text style={styles.pickupAuthor} numberOfLines={1}>
-                {poppedBook.author}
-              </Text>
-            ) : null}
-            {poppedBook.series ? (
-              <Text style={styles.pickupSeries} numberOfLines={1}>
-                {poppedBook.series}
-                {poppedBook.series_index
-                  ? t("book.seriesTome", { index: poppedBook.series_index })
-                  : ""}
-              </Text>
-            ) : null}
-            <Text style={styles.pickupHint}>
-              {t("library.tapCoverToOpen")}
-            </Text>
-            {reorderMode && poppedBook.pile_id ? (
-              <View style={styles.pickupActions}>
-                <TouchableOpacity
-                  style={styles.pickupActionBtn}
-                  onPress={() => moveBookInPile(poppedBook, "up")}
-                >
-                  <Feather name="chevron-up" size={15} color="#FFFFFF" />
-                  <Text style={styles.pickupActionText}>{t("library.moveUp")}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.pickupActionBtn}
-                  onPress={() => moveBookInPile(poppedBook, "down")}
-                >
-                  <Feather name="chevron-down" size={15} color="#FFFFFF" />
-                  <Text style={styles.pickupActionText}>{t("library.moveDown")}</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-            <View style={styles.pickupActions}>
-              <TouchableOpacity
-                style={styles.pickupActionBtn}
-                onPress={() => setSelectedBook(poppedBook)}
-              >
-                <Feather name="more-horizontal" size={15} color="#FFFFFF" />
-                <Text style={styles.pickupActionText}>{t("library.options")}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.pickupActionBtn}
-                onPress={() => setPoppedBook(null)}
-              >
-                <Feather name="corner-down-left" size={15} color="#FFFFFF" />
-                <Text style={styles.pickupActionText}>{t("library.putBack")}</Text>
-              </TouchableOpacity>
-            </View>
-          </Animated.View>
-        </TouchableOpacity>
-      )}
 
       {showEditTutorial && (
         <TouchableOpacity
@@ -3723,6 +3690,248 @@ export default function LibraryScreen() {
         </TouchableOpacity>
       )}
 
+      {poppedBook && (
+        <TouchableOpacity
+          style={styles.pickupOverlay}
+          onPress={() => setPoppedBook(null)}
+          activeOpacity={1}
+        >
+          <Animated.View
+            entering={ZoomIn.duration(220)}
+            style={styles.pickupCard}
+          >
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => router.push(`/book/${poppedBook.book_id}`)}
+            >
+              <View style={styles.pickupCover}>
+                {poppedBook.cover_url ? (
+                  <Image
+                    source={{ uri: poppedBook.cover_url }}
+                    style={styles.bookCoverImg}
+                  />
+                ) : (
+                  <View style={styles.bookCoverFallback}>
+                    <Feather name="book" size={32} color={colors.purple} />
+                    <Text
+                      style={styles.bookCoverFallbackTitle}
+                      numberOfLines={3}
+                    >
+                      {poppedBook.title}
+                    </Text>
+                  </View>
+                )}
+                {poppedBook.rating ? (
+                  <View style={styles.ratingBadge}>
+                    <Text style={styles.ratingBadgeText}>
+                      {poppedBook.rating}★
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </TouchableOpacity>
+            <Text style={styles.pickupTitle} numberOfLines={2}>
+              {poppedBook.title}
+            </Text>
+            {poppedBook.author ? (
+              <Text style={styles.pickupAuthor} numberOfLines={1}>
+                {poppedBook.author}
+              </Text>
+            ) : null}
+            {poppedBook.series ? (
+              <Text style={styles.pickupSeries} numberOfLines={1}>
+                {poppedBook.series}
+                {poppedBook.series_index
+                  ? t("book.seriesTome", { index: poppedBook.series_index })
+                  : ""}
+              </Text>
+            ) : null}
+            <Text style={styles.pickupHint}>
+              {t("library.tapCoverToOpen")}
+            </Text>
+            {reorderMode && poppedBook.pile_id ? (
+              <View style={styles.pickupActions}>
+                <TouchableOpacity
+                  style={styles.pickupActionBtn}
+                  onPress={() => moveBookInPile(poppedBook, "up")}
+                >
+                  <Feather name="chevron-up" size={15} color="#FFFFFF" />
+                  <Text style={styles.pickupActionText}>{t("library.moveUp")}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.pickupActionBtn}
+                  onPress={() => moveBookInPile(poppedBook, "down")}
+                >
+                  <Feather name="chevron-down" size={15} color="#FFFFFF" />
+                  <Text style={styles.pickupActionText}>{t("library.moveDown")}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+            <View style={styles.pickupActions}>
+              <TouchableOpacity
+                style={styles.pickupActionBtn}
+                onPress={() => setSelectedBook(poppedBook)}
+              >
+                <Feather name="more-horizontal" size={15} color="#FFFFFF" />
+                <Text style={styles.pickupActionText}>{t("library.options")}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.pickupActionBtn}
+                onPress={() => setPoppedBook(null)}
+              >
+                <Feather name="corner-down-left" size={15} color="#FFFFFF" />
+                <Text style={styles.pickupActionText}>{t("library.putBack")}</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </TouchableOpacity>
+      )}
+
+      {spacingSelectedId &&
+        (() => {
+          const spacingBook = allBooks.find(
+            (b) => b.book_id === spacingSelectedId,
+          );
+          if (!spacingBook) return null;
+          return (
+            // No dark backdrop and a compact pill toolbar, not a full
+            // bottomSheet — this is a quick, frequent adjustment made while
+            // looking at the shelf, so it shouldn't dim the screen or hide
+            // the very books it's rearranging.
+            <TouchableOpacity
+              style={styles.spacingToolbarOverlay}
+              onPress={() => {
+                if (Date.now() - spacingOpenedAtRef.current < GHOST_CLICK_GUARD_MS) return;
+                setSpacingSelectedId(null);
+              }}
+              activeOpacity={1}
+            >
+              <TouchableOpacity
+                style={styles.spacingToolbar}
+                activeOpacity={1}
+              >
+                <Text style={styles.spacingToolbarTitle} numberOfLines={1}>
+                  {spacingBook.title}
+                </Text>
+                <View style={styles.spacingToolbarRow}>
+                  <TouchableOpacity
+                    style={styles.spacingToolbarBtn}
+                    accessibilityLabel={t("library.spinePhoto")}
+                    onPress={() => {
+                      setSpacingSelectedId(null);
+                      setSpinePhotoBook(spacingBook);
+                    }}
+                  >
+                    <Feather name="camera" size={14} color="#FFFFFF" />
+                  </TouchableOpacity>
+                  {!spacingBook.pile_id ? (
+                    <>
+                      <TouchableOpacity
+                        style={styles.spacingToolbarBtn}
+                        accessibilityLabel={t("library.moveLeft")}
+                        onPress={() => moveBookInShelf(spacingBook, "left")}
+                      >
+                        <Feather name="arrow-left" size={14} color="#FFFFFF" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.spacingToolbarBtn}
+                        accessibilityLabel={t("library.moveRight")}
+                        onPress={() => moveBookInShelf(spacingBook, "right")}
+                      >
+                        <Feather name="arrow-right" size={14} color="#FFFFFF" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.spacingToolbarBtn}
+                        accessibilityLabel={t("library.changeTilt")}
+                        onPress={() => cycleTilt(spacingBook)}
+                      >
+                        <Feather name="rotate-cw" size={14} color="#FFFFFF" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.spacingToolbarBtn}
+                        accessibilityLabel={t("library.flipFace")}
+                        onPress={() => toggleShelfFace(spacingBook)}
+                      >
+                        <Feather name="refresh-cw" size={14} color="#FFFFFF" />
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.spacingToolbarBtn}
+                      accessibilityLabel={t("library.unstack")}
+                      onPress={() => {
+                        doUnstack(spacingBook);
+                        setSpacingSelectedId(null);
+                      }}
+                    >
+                      <Feather name="x" size={14} color="#FFFFFF" />
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={[
+                      styles.spacingToolbarBtn,
+                      spacingBook.shelf_gap_before &&
+                        styles.spacingToolbarBtnActive,
+                    ]}
+                    accessibilityLabel={t("library.spacingLeft")}
+                    onPress={() => toggleShelfGap("before")}
+                  >
+                    <Feather
+                      name="chevron-left"
+                      size={14}
+                      color={spacingBook.shelf_gap_before ? colors.bg : "#FFFFFF"}
+                    />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.spacingToolbarBtn,
+                      spacingBook.shelf_gap_after &&
+                        styles.spacingToolbarBtnActive,
+                    ]}
+                    accessibilityLabel={t("library.spacingRight")}
+                    onPress={() => toggleShelfGap("after")}
+                  >
+                    <Feather
+                      name="chevron-right"
+                      size={14}
+                      color={spacingBook.shelf_gap_after ? colors.bg : "#FFFFFF"}
+                    />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.spacingToolbarBtn,
+                      spacingBook.shelf_break_before &&
+                        styles.spacingToolbarBtnActive,
+                    ]}
+                    accessibilityLabel={t("library.spacingNewLine")}
+                    onPress={toggleShelfBreak}
+                  >
+                    <Feather
+                      name="corner-down-left"
+                      size={14}
+                      color={spacingBook.shelf_break_before ? colors.bg : "#FFFFFF"}
+                    />
+                  </TouchableOpacity>
+                </View>
+                {(spacingBook.shelf_gap_before ||
+                  spacingBook.shelf_gap_after ||
+                  spacingBook.shelf_break_before) && (
+                  <Text style={styles.spacingToolbarActiveHint}>
+                    {[
+                      spacingBook.shelf_gap_before && t("library.spacingLeft"),
+                      spacingBook.shelf_gap_after && t("library.spacingRight"),
+                      spacingBook.shelf_break_before &&
+                        t("library.spacingNewLine"),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </TouchableOpacity>
+          );
+        })()}
+
       {selectedBook && (
         <TouchableOpacity
           style={styles.overlay}
@@ -3731,7 +3940,71 @@ export default function LibraryScreen() {
         >
           <TouchableOpacity style={styles.bottomSheet} activeOpacity={1}>
             <View style={styles.handle} />
-            <Text style={styles.sheetTitle}>{selectedBook.title}</Text>
+            <TouchableOpacity
+              style={styles.sheetBookHeader}
+              activeOpacity={0.75}
+              onPress={() => {
+                setSelectedBook(null);
+                router.push(`/book/${selectedBook.book_id}`);
+              }}
+            >
+              <View style={styles.sheetBookCover}>
+                {selectedBook.cover_url ? (
+                  <Image
+                    source={{ uri: selectedBook.cover_url }}
+                    style={styles.bookCoverImg}
+                  />
+                ) : (
+                  <View style={styles.bookCoverFallback}>
+                    <Feather name="book" size={16} color={colors.purple} />
+                  </View>
+                )}
+              </View>
+              <View style={styles.sheetBookInfo}>
+                <Text style={styles.sheetBookTitle} numberOfLines={2}>
+                  {selectedBook.title}
+                </Text>
+                {selectedBook.author ? (
+                  <Text style={styles.sheetBookAuthor} numberOfLines={1}>
+                    {selectedBook.author}
+                  </Text>
+                ) : null}
+                {selectedBook.series ? (
+                  <Text style={styles.sheetBookSeries} numberOfLines={1}>
+                    {selectedBook.series}
+                    {selectedBook.series_index
+                      ? t("book.seriesTome", { index: selectedBook.series_index })
+                      : ""}
+                  </Text>
+                ) : null}
+              </View>
+              <Feather name="chevron-right" size={16} color={colors.gray} />
+            </TouchableOpacity>
+            {selectedBook.pile_id ? (
+              <View
+                style={[
+                  styles.sheetRow,
+                  styles.sheetDivider,
+                  { justifyContent: "space-between" },
+                ]}
+              >
+                <TouchableOpacity
+                  style={styles.pileMoveBtn}
+                  onPress={() => moveBookInPile(selectedBook, "up")}
+                >
+                  <Feather name="chevron-up" size={15} color={colors.white} />
+                  <Text style={styles.sheetBtnText}>{t("library.moveUp")}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.pileMoveBtn}
+                  onPress={() => moveBookInPile(selectedBook, "down")}
+                >
+                  <Feather name="chevron-down" size={15} color={colors.white} />
+                  <Text style={styles.sheetBtnText}>{t("library.moveDown")}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+            <Text style={styles.sheetSectionLabel}>{t("library.moveTo")}</Text>
             {STATUS_OPTIONS.map((s, i) => (
               <TouchableOpacity
                 key={s.value}
@@ -3749,6 +4022,46 @@ export default function LibraryScreen() {
               <Feather name="trash-2" size={16} color={colors.error} />
               <Text style={styles.sheetBtnDangerText}>{t("library.removeFromList")}</Text>
             </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      )}
+
+      {spinePhotoBook && (
+        <TouchableOpacity
+          style={styles.overlay}
+          onPress={() => setSpinePhotoBook(null)}
+          activeOpacity={1}
+        >
+          <TouchableOpacity style={styles.bottomSheet} activeOpacity={1}>
+            <View style={styles.handle} />
+            <Text style={styles.sheetTitle}>{t("library.spinePhoto")}</Text>
+            <View style={styles.spineStencilWrap}>
+              <View style={styles.spineStencil}>
+                <Feather name="book" size={16} color={colors.gray} />
+              </View>
+              <Text style={styles.spineStencilHint}>
+                {t("library.spineStencilHint")}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.sheetRow,
+                profile?.role === "admin" && styles.sheetDivider,
+              ]}
+              onPress={() => pickSpinePhoto("camera")}
+            >
+              <Feather name="camera" size={16} color={colors.white} />
+              <Text style={styles.sheetBtnText}>{t("library.takePhoto")}</Text>
+            </TouchableOpacity>
+            {profile?.role === "admin" ? (
+              <TouchableOpacity
+                style={styles.sheetRow}
+                onPress={() => pickSpinePhoto("gallery")}
+              >
+                <Feather name="image" size={16} color={colors.white} />
+                <Text style={styles.sheetBtnText}>{t("library.fromGallery")}</Text>
+              </TouchableOpacity>
+            ) : null}
           </TouchableOpacity>
         </TouchableOpacity>
       )}
@@ -3791,59 +4104,6 @@ const makeStyles = (colors: ColorPalette) => {
       fontSize: 12,
       fontWeight: "700",
       color: colors.purple,
-    },
-    spacingBookActions: {
-      position: "absolute",
-      zIndex: 30,
-      bottom: SPINE_HEIGHT + 8,
-      left: SPINE_WIDTH / 2,
-      transform: [{ translateX: -37 }],
-      width: 74,
-      flexDirection: "column",
-      alignItems: "stretch",
-      gap: 4,
-      padding: 4,
-      borderRadius: 12,
-      backgroundColor: colors.card2,
-      borderWidth: 1,
-      borderColor: colors.purple,
-      ...shadows.card,
-    },
-    spacingBookActionBtn: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 2,
-      paddingHorizontal: 6,
-      paddingVertical: 4,
-      borderRadius: 999,
-      backgroundColor: colors.purple,
-    },
-    spacingBookActionBtnActive: { backgroundColor: colors.lavender },
-    spacingBookActionText: {
-      color: "#FFFFFF",
-      fontSize: 10,
-      fontWeight: "700",
-    },
-    // Nested inside stackWrap and anchored off *its* top, exactly mirroring
-    // spacingBookActions inside spineWrap — no scroll space reserved for it,
-    // so it can render clipped past the top on the shelf's first row
-    // (acceptable trade-off for keeping this simple, same as the spine).
-    stackSpacingBookActions: {
-      position: "absolute",
-      zIndex: 30,
-      bottom: STACK_BAR_HEIGHT + 88,
-      left: STACK_WIDTH / 2,
-      transform: [{ translateX: -37 }],
-      width: 74,
-      flexDirection: "column",
-      alignItems: "stretch",
-      gap: 4,
-      padding: 4,
-      borderRadius: 12,
-      backgroundColor: colors.card2,
-      borderWidth: 1,
-      borderColor: colors.purple,
-      ...shadows.card,
     },
     searchBar: {
       flexDirection: "row",
@@ -4118,6 +4378,24 @@ const makeStyles = (colors: ColorPalette) => {
       justifyContent: "center",
       zIndex: 1,
     },
+    spineFaceImg: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      width: SPINE_WIDTH,
+      height: SPINE_HEIGHT,
+    },
+    spinePhotoLoading: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      width: SPINE_WIDTH,
+      height: SPINE_HEIGHT,
+      backgroundColor: "rgba(0,0,0,0.35)",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 2,
+    },
     spineTextBox: {
       position: "absolute",
       width: SPINE_HEIGHT,
@@ -4143,9 +4421,7 @@ const makeStyles = (colors: ColorPalette) => {
     },
 
     // Lying-flat pile — a few books stacked on their side, seen edge-on.
-    // zIndex above the pile-drag grip's own wrapper (20) so the spacing
-    // popup nested at the end of this stack — see stackSpacingBookActions —
-    // isn't trapped under it by that wrapper's stacking context.
+    // zIndex above the pile-drag grip's own wrapper (20).
     stackWrap: { width: STACK_WIDTH, zIndex: 25 },
     // The whole-pile drag grip — deliberately *not* overlaid on top of the
     // pile anymore (it used to sit absolutely positioned over the front
@@ -4185,17 +4461,6 @@ const makeStyles = (colors: ColorPalette) => {
       backgroundColor: colors.purple,
     },
     rowGripText: { color: "#FFFFFF", fontSize: 11, fontWeight: "700" },
-    unstackBtn: {
-      position: "absolute",
-      top: 4,
-      right: 4,
-      width: 18,
-      height: 18,
-      borderRadius: 9,
-      backgroundColor: "rgba(0,0,0,0.55)",
-      alignItems: "center",
-      justifyContent: "center",
-    },
     stackBar: {
       width: STACK_WIDTH,
       height: STACK_BAR_HEIGHT,
@@ -4498,6 +4763,122 @@ const makeStyles = (colors: ColorPalette) => {
     },
     sheetDivider: { borderBottomWidth: 1, borderBottomColor: colors.divider },
     sheetBtnText: { color: colors.white, fontSize: 14, fontWeight: "500" },
+    sheetSectionLabel: {
+      fontSize: 11,
+      color: colors.gray,
+      textTransform: "uppercase",
+      letterSpacing: 0.4,
+      marginTop: 4,
+      marginBottom: 2,
+    },
+    // A scaled-up (not 1:1) preview of the spine tile's own aspect ratio —
+    // just a framing guide shown before the camera opens, since a live
+    // overlay on top of the actual camera view isn't something the system
+    // camera picker (ImagePicker) can render.
+    spineStencilWrap: { alignItems: "center", marginBottom: 16 },
+    spineStencil: {
+      width: SPINE_WIDTH + 8,
+      height: (SPINE_WIDTH + 8) * (SPINE_HEIGHT / SPINE_WIDTH),
+      borderWidth: 2,
+      borderColor: colors.divider,
+      borderStyle: "dashed",
+      borderRadius: 4,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 8,
+    },
+    spineStencilHint: {
+      fontSize: 12,
+      color: colors.gray,
+      textAlign: "center",
+      maxWidth: 220,
+    },
+    // Replaces the old floating "pickup card" — tapping a book on the shelf
+    // now opens this sheet directly, with the cover/title header itself
+    // doubling as the "open the full book page" action.
+    sheetBookHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingBottom: 14,
+      marginBottom: 6,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.divider,
+    },
+    sheetBookCover: {
+      width: 44,
+      height: 62,
+      borderRadius: 5,
+      overflow: "hidden",
+      backgroundColor: colors.card2,
+    },
+    sheetBookInfo: { flex: 1, gap: 2 },
+    sheetBookTitle: {
+      fontSize: 15,
+      fontFamily: fonts.headingBold,
+      color: colors.white,
+    },
+    sheetBookAuthor: { fontSize: 12, color: colors.gray },
+    sheetBookSeries: { fontSize: 11, color: colors.purple, fontWeight: "600" },
+    pileMoveBtn: { flexDirection: "row", alignItems: "center", gap: 6 },
+    // The edit-mode per-book toolbar (reposition/spacing/photo) — no dark
+    // backdrop (this View has no backgroundColor, so it's just an invisible
+    // tap-catcher) and a small pill, not a full sheet, so the shelf
+    // underneath stays visible while adjusting a book.
+    spacingToolbarOverlay: {
+      position: "absolute",
+      inset: 0,
+      justifyContent: "flex-end",
+      alignItems: "center",
+    },
+    spacingToolbar: {
+      backgroundColor: colors.card2,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.purple,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      marginBottom: 24,
+      maxWidth: 280,
+      ...shadows.card,
+    },
+    spacingToolbarTitle: {
+      fontSize: 11,
+      color: colors.gray,
+      textAlign: "center",
+      marginBottom: 6,
+    },
+    spacingToolbarRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      flexWrap: "wrap",
+      justifyContent: "center",
+    },
+    spacingToolbarBtn: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      backgroundColor: colors.purple,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 2,
+      borderColor: "transparent",
+    },
+    // Strongly distinct from the default purple pill — a gap/line-break is
+    // an easy-to-forget state to leave on, so this needs to read at a
+    // glance, not just a slightly-lighter shade of the same color.
+    spacingToolbarBtnActive: {
+      backgroundColor: colors.teal,
+      borderColor: "#FFFFFF",
+    },
+    spacingToolbarActiveHint: {
+      fontSize: 10,
+      color: colors.teal,
+      textAlign: "center",
+      marginTop: 6,
+      fontWeight: "700",
+    },
     tutorialRow: {
       flexDirection: "row",
       alignItems: "flex-start",

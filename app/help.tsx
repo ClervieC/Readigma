@@ -16,7 +16,7 @@ export default function HelpScreen() {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   return (
-    <Screen back title={t('help.title')}>
+    <Screen back title={t('help.title')} atmosphere="purple">
       <View style={styles.hero}>
         <Feather name="help-circle" size={28} color={colors.purple} />
         <Text style={styles.heroTitle}>{t('help.heroTitle')}</Text>

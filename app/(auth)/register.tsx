@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Alert
+  StyleSheet, KeyboardAvoidingView, Platform, ScrollView
 } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { fonts, ColorPalette } from '../../theme';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
+import { alert } from '../../lib/alert';
 import Button from '../../components/Button';
+import AtmosphericBackground from '../../components/AtmosphericBackground';
 
 export default function RegisterScreen() {
   const { colors } = useTheme();
@@ -20,7 +22,7 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
 
   const register = async () => {
-    if (!username || !email || !password) { Alert.alert('Erreur', 'Tous les champs sont requis'); return; }
+    if (!username || !email || !password) { alert('Erreur', 'Tous les champs sont requis'); return; }
     setLoading(true);
     try {
       const { needsEmailConfirmation } = await signUp(email, password, username);
@@ -28,7 +30,7 @@ export default function RegisterScreen() {
         router.push({ pathname: '/(auth)/confirm-email', params: { email } });
       }
     } catch (err: any) {
-      Alert.alert('Erreur', err.message || 'Erreur inscription');
+      alert('Erreur', err.message || 'Erreur inscription');
     } finally {
       setLoading(false);
     }
@@ -36,6 +38,7 @@ export default function RegisterScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <AtmosphericBackground tint="purple" />
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.top}>
           <Text style={styles.logo}>Readigma</Text>

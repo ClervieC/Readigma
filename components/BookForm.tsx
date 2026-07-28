@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, ActivityIndicator, ScrollView, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, ActivityIndicator, ScrollView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import * as books from '../lib/books';
+import { alert } from '../lib/alert';
 
 export type BookFormFields = {
   title: string;
@@ -55,7 +56,7 @@ export default function BookForm({ value, onChange, requireAuthor }: { value: Bo
     books.findCoverByIsbn(value.isbn.trim()).then(url => {
       setSearchingIsbnCover(false);
       if (url) set({ cover_url: url });
-      else Alert.alert(t('bookForm.notFound'), t('bookForm.noCoverFoundForIsbn'));
+      else alert(t('bookForm.notFound'), t('bookForm.noCoverFoundForIsbn'));
     }).catch(() => setSearchingIsbnCover(false));
   };
 

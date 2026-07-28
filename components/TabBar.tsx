@@ -12,7 +12,7 @@ const TABS: { name: string; labelKey: string; icon: keyof typeof Feather.glyphMa
   { name: 'index', labelKey: 'tabs.discover', icon: 'compass' },
   { name: 'feed', labelKey: 'tabs.feed', icon: 'activity' },
   { name: 'library', labelKey: 'tabs.library', icon: 'book-open' },
-  { name: 'search', labelKey: 'tabs.search', icon: 'search' },
+  { name: 'shared-readings', labelKey: 'tabs.sharedReadings', icon: 'users' },
   { name: 'profile', labelKey: 'tabs.profile', icon: 'user' },
 ];
 
@@ -86,6 +86,6 @@ const makeStyles = (colors: ColorPalette) =>
     },
     item: { flex: 1, alignItems: 'center', gap: 4 },
     iconPill: { paddingHorizontal: 18, paddingVertical: 5, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-    label: { fontSize: 10, fontFamily: fonts.body, letterSpacing: 0.2 },
+    label: { fontSize: 10, fontFamily: fonts.body, letterSpacing: 0.2, textAlign: 'center' },
     labelActive: { fontWeight: '600' },
   });

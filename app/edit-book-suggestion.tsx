@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Image, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -7,6 +7,7 @@ import { ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import * as bookEdits from '../lib/bookEdits';
 import * as books from '../lib/books';
+import { alert } from '../lib/alert';
 import Screen from '../components/Screen';
 import Button from '../components/Button';
 
@@ -36,23 +37,23 @@ export default function EditBookSuggestionScreen() {
     books.findCoverByIsbn(fields.isbn.trim()).then((url) => {
       setSearchingIsbnCover(false);
       if (url) set({ cover_url: url });
-      else Alert.alert(t('bookForm.notFound'), t('bookForm.noCoverFoundForIsbn'));
+      else alert(t('bookForm.notFound'), t('bookForm.noCoverFoundForIsbn'));
     }).catch(() => setSearchingIsbnCover(false));
   };
 
   const submit = () => {
     if (!bookId) return;
     const hasAny = Object.values(fields).some((v) => v.trim());
-    if (!hasAny) { Alert.alert(t('editBookSuggestion.empty'), t('editBookSuggestion.emptyMessage')); return; }
+    if (!hasAny) { alert(t('editBookSuggestion.empty'), t('editBookSuggestion.emptyMessage')); return; }
     setSending(true);
     bookEdits.submitBookEdit(bookId, fields).then(() => {
       setSending(false);
-      Alert.alert(t('editBookSuggestion.thanks'), t('editBookSuggestion.thanksMessage'), [{ text: t('common.ok'), onPress: () => router.back() }]);
-    }).catch(() => { setSending(false); Alert.alert(t('common.error'), t('editBookSuggestion.errors.sendFailed')); });
+      alert(t('editBookSuggestion.thanks'), t('editBookSuggestion.thanksMessage'), [{ text: t('common.ok'), onPress: () => router.back() }]);
+    }).catch(() => { setSending(false); alert(t('common.error'), t('editBookSuggestion.errors.sendFailed')); });
   };
 
   return (
-    <Screen back title={t('book.editSuggestion')}>
+    <Screen back title={t('book.editSuggestion')} atmosphere="teal">
       {title ? <Text style={styles.target}>{title}</Text> : null}
       <Text style={styles.hint}>{t('editBookSuggestion.hint')}</Text>
 

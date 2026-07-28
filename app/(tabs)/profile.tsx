@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { radius, fonts, ColorPalette } from '../../theme';
 import { useAuth } from '../../context/AuthContext';
 import * as userBooks from '../../lib/userBooks';
@@ -12,6 +13,8 @@ import * as timer from '../../lib/timer';
 import { formatDuration } from '../../lib/timer';
 import Row from '../../components/Row';
 import NotificationBell from '../../components/NotificationBell';
+import SearchButton from '../../components/SearchButton';
+import AtmosphericBackground from '../../components/AtmosphericBackground';
 import { onScrollToTop } from '../../lib/tabScrollEmitter';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -59,9 +62,11 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <AtmosphericBackground tint="lavender" />
       <View style={styles.header}>
         <Text style={styles.title}>{t('profile.title')}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 18 }}>
+          <SearchButton />
           <NotificationBell />
           <TouchableOpacity onPress={() => router.push('/settings')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Feather name="settings" size={19} color={colors.gray} />
@@ -70,7 +75,7 @@ export default function ProfileScreen() {
       </View>
 
       <ScrollView ref={scrollRef} style={styles.scroll} showsVerticalScrollIndicator={false}>
-        <View style={styles.hero}>
+        <Animated.View entering={FadeIn.duration(280)} style={styles.hero}>
           <TouchableOpacity onPress={() => router.push('/edit-profile')}>
             {profile?.avatar_url ? (
               <Image source={{ uri: profile.avatar_url }} style={styles.avatarImg} />
@@ -102,7 +107,7 @@ export default function ProfileScreen() {
               <Text style={styles.followRowLabel}>{t('profile.followers')}</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </Animated.View>
 
         <View style={styles.statsGrid}>
           {[
@@ -111,10 +116,10 @@ export default function ProfileScreen() {
             { num: getAvgRating(), label: t('profile.statsAvg') },
             { num: counts.reading, label: t('profile.statsReading') },
           ].map((s, i) => (
-            <View key={i} style={styles.statBox}>
+            <Animated.View key={i} entering={FadeInDown.duration(280).delay(80 + i * 50)} style={styles.statBox}>
               <Text style={styles.statNum}>{s.num}</Text>
               <Text style={styles.statLabel}>{s.label}</Text>
-            </View>
+            </Animated.View>
           ))}
         </View>
 

@@ -20,6 +20,8 @@ export type UserBook = {
   shelf_gap_before: boolean | null;
   shelf_gap_after: boolean | null;
   owned: boolean;
+  spine_photo_url: string | null;
+  shelf_face: 'spine' | 'cover';
   created_at: string;
   title: string;
   author: string;
@@ -142,6 +144,53 @@ export async function setShelfGap(
     .eq('user_id', userId)
     .eq('book_id', bookId);
   if (error) throw new Error(error.message);
+}
+
+// Flips which face the shelf shows for this book — the physical spine photo
+// (if one's been taken) or the regular front-cover art. See the toggle
+// button on app/(tabs)/library.tsx's spine.
+export async function setShelfFace(bookId: string, face: 'spine' | 'cover') {
+  const userId = await requireUserId();
+  const { error } = await supabase
+    .from('user_books')
+    .update({ shelf_face: face })
+    .eq('user_id', userId)
+    .eq('book_id', bookId);
+  if (error) throw new Error(error.message);
+}
+
+// Uploads a photo of the reader's own physical copy's spine to the public
+// "book-spines" Storage bucket (see db/migrations/051_book_spine_photos.sql)
+// under "<user_id>/<book_id>-<timestamp>.jpg" — timestamped so a re-take
+// doesn't fight the CDN cache of the previous photo's now-reused URL — then
+// stamps the resulting public URL onto this user_books row. Unlike
+// profiles.avatar_url, this can't just be a base64 data URI: camera photos
+// are full-resolution and would bloat the row. Every spine renders at the
+// same fixed size regardless of this photo (see app/(tabs)/library.tsx's
+// spinePhotoBook sheet, which guides the shot to the right shape up front).
+export async function uploadSpinePhoto(bookId: string, base64Jpeg: string): Promise<string> {
+  const userId = await requireUserId();
+  const path = `${userId}/${bookId}-${Date.now()}.jpg`;
+  const bytes = decodeBase64(base64Jpeg);
+  const { error: uploadError } = await supabase.storage
+    .from('book-spines')
+    .upload(path, bytes, { contentType: 'image/jpeg', upsert: true });
+  if (uploadError) throw new Error(uploadError.message);
+  const { data } = supabase.storage.from('book-spines').getPublicUrl(path);
+  const { error } = await supabase
+    .from('user_books')
+    .update({ spine_photo_url: data.publicUrl, shelf_face: 'spine' })
+    .eq('user_id', userId)
+    .eq('book_id', bookId);
+  if (error) throw new Error(error.message);
+  return data.publicUrl;
+}
+
+function decodeBase64(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
 }
 
 export async function addBook(bookId: string, status = 'to_read') {
@@ -368,7 +417,7 @@ export async function getBookRatingStats(bookId: string): Promise<{ avg_rating: 
 }
 
 export async function getBookReviews(bookId: string): Promise<{
-  username: string; avatar_url: string | null; rating: number | null; comment: string | null; finished_at: string | null;
+  review_id: string; username: string; avatar_url: string | null; rating: number | null; comment: string | null; finished_at: string | null;
 }[]> {
   const { data, error } = await supabase.rpc('book_reviews', { p_book_id: bookId });
   if (error) throw new Error(error.message);

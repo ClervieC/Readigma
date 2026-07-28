@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -8,6 +8,7 @@ import { fonts, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { alert } from '../lib/alert';
 import Screen from '../components/Screen';
 
 export default function EditProfileScreen() {
@@ -31,14 +32,14 @@ export default function EditProfileScreen() {
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') { Alert.alert(t('library.permissionDenied'), t('editProfile.errors.galleryAccessNeeded')); return; }
+    if (status !== 'granted') { alert(t('library.permissionDenied'), t('editProfile.errors.galleryAccessNeeded')); return; }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.5, base64: true });
     if (!result.canceled && result.assets[0].base64) setAvatarUri(`data:image/jpeg;base64,${result.assets[0].base64}`);
   };
 
   const save = async () => {
-    if (password && password !== confirmPassword) { Alert.alert(t('common.error'), t('editProfile.errors.passwordsDontMatch')); return; }
-    if (password && password.length < 6) { Alert.alert(t('common.error'), t('editProfile.errors.passwordTooShort')); return; }
+    if (password && password !== confirmPassword) { alert(t('common.error'), t('editProfile.errors.passwordsDontMatch')); return; }
+    if (password && password.length < 6) { alert(t('common.error'), t('editProfile.errors.passwordTooShort')); return; }
     if (!session) return;
     setLoading(true);
     try {
@@ -56,9 +57,9 @@ export default function EditProfileScreen() {
         if (error) throw new Error(error.message);
       }
       await refreshProfile();
-      Alert.alert(t('editProfile.done'), t('editProfile.profileUpdated'), [{ text: t('common.ok'), onPress: () => router.back() }]);
+      alert(t('editProfile.done'), t('editProfile.profileUpdated'), [{ text: t('common.ok'), onPress: () => router.back() }]);
     } catch (err: any) {
-      Alert.alert(t('common.error'), err.message || t('editProfile.errors.updateFailed'));
+      alert(t('common.error'), err.message || t('editProfile.errors.updateFailed'));
     } finally {
       setLoading(false);
     }
@@ -69,6 +70,7 @@ export default function EditProfileScreen() {
       title={t('editProfile.title')}
       left={<TouchableOpacity onPress={() => router.back()}><Text style={styles.cancel}>{t('common.cancel')}</Text></TouchableOpacity>}
       right={<TouchableOpacity onPress={save} disabled={loading}><Text style={[styles.save, loading && { opacity: 0.5 }]}>{loading ? '...' : t('editProfile.save')}</Text></TouchableOpacity>}
+      atmosphere="lavender"
     >
       <TouchableOpacity style={styles.avatarWrap} onPress={pickImage}>
         {avatarUri ? (

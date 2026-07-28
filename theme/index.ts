@@ -9,11 +9,14 @@ export const darkColors = {
   purple: '#8C5A98',
   purpleGlow: 'rgba(140,90,152,0.24)',
   lavender: '#DBB2E4',
+  lavenderGlow: 'rgba(219,178,228,0.24)',
   pink: '#DD93A3',
+  pinkGlow: 'rgba(221,147,163,0.24)',
   // cyan and teal used to be the exact same hex — any UI cycling through
   // the two (spine colors, category tags) silently collapsed to one color.
   cyan: '#82C2B8',
   teal: '#E8BE6C',
+  tealGlow: 'rgba(232,190,108,0.24)',
   white: '#FBF7EF',
   muted: '#B0A692',
   gray: '#C4BAA4',
@@ -31,9 +34,12 @@ export const lightColors = {
   purple: '#5B3A63',
   purpleGlow: 'rgba(91,58,99,0.08)',
   lavender: '#7A4F84',
+  lavenderGlow: 'rgba(122,79,132,0.08)',
   pink: '#B5677A',
+  pinkGlow: 'rgba(181,103,122,0.08)',
   cyan: '#4F8B83',
   teal: '#B98A3F',
+  tealGlow: 'rgba(185,138,63,0.08)',
   white: '#1E1B15',
   muted: '#6B6459',
   gray: '#948C7C',
@@ -56,7 +62,15 @@ export const fonts = {
   // Bold family below rather than `fontWeight: '700'` on the SemiBold one.
   heading: 'Fraunces_600SemiBold',
   headingBold: 'Fraunces_700Bold',
-  body: 'System',
+  // Karla pairs with Fraunces' warm, slightly quirky serif without
+  // competing with it — applied app-wide as the default Text font in
+  // RootLayout, so most screens never need to reference this directly.
+  // Use bodyMedium/bodySemiBold/bodyBold wherever a heavier weight is
+  // needed — plain fontWeight no longer does anything over a custom font.
+  body: 'Karla_400Regular',
+  bodyMedium: 'Karla_500Medium',
+  bodySemiBold: 'Karla_600SemiBold',
+  bodyBold: 'Karla_700Bold',
 };
 
 export const radius = {

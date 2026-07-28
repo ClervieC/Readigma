@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet,
-  TouchableOpacity, TextInput, Alert, ScrollView
+  TouchableOpacity, TextInput, ScrollView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AtmosphericBackground from '../components/AtmosphericBackground';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { radius, fonts, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import * as goals from '../lib/goals';
+import { alert } from '../lib/alert';
 import Pill from '../components/Pill';
 import Button from '../components/Button';
 import ProgressBar from '../components/ProgressBar';
@@ -41,12 +43,12 @@ export default function GoalScreen() {
 
   const saveGoal = () => {
     const targetNum = parseInt(target);
-    if (isNaN(targetNum) || targetNum <= 0) { Alert.alert(t('common.error'), t('goal.errors.invalidNumber')); return; }
+    if (isNaN(targetNum) || targetNum <= 0) { alert(t('common.error'), t('goal.errors.invalidNumber')); return; }
     setLoading(true);
     goals.setGoal(targetNum).then(() => {
       setLoading(false); loadGoal();
-      Alert.alert('🎯', t('goal.goalSetToast', { count: targetNum, year }));
-    }).catch(() => { setLoading(false); Alert.alert(t('common.error'), t('goal.errors.saveFailed')); });
+      alert('🎯', t('goal.goalSetToast', { count: targetNum, year }));
+    }).catch(() => { setLoading(false); alert(t('common.error'), t('goal.errors.saveFailed')); });
   };
 
   const progress = goal ? Math.min((booksRead / goal.target_books) * 100, 100) : 0;
@@ -57,6 +59,7 @@ export default function GoalScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <AtmosphericBackground tint="lavender" />
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}><Feather name="arrow-left" size={20} color={colors.white} /></TouchableOpacity>
         <Text style={styles.headerTitle}>{t('goal.title', { year })}</Text>

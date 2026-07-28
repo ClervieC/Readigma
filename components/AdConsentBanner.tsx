@@ -1,4 +1,5 @@
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { fonts, shadows, ColorPalette } from '../theme';
@@ -15,12 +16,20 @@ export default function AdConsentBanner() {
   const { colors } = useTheme();
   const { consent, setConsent } = useAdConsent();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const styles = makeStyles(colors);
 
   if (Platform.OS !== 'web' || consent !== 'unknown') return null;
 
   return (
-    <View style={styles.banner}>
+    // Sits above the tab bar (TimerBubble.tsx's own 92px approximation,
+    // plus a small buffer) rather than at bottom: 0 — otherwise this
+    // absolutely-positioned banner stacks on top of it and blocks every tab
+    // from being tapped until the user answers the prompt. The exact 92px
+    // figure landed flush against the tab bar with zero gap, which was
+    // still enough for hit-testing to occasionally resolve to this banner
+    // instead of the tab underneath it.
+    <View style={[styles.banner, { bottom: 92 + 12 + insets.bottom }]}>
       <Text style={styles.text}>{t('ads.consentText')}</Text>
       <View style={styles.actions}>
         <TouchableOpacity onPress={() => router.push('/privacy')} hitSlop={6}>
@@ -44,7 +53,6 @@ const makeStyles = (colors: ColorPalette) =>
       position: 'absolute',
       left: 0,
       right: 0,
-      bottom: 0,
       backgroundColor: colors.card,
       borderTopWidth: 1,
       borderTopColor: colors.divider,

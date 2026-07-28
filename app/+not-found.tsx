@@ -4,6 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { fonts, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import Button from '../components/Button';
+import AtmosphericBackground from '../components/AtmosphericBackground';
 
 // Expo Router's special filename for any route that doesn't match — replaces
 // its generic black "Unmatched Route" screen with one that fits the app and
@@ -18,6 +19,7 @@ export default function NotFoundScreen() {
 
   return (
     <View style={styles.container}>
+      <AtmosphericBackground tint="purple" />
       <Feather name="compass" size={40} color={colors.purple} />
       <Text style={styles.title}>Page introuvable</Text>
       <Text style={styles.subtitle}>Cette page n'existe pas ou plus.</Text>

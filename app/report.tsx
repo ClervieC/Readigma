@@ -1,24 +1,32 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import * as reports from '../lib/reports';
+import { alert } from '../lib/alert';
 import Screen from '../components/Screen';
 import Button from '../components/Button';
 
 const BOOK_REASONS = ['Informations incorrectes', 'Contenu inapproprié', 'Doublon', 'Autre'];
 const USER_REASONS = ['Comportement abusif', 'Faux compte', 'Spam', 'Autre'];
+// Shared by shared-reading messages and book reviews — both are free-text
+// user content with the same realistic set of things worth flagging
+// (a review can contain a spoiler just as easily as a message can).
+const CONTENT_REASONS = ['Spoiler', 'Contenu inapproprié', 'Harcèlement', 'Spam', 'Autre'];
 
-// Generic report form for either a book or a user — reached from the "..."
-// menu on app/book/[id].tsx and app/friends/[id].tsx, which pass targetType/
-// targetId/label as params.
+// Generic report form for a book, a user, a shared-reading message, or a
+// book review — reached from the "..." menu on app/book/[id].tsx and
+// app/friends/[id].tsx, which pass targetType/targetId/label as params.
 export default function ReportScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const styles = makeStyles(colors);
-  const { targetType, targetId, label } = useLocalSearchParams<{ targetType: 'book' | 'user'; targetId: string; label?: string }>();
-  const reasons = targetType === 'user' ? USER_REASONS : BOOK_REASONS;
+  const { targetType, targetId, label } = useLocalSearchParams<{ targetType: 'book' | 'user' | 'shared_reading_message' | 'book_review'; targetId: string; label?: string }>();
+  const reasons =
+    targetType === 'user' ? USER_REASONS
+    : targetType === 'shared_reading_message' || targetType === 'book_review' ? CONTENT_REASONS
+    : BOOK_REASONS;
   const [reason, setReason] = useState(reasons[0]);
   const [details, setDetails] = useState('');
   const [sending, setSending] = useState(false);
@@ -28,12 +36,17 @@ export default function ReportScreen() {
     setSending(true);
     reports.submitReport(targetType, targetId, reason, details).then(() => {
       setSending(false);
-      Alert.alert('Merci', 'Ton signalement a été envoyé à l\'équipe.', [{ text: 'OK', onPress: () => router.back() }]);
-    }).catch(() => { setSending(false); Alert.alert('Erreur', "Impossible d'envoyer le signalement"); });
+      alert('Merci', 'Ton signalement a été envoyé à l\'équipe.', [{ text: 'OK', onPress: () => router.back() }]);
+    }).catch(() => { setSending(false); alert('Erreur', "Impossible d'envoyer le signalement"); });
   };
 
   return (
-    <Screen back title={targetType === 'user' ? 'Signaler ce profil' : 'Signaler ce livre'}>
+    <Screen back title={
+      targetType === 'user' ? 'Signaler ce profil'
+      : targetType === 'shared_reading_message' ? 'Signaler ce message'
+      : targetType === 'book_review' ? 'Signaler cet avis'
+      : 'Signaler ce livre'
+    } atmosphere="pink">
       {label ? <Text style={styles.target}>{label}</Text> : null}
 
       <Text style={styles.label}>Motif</Text>

@@ -9,6 +9,12 @@ type PillProps = {
   active?: boolean;
   onPress?: () => void;
   tone?: 'accent' | 'gilt';
+  // Opt-in, not derived from `label` automatically — several existing
+  // screens already hand out their own accessibilityLabel to other elements
+  // using the same words a Pill's label might contain (e.g. library.tsx's
+  // room-view zones vs. its own status-tab Pills), and defaulting every
+  // Pill to one made those ambiguous under getByLabel's substring matching.
+  accessibilityLabel?: string;
 };
 
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
@@ -16,7 +22,7 @@ const AnimatedView = Animated.createAnimatedComponent(View);
 
 // Thin outlined tag — used for genre/format chips and the Discover filter
 // row. Filled only when active, otherwise just a hairline outline.
-export default function Pill({ label, active, onPress, tone = 'accent' }: PillProps) {
+export default function Pill({ label, active, onPress, tone = 'accent', accessibilityLabel }: PillProps) {
   const { colors } = useTheme();
   const styles = makeStyles(colors);
   const Wrapper: any = onPress ? AnimatedTouchable : AnimatedView;
@@ -36,7 +42,12 @@ export default function Pill({ label, active, onPress, tone = 'accent' }: PillPr
   }));
 
   return (
-    <Wrapper style={[styles.pill, animatedStyle]} onPress={onPress} activeOpacity={onPress ? 0.7 : undefined}>
+    <Wrapper
+      style={[styles.pill, animatedStyle]}
+      onPress={onPress}
+      activeOpacity={onPress ? 0.7 : undefined}
+      accessibilityLabel={accessibilityLabel}
+    >
       <Text style={[styles.text, { color: active ? 'white' : tone === 'gilt' ? toneColor : colors.gray }]}>{label}</Text>
     </Wrapper>
   );

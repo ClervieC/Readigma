@@ -11,6 +11,7 @@ import { fonts, radius, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import Button from '../components/Button';
+import AtmosphericBackground from '../components/AtmosphericBackground';
 
 const { width } = Dimensions.get('window');
 
@@ -52,6 +53,7 @@ export default function OnboardingScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <AtmosphericBackground tint="purple" />
       <View style={styles.skipRow}>
         {!isLast && (
           <TouchableOpacity onPress={onDone}>

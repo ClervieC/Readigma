@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Alert
+  StyleSheet, KeyboardAvoidingView, Platform, ScrollView
 } from 'react-native';
 import { Link } from 'expo-router';
 import { fonts, ColorPalette } from '../../theme';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
+import { alert } from '../../lib/alert';
 import Button from '../../components/Button';
+import AtmosphericBackground from '../../components/AtmosphericBackground';
 
 export default function LoginScreen() {
   const { colors } = useTheme();
@@ -18,12 +20,12 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
   const login = async () => {
-    if (!email || !password) { Alert.alert('Erreur', 'Tous les champs sont requis'); return; }
+    if (!email || !password) { alert('Erreur', 'Tous les champs sont requis'); return; }
     setLoading(true);
     try {
       await signIn(email, password);
     } catch (err: any) {
-      Alert.alert('Erreur', err.message || 'Erreur de connexion');
+      alert('Erreur', err.message || 'Erreur de connexion');
     } finally {
       setLoading(false);
     }
@@ -31,6 +33,7 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <AtmosphericBackground tint="purple" />
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.top}>
           <Text style={styles.logo}>Readigma</Text>

@@ -1,6 +1,7 @@
 import { XMLParser } from 'fast-xml-parser';
 import { supabase } from './supabase';
 import { API_BASE } from './apiUrl';
+import { searchHardcover, searchHardcoverByGenre, getHardcoverTrending } from './hardcover';
 
 // Open Library's API needs no key and sends `Access-Control-Allow-Origin: *`,
 // so — unlike a provider with a secret key — this can be called straight
@@ -347,6 +348,14 @@ export async function findCoverByIsbn(isbn: string): Promise<string | null> {
 }
 
 export async function search(q: string): Promise<NormalizedBook[]> {
+  // Hardcover first — richer, better-curated data (real genres split from
+  // mood/tone tags, ratings, series) than Open Library/Google Books tend to
+  // have. Only falls through to the old multi-source merge when it's
+  // unavailable (no token) or genuinely returns nothing, not merged
+  // alongside it — this is meant to replace that path, not supplement it.
+  const hc = await searchHardcover(q);
+  if (hc.length > 0) return hc;
+
   const [olResults, bnfResults, gbResults] = await Promise.allSettled([searchByQuery(q), searchBnf(q), searchGoogleBooks(q)]);
   const ol = olResults.status === 'fulfilled' ? olResults.value : [];
   const bnf = bnfResults.status === 'fulfilled' ? bnfResults.value : [];
@@ -360,13 +369,22 @@ export async function search(q: string): Promise<NormalizedBook[]> {
 
 // labelKey resolves against lib/locales/{fr,en}.json's "search.trending.*" —
 // getTrending() itself has no useTranslation() (it's a plain data-fetching
-// function, not a component), so the caller (app/(tabs)/search.tsx) is what
+// function, not a component), so the caller (app/search.tsx) is what
 // actually calls t() on these.
 const TRENDING_SUBJECTS = [
   { labelKey: 'search.trending.fantasy', subject: 'fantasy' },
   { labelKey: 'search.trending.thriller', subject: 'thriller' },
   { labelKey: 'search.trending.romance', subject: 'romance' },
   { labelKey: 'search.trending.scifi', subject: 'science_fiction' },
+];
+
+// Hardcover-backed replacement for the OL-subject sections above — kept as
+// a genuine fallback (see getTrending), not deleted, since it's the only
+// path that works with no Hardcover token configured.
+const HARDCOVER_TRENDING_SECTIONS: { labelKey: string; duration: import('./hardcover').HardcoverTrendingDuration }[] = [
+  { labelKey: 'search.trending.week', duration: 'week' },
+  { labelKey: 'search.trending.month', duration: 'month' },
+  { labelKey: 'search.trending.year', duration: 'one_year' },
 ];
 
 // Open Library's `published_in=YYYY-YYYY` filter on this endpoint doesn't
@@ -417,19 +435,32 @@ async function fetchFrenchBooks(): Promise<NormalizedBook[]> {
 }
 
 export async function getTrending(): Promise<{ labelKey: string; books: NormalizedBook[] }[]> {
-  const results = await Promise.allSettled([
-    ...TRENDING_SUBJECTS.map((c) => fetchSubject(c.subject)),
-    fetchFrenchBooks(),
+  const [hcSettled, frenchBooks] = await Promise.all([
+    Promise.allSettled(HARDCOVER_TRENDING_SECTIONS.map((s) => getHardcoverTrending(s.duration))),
+    fetchFrenchBooks().catch(() => []),
   ]);
-  const labelKeys = [...TRENDING_SUBJECTS.map((c) => c.labelKey), 'search.trending.frenchAuthors'];
-  return labelKeys.map((labelKey, i) => ({
-    labelKey,
-    books: results[i].status === 'fulfilled' ? (results[i] as PromiseFulfilledResult<NormalizedBook[]>).value : [],
+  const hcSections = HARDCOVER_TRENDING_SECTIONS.map((s, i) => ({
+    labelKey: s.labelKey,
+    books: hcSettled[i].status === 'fulfilled' ? (hcSettled[i] as PromiseFulfilledResult<NormalizedBook[]>).value : [],
   }));
+
+  // Hardcover unavailable (no token, or every duration came back empty) —
+  // fall back to the old Open-Library-subject sections rather than showing
+  // nothing.
+  if (hcSections.every((s) => s.books.length === 0)) {
+    const olResults = await Promise.allSettled(TRENDING_SUBJECTS.map((c) => fetchSubject(c.subject)));
+    const olSections = TRENDING_SUBJECTS.map((c, i) => ({
+      labelKey: c.labelKey,
+      books: olResults[i].status === 'fulfilled' ? (olResults[i] as PromiseFulfilledResult<NormalizedBook[]>).value : [],
+    }));
+    return [...olSections, { labelKey: 'search.trending.frenchAuthors', books: frenchBooks }];
+  }
+
+  return [...hcSections, { labelKey: 'search.trending.frenchAuthors', books: frenchBooks }];
 }
 
 // Search/subject results don't include a description — fetched on demand
-// when a book's detail sheet is opened (see app/(tabs)/search.tsx).
+// when a book's detail sheet is opened (see app/search.tsx).
 export async function getWorkDescription(externalId: string): Promise<string | null> {
   if (!isOpenLibraryId(externalId)) return null;
   try {
@@ -518,6 +549,12 @@ export async function getRecommendations(
   const topGenres = [...genreScores.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([g]) => g);
   if (topGenres.length === 0) return [];
 
+  // Hardcover first (see search()'s identical reasoning); only falls back
+  // to the Open Library subject-search approach below if it's unavailable.
+  const hcResults = await Promise.allSettled(topGenres.map((g) => searchHardcoverByGenre(g)));
+  const hcMerged = mergeExcludingSeen(hcResults, excludeExternalIds);
+  if (hcMerged.length > 0) return hcMerged.slice(0, 12);
+
   const cutoffYear = new Date().getFullYear() - RECENT_YEARS_WINDOW;
   const results = await Promise.allSettled(topGenres.map((g) => searchByQuery(g, { sort: 'new' })));
   const seen = new Set<string>();
@@ -534,6 +571,26 @@ export async function getRecommendations(
   return merged.slice(0, 12);
 }
 
+// Shared by getRecommendations' Hardcover path — dedupes across however
+// many per-genre searches ran and drops anything already in the reader's
+// own library.
+function mergeExcludingSeen(
+  results: PromiseSettledResult<NormalizedBook[]>[],
+  excludeExternalIds: Set<string>,
+): NormalizedBook[] {
+  const seen = new Set<string>();
+  const merged: NormalizedBook[] = [];
+  for (const r of results) {
+    if (r.status !== 'fulfilled') continue;
+    for (const book of r.value) {
+      if (excludeExternalIds.has(book.external_id) || seen.has(book.external_id)) continue;
+      seen.add(book.external_id);
+      merged.push(book);
+    }
+  }
+  return merged;
+}
+
 // Normalized like search()/getTrending() (external_id, genres capped, etc.)
 // so a popular result can go through the exact same add-to-list/detail path
 // as a search result — it already exists in `books`, so addBookToDb's
@@ -541,6 +598,13 @@ export async function getRecommendations(
 // insert a new one with a missing external_id (see popular_books() in
 // db/schema.sql, which used to omit it entirely).
 export async function getPopular(): Promise<NormalizedBook[]> {
+  // Hardcover's own all-time trending ranking — a far bigger, more
+  // meaningful "popular" signal than this app's own (currently tiny)
+  // user base. Falls back to our own popular_books() RPC only if Hardcover
+  // is unavailable.
+  const hc = await getHardcoverTrending('all');
+  if (hc.length > 0) return hc;
+
   const { data, error } = await supabase.rpc('popular_books');
   if (error) throw new Error(error.message);
   return (data ?? []).map((row: any): NormalizedBook => ({

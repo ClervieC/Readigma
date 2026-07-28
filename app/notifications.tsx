@@ -69,7 +69,7 @@ export default function NotificationsScreen() {
   const hasContent = recentFollowers.length > 0 || feedNotifs.length > 0;
 
   return (
-    <Screen back title={t('notifications.title')}>
+    <Screen back title={t('notifications.title')} atmosphere="pink">
       {!hasContent && (
         <View style={styles.emptyState}>
           <Feather name="bell" size={32} color={colors.gray} />

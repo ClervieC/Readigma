@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Image, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Image } from 'react-native';
 import { useFocusEffect, useRouter, Redirect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -11,6 +11,7 @@ import * as supportChat from '../lib/supportChat';
 import * as reports from '../lib/reports';
 import * as bookEdits from '../lib/bookEdits';
 import * as books from '../lib/books';
+import { alert } from '../lib/alert';
 import Screen from '../components/Screen';
 import Pill from '../components/Pill';
 import Button from '../components/Button';
@@ -73,7 +74,7 @@ export default function AdminScreen() {
   const quickApprove = (s: admin.BookSuggestion) => {
     admin.approveSuggestion(s)
       .then(() => setSuggestions(cur => cur.map(x => x.id === s.id ? { ...x, status: 'approved' } : x)))
-      .catch((e) => Alert.alert(t('common.error'), e.message || t('admin.errors.addBookFailed')));
+      .catch((e) => alert(t('common.error'), e.message || t('admin.errors.addBookFailed')));
   };
 
   const reject = (s: admin.BookSuggestion) => {
@@ -91,18 +92,10 @@ export default function AdminScreen() {
     const apply = () => {
       admin.setUserBanned(u.id, next)
         .then(() => setUsers(cur => cur.map(x => x.id === u.id ? { ...x, banned: next } : x)))
-        .catch(() => Alert.alert(t('common.error'), t('admin.errors.updateUserFailed')));
+        .catch(() => alert(t('common.error'), t('admin.errors.updateUserFailed')));
     };
     if (!next) { apply(); return; }
-    // RN Web's Alert.alert only ever renders a single-button window.alert —
-    // a destructive-style multi-button config like this one is silently
-    // dropped there, so a real confirm() is needed on web (same fix as
-    // library.tsx's remove-book confirm).
-    if (Platform.OS === 'web') {
-      if (window.confirm(t('admin.banConfirmWeb', { username: u.username }))) apply();
-      return;
-    }
-    Alert.alert(t('admin.banConfirmTitle'), t('admin.banConfirmMessage', { username: u.username }), [
+    alert(t('admin.banConfirmTitle'), t('admin.banConfirmMessage', { username: u.username }), [
       { text: t('common.cancel'), style: 'cancel' },
       { text: t('admin.ban'), style: 'destructive', onPress: apply },
     ]);
@@ -112,7 +105,7 @@ export default function AdminScreen() {
     const nextRole = u.role === 'admin' ? 'user' : 'admin';
     admin.setUserRole(u.id, nextRole)
       .then(() => setUsers(cur => cur.map(x => x.id === u.id ? { ...x, role: nextRole } : x)))
-      .catch(() => Alert.alert(t('common.error'), t('admin.errors.updateUserFailed')));
+      .catch(() => alert(t('common.error'), t('admin.errors.updateUserFailed')));
   };
 
   const filteredUsers = users.filter(u => u.username.toLowerCase().includes(userQuery.trim().toLowerCase()));
@@ -120,19 +113,19 @@ export default function AdminScreen() {
   const resolveReport = (r: reports.Report) => {
     reports.markReportReviewed(r.id)
       .then(() => setUserReports(cur => cur.map(x => x.id === r.id ? { ...x, status: 'reviewed' } : x)))
-      .catch(() => Alert.alert(t('common.error'), t('admin.errors.updateReportFailed')));
+      .catch(() => alert(t('common.error'), t('admin.errors.updateReportFailed')));
   };
 
   const approveEdit = (e: bookEdits.BookEditSuggestion) => {
     bookEdits.approveBookEdit(e)
       .then(() => setBookEditList(cur => cur.map(x => x.id === e.id ? { ...x, status: 'approved' } : x)))
-      .catch(() => Alert.alert(t('common.error'), t('admin.errors.applyEditFailed')));
+      .catch(() => alert(t('common.error'), t('admin.errors.applyEditFailed')));
   };
 
   const rejectEdit = (e: bookEdits.BookEditSuggestion) => {
     bookEdits.rejectBookEdit(e.id)
       .then(() => setBookEditList(cur => cur.map(x => x.id === e.id ? { ...x, status: 'rejected' } : x)))
-      .catch(() => Alert.alert(t('common.error'), t('admin.errors.rejectEditFailed')));
+      .catch(() => alert(t('common.error'), t('admin.errors.rejectEditFailed')));
   };
 
   // One-time sweep over every book already in the catalog that's missing a
@@ -146,9 +139,9 @@ export default function AdminScreen() {
     books.backfillMissingCovers((done, total, updated) => setBackfillProgress({ done, total, updated }))
       .then(({ checked, updated }) => {
         setBackfilling(false);
-        Alert.alert(t('admin.backfillDoneTitle'), t('admin.backfillDone', { count: updated, total: checked }));
+        alert(t('admin.backfillDoneTitle'), t('admin.backfillDone', { count: updated, total: checked }));
       })
-      .catch(() => { setBackfilling(false); Alert.alert(t('common.error'), t('admin.errors.backfillFailed')); });
+      .catch(() => { setBackfilling(false); alert(t('common.error'), t('admin.errors.backfillFailed')); });
   };
 
   // Unlike runCoverBackfill above, this touches every book — including ones
@@ -158,7 +151,7 @@ export default function AdminScreen() {
   // since it's the only one of the two that can overwrite an already-good
   // cover.
   const runCoverRepopulate = () => {
-    Alert.alert(
+    alert(
       t('admin.repopulateConfirmTitle'),
       t('admin.repopulateConfirmMessage'),
       [
@@ -171,9 +164,9 @@ export default function AdminScreen() {
             books.repopulateAllCovers((done, total, updated) => setBackfillProgress({ done, total, updated }))
               .then(({ checked, updated }) => {
                 setBackfilling(false);
-                Alert.alert(t('admin.backfillDoneTitle'), t('admin.repopulateDone', { count: updated, total: checked }));
+                alert(t('admin.backfillDoneTitle'), t('admin.repopulateDone', { count: updated, total: checked }));
               })
-              .catch(() => { setBackfilling(false); Alert.alert(t('common.error'), t('admin.errors.repopulateFailed')); });
+              .catch(() => { setBackfilling(false); alert(t('common.error'), t('admin.errors.repopulateFailed')); });
           },
         },
       ],
@@ -181,7 +174,7 @@ export default function AdminScreen() {
   };
 
   const saveBook = () => {
-    if (!book.title.trim()) { Alert.alert(t('common.error'), t('admin.errors.titleRequired')); return; }
+    if (!book.title.trim()) { alert(t('common.error'), t('admin.errors.titleRequired')); return; }
     setSaving(true);
     admin.addBookManually(book).then(async () => {
       if (editingSuggestionId) {
@@ -191,12 +184,12 @@ export default function AdminScreen() {
       }
       setSaving(false);
       setBook(EMPTY_BOOK_FORM);
-      Alert.alert(t('admin.bookAddedTitle'), t('admin.bookAddedMessage', { title: book.title }));
-    }).catch((e) => { setSaving(false); Alert.alert(t('common.error'), e.message || t('admin.errors.addBookFailed')); });
+      alert(t('admin.bookAddedTitle'), t('admin.bookAddedMessage', { title: book.title }));
+    }).catch((e) => { setSaving(false); alert(t('common.error'), e.message || t('admin.errors.addBookFailed')); });
   };
 
   return (
-    <Screen back title={t('admin.title')} scroll={false}>
+    <Screen back title={t('admin.title')} scroll={false} atmosphere="purple">
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs} contentContainerStyle={{ gap: 8 }}>
         {TABS.map(tabOpt => (
           <Pill key={tabOpt.value} active={tab === tabOpt.value} onPress={() => setTab(tabOpt.value)} label={t(tabOpt.labelKey)} />
@@ -319,7 +312,16 @@ export default function AdminScreen() {
           userReports.map((r, i) => (
             <View key={r.id} style={[styles.card, i < userReports.length - 1 && styles.cardDivider]}>
               <View style={styles.cardHeader}>
-                <Feather name={r.target_type === 'book' ? 'book' : 'user'} size={13} color={colors.error} />
+                <Feather
+                  name={
+                    r.target_type === 'book' ? 'book'
+                    : r.target_type === 'shared_reading_message' ? 'message-square'
+                    : r.target_type === 'book_review' ? 'star'
+                    : 'user'
+                  }
+                  size={13}
+                  color={colors.error}
+                />
                 <Text style={styles.cardUser}>{r.target_label ?? t('admin.notFound')}</Text>
                 <Text style={[styles.statusBadge, r.status === 'reviewed' && styles.statusApproved]}>
                   {r.status === 'pending' ? t('admin.statusPending') : t('admin.statusTreated')}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, ActivityIndicator, Modal, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, ActivityIndicator, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -7,8 +7,10 @@ import { useTranslation } from 'react-i18next';
 import { fonts, radius, ColorPalette } from '../../theme';
 import { useTheme } from '../../context/ThemeContext';
 import * as follows from '../../lib/follows';
+import { alert } from '../../lib/alert';
 import Pill from '../../components/Pill';
 import ProgressBar from '../../components/ProgressBar';
+import AtmosphericBackground from '../../components/AtmosphericBackground';
 import { formatDuration } from '../../lib/timer';
 
 export default function UserProfileScreen() {
@@ -33,13 +35,14 @@ export default function UserProfileScreen() {
     setFollowLoading(true);
     (isFollowing ? follows.unfollowUser(id) : follows.followUser(id))
       .then(() => setIsFollowing(!isFollowing))
-      .catch(() => Alert.alert(t('common.error'), isFollowing ? t('follows.errors.unfollow') : t('userProfile.errors.follow')))
+      .catch(() => alert(t('common.error'), isFollowing ? t('follows.errors.unfollow') : t('userProfile.errors.follow')))
       .finally(() => setFollowLoading(false));
   };
 
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
+        <AtmosphericBackground tint="pink" />
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()}><Feather name="arrow-left" size={20} color={colors.white} /></TouchableOpacity>
           <Text style={styles.headerTitle}>{username ?? t('userProfile.defaultTitle')}</Text>
@@ -53,6 +56,7 @@ export default function UserProfileScreen() {
   if (!data) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
+        <AtmosphericBackground tint="pink" />
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()}><Feather name="arrow-left" size={20} color={colors.white} /></TouchableOpacity>
         </View>
@@ -67,6 +71,7 @@ export default function UserProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+        <AtmosphericBackground tint="pink" />
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}><Feather name="arrow-left" size={20} color={colors.white} /></TouchableOpacity>
         <Text style={styles.headerTitle}>{t('userProfile.defaultTitle')}</Text>
