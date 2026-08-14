@@ -304,13 +304,20 @@ function ReadingBookCard({
     } else {
       percent = parseFloat(percentInput) || percent;
     }
+    // Only touch progress (and re-share a progress_update to the feed) if
+    // it actually moved — picking an emoji without editing the page/percent
+    // fields should post the reaction alone, not a redundant duplicate.
+    const progressChanged =
+      pages !== (book.current_page || 0) || percent !== (book.progress_percent || 0);
     setPostingEmotion(true);
     Promise.all([
-      userBooks.updateProgress(book.book_id, {
-        current_page: pages || undefined,
-        total_pages: total || undefined,
-        progress_percent: percent,
-      }),
+      progressChanged
+        ? userBooks.updateProgress(book.book_id, {
+            current_page: pages || undefined,
+            total_pages: total || undefined,
+            progress_percent: percent,
+          })
+        : Promise.resolve(),
       userBooks.addReaction(book.book_id, {
         emoji: selectedEmojis.join(""),
         note: emotionNote || undefined,
