@@ -677,6 +677,7 @@
     "searchPlaceholder": "Chercher dans ma bibliothèque...",
     "noResultsFor": "Aucun résultat pour \"{{query}}\"",
     "noBooksHere": "Aucun livre ici",
+    "addBook": "Ajouter un livre",
     "emptyShelf": "Étagère vide",
     "spacingLeft": "Gauche",
     "spacingRight": "Droite",

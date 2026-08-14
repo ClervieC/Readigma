@@ -675,6 +675,7 @@
     "searchPlaceholder": "Search my library...",
     "noResultsFor": "No results for \"{{query}}\"",
     "noBooksHere": "No books here",
+    "addBook": "Add a book",
     "emptyShelf": "Empty shelf",
     "spacingLeft": "Left",
     "spacingRight": "Right",

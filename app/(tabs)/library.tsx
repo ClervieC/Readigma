@@ -2915,6 +2915,15 @@ export default function LibraryScreen() {
               <Text style={styles.emptyText}>
                 {q ? t("library.noResultsFor", { query }) : t("library.noBooksHere")}
               </Text>
+              {!q && (
+                <TouchableOpacity
+                  style={styles.emptyAddBtn}
+                  onPress={() => router.push("/search")}
+                >
+                  <Feather name="plus" size={16} color="white" />
+                  <Text style={styles.emptyAddBtnText}>{t("library.addBook")}</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : viewMode === "grid" && reorderMode ? (
             // Reorder mode's grid: not virtualized (every tile has to be mounted
@@ -4141,6 +4150,17 @@ const makeStyles = (colors: ColorPalette) => {
       textAlign: "center",
       paddingTop: 40,
     },
+    emptyAddBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginTop: 8,
+      backgroundColor: colors.purple,
+      borderRadius: 999,
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+    },
+    emptyAddBtnText: { color: "white", fontSize: 13, fontWeight: "600" },
 
     shelf: {
       flexDirection: "row",

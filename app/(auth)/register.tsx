@@ -4,6 +4,7 @@ import {
   StyleSheet, KeyboardAvoidingView, Platform, ScrollView
 } from 'react-native';
 import { Link, useRouter } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 import { fonts, ColorPalette } from '../../theme';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -19,6 +20,7 @@ export default function RegisterScreen() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const register = async () => {
@@ -58,8 +60,19 @@ export default function RegisterScreen() {
           keyboardType="email-address" autoCapitalize="none" />
 
         <Text style={styles.label}>Mot de passe</Text>
-        <TextInput style={styles.input} value={password} onChangeText={setPassword}
-          placeholder="••••••••" placeholderTextColor={colors.gray} secureTextEntry />
+        <View style={styles.passwordRow}>
+          <TextInput
+            style={styles.passwordInput}
+            value={password}
+            onChangeText={setPassword}
+            placeholder="••••••••"
+            placeholderTextColor={colors.gray}
+            secureTextEntry={!showPassword}
+          />
+          <TouchableOpacity onPress={() => setShowPassword(v => !v)} hitSlop={10}>
+            <Feather name={showPassword ? 'eye-off' : 'eye'} size={18} color={colors.gray} />
+          </TouchableOpacity>
+        </View>
 
         <Button label="Créer mon compte" onPress={register} loading={loading} style={{ marginTop: 24 }} />
 
@@ -94,6 +107,19 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
     color: colors.white,
     fontSize: 15,
     marginBottom: 22,
+  },
+  passwordRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+    marginBottom: 22,
+  },
+  passwordInput: {
+    flex: 1,
+    paddingVertical: 10,
+    color: colors.white,
+    fontSize: 15,
   },
   switchText: { textAlign: 'center', fontSize: 13, color: colors.gray, marginTop: 20 },
   switchLink: { color: colors.lavender, fontWeight: '600' },

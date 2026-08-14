@@ -289,6 +289,9 @@ export default function FeedScreen() {
           <Text style={styles.subtitle}>{t('feed.subtitle')}</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 18 }}>
+          <TouchableOpacity onPress={() => router.push({ pathname: '/friends', params: { tab: 'search' } })} hitSlop={10}>
+            <Feather name="user-plus" size={20} color={colors.white} />
+          </TouchableOpacity>
           <SearchButton />
           <NotificationBell />
         </View>
