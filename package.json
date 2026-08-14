@@ -26,6 +26,7 @@
     "expo-notifications": "~57.0.0",
     "expo-router": "^57.0.3",
     "expo-server": "^57.0.1",
+    "expo-sharing": "~57.0.12",
     "expo-splash-screen": "~57.0.2",
     "expo-status-bar": "~57.0.0",
     "fast-xml-parser": "^5.10.0",
@@ -40,6 +41,7 @@
     "react-native-screens": "^4.25.2",
     "react-native-svg": "15.15.4",
     "react-native-url-polyfill": "^3.0.0",
+    "react-native-view-shot": "5.1.0",
     "react-native-web": "^0.21.2"
   },
   "devDependencies": {

@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { Link } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { fonts, ColorPalette } from '../../theme';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -15,6 +16,7 @@ import AtmosphericBackground from '../../components/AtmosphericBackground';
 export default function LoginScreen() {
   const { colors } = useTheme();
   const { signIn } = useAuth();
+  const { t } = useTranslation();
   const styles = makeStyles(colors);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,12 +24,12 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
   const login = async () => {
-    if (!email || !password) { alert('Erreur', 'Tous les champs sont requis'); return; }
+    if (!email || !password) { alert(t('common.error'), t('auth.login.errors.fieldsRequired')); return; }
     setLoading(true);
     try {
       await signIn(email, password);
     } catch (err: any) {
-      alert('Erreur', err.message || 'Erreur de connexion');
+      alert(t('common.error'), err.message || t('auth.login.errors.loginFailed'));
     } finally {
       setLoading(false);
     }
@@ -39,24 +41,24 @@ export default function LoginScreen() {
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.top}>
           <Text style={styles.logo}>Readigma</Text>
-          <Text style={styles.tagline}>Stop searching. Start discovering.</Text>
+          <Text style={styles.tagline}>{t('auth.tagline')}</Text>
         </View>
 
-        <Text style={styles.title}>Bon retour</Text>
-        <Text style={styles.subtitle}>Connecte-toi pour retrouver ta pile</Text>
+        <Text style={styles.title}>{t('auth.login.title')}</Text>
+        <Text style={styles.subtitle}>{t('auth.login.subtitle')}</Text>
 
-        <Text style={styles.label}>Email</Text>
+        <Text style={styles.label}>{t('auth.login.email')}</Text>
         <TextInput
           style={styles.input}
           value={email}
           onChangeText={setEmail}
-          placeholder="ton@email.com"
+          placeholder={t('auth.login.emailPlaceholder')}
           placeholderTextColor={colors.gray}
           keyboardType="email-address"
           autoCapitalize="none"
         />
 
-        <Text style={styles.label}>Mot de passe</Text>
+        <Text style={styles.label}>{t('auth.login.password')}</Text>
         <View style={styles.passwordRow}>
           <TextInput
             style={styles.passwordInput}
@@ -71,12 +73,12 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
 
-        <Button label="Se connecter" onPress={login} loading={loading} style={{ marginTop: 24 }} />
+        <Button label={t('auth.login.submit')} onPress={login} loading={loading} style={{ marginTop: 24 }} />
 
         <Link href="/(auth)/register" asChild>
           <TouchableOpacity>
             <Text style={styles.switchText}>
-              Pas encore de compte ? <Text style={styles.switchLink}>S'inscrire</Text>
+              {t('auth.login.noAccount')} <Text style={styles.switchLink}>{t('auth.login.signUpLink')}</Text>
             </Text>
           </TouchableOpacity>
         </Link>

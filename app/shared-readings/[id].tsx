@@ -7,6 +7,7 @@ import { fonts, radius, ColorPalette } from '../../theme';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import * as sharedReadings from '../../lib/sharedReadings';
+import * as follows from '../../lib/follows';
 import { alert } from '../../lib/alert';
 import { REACTION_EMOJIS } from '../../lib/emojis';
 import Screen from '../../components/Screen';
@@ -43,8 +44,10 @@ export default function SharedReadingDetailScreen() {
   const [isMember, setIsMember] = useState(false);
   const [loading, setLoading] = useState(true);
   const [messageText, setMessageText] = useState('');
+  const [generalMessageText, setGeneralMessageText] = useState('');
   const [theoryText, setTheoryText] = useState('');
   const [posting, setPosting] = useState(false);
+  const [postingGeneral, setPostingGeneral] = useState(false);
   const [postingTheory, setPostingTheory] = useState(false);
   const [joining, setJoining] = useState(false);
   const [reacting, setReacting] = useState(false);
@@ -60,6 +63,11 @@ export default function SharedReadingDetailScreen() {
   const [editIsPublic, setEditIsPublic] = useState(true);
   const [editMaxParticipants, setEditMaxParticipants] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [memberQuery, setMemberQuery] = useState('');
+  const [memberResults, setMemberResults] = useState<any[]>([]);
+  const [searchingMembers, setSearchingMembers] = useState(false);
+  const [addingMemberId, setAddingMemberId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     if (!id) return;
@@ -103,8 +111,17 @@ export default function SharedReadingDetailScreen() {
   };
 
   const leave = () => {
-    if (!id) return;
-    sharedReadings.leaveSharedReading(id).then(load).catch(() => {});
+    if (!id || !reading) return;
+    const doLeave = () =>
+      sharedReadings.leaveSharedReading(id).then(load).catch(() => alert(t('common.error'), t('sharedReadings.leaveError')));
+    alert(
+      t('sharedReadings.leaveConfirmTitle'),
+      reading.is_public ? t('sharedReadings.leaveConfirmPublic') : t('sharedReadings.leaveConfirmPrivate'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('sharedReadings.leave'), style: 'destructive', onPress: doLeave },
+      ],
+    );
   };
 
   const openEditForm = () => {
@@ -140,7 +157,9 @@ export default function SharedReadingDetailScreen() {
     // with the shared-readings list is the one destination guaranteed to
     // exist and make sense right after deleting what you were looking at.
     const doDelete = () =>
-      sharedReadings.deleteSharedReading(id).then(() => router.replace('/(tabs)/shared-readings')).catch(() => {});
+      sharedReadings.deleteSharedReading(id)
+        .then(() => router.replace('/(tabs)/shared-readings'))
+        .catch(() => alert(t('common.error'), t('sharedReadings.deleteReadingError')));
     alert(t('sharedReadings.deleteConfirmTitle'), t('sharedReadings.deleteConfirm'), [
       { text: t('common.cancel'), style: 'cancel' },
       { text: t('sharedReadings.delete'), style: 'destructive', onPress: doDelete },
@@ -149,16 +168,41 @@ export default function SharedReadingDetailScreen() {
 
   const removeMember = (memberId: string) => {
     if (!id) return;
-    const doRemove = () => sharedReadings.removeMember(id, memberId).then(load).catch(() => {});
+    const doRemove = () =>
+      sharedReadings.removeMember(id, memberId).then(load).catch(() => alert(t('common.error'), t('sharedReadings.removeMemberError')));
     alert(t('sharedReadings.removeMemberConfirmTitle'), t('sharedReadings.removeMemberConfirm'), [
       { text: t('common.cancel'), style: 'cancel' },
       { text: t('sharedReadings.remove'), style: 'destructive', onPress: doRemove },
     ]);
   };
 
+  const searchMembers = () => {
+    if (!memberQuery.trim()) return;
+    setSearchingMembers(true);
+    follows.searchUsers(memberQuery.trim())
+      .then(setMemberResults)
+      .catch(() => setMemberResults([]))
+      .finally(() => setSearchingMembers(false));
+  };
+
+  const addMemberToReading = (userId: string) => {
+    if (!id) return;
+    setAddingMemberId(userId);
+    sharedReadings.addMember(id, userId)
+      .then(() => {
+        setMemberResults((cur) => cur.filter((u) => u.id !== userId));
+        return load();
+      })
+      .catch(() => alert(t('common.error'), t('sharedReadings.addMemberError')))
+      .finally(() => setAddingMemberId(null));
+  };
+
   const deleteMessage = (messageId: string) => {
     if (!id) return;
-    const doDelete = () => sharedReadings.deleteMessage(messageId).then(() => sharedReadings.getMessages(id).then(setMessages)).catch(() => {});
+    const doDelete = () =>
+      sharedReadings.deleteMessage(messageId)
+        .then(() => sharedReadings.getMessages(id).then(setMessages))
+        .catch(() => alert(t('common.error'), t('sharedReadings.deleteMessageError')));
     alert(t('sharedReadings.deleteMessageConfirmTitle'), t('sharedReadings.deleteMessageConfirm'), [
       { text: t('common.cancel'), style: 'cancel' },
       { text: t('sharedReadings.delete'), style: 'destructive', onPress: doDelete },
@@ -183,6 +227,19 @@ export default function SharedReadingDetailScreen() {
       })
       .catch(() => alert(t('common.error'), t('sharedReadings.postError')))
       .finally(() => setPosting(false));
+  };
+
+  const submitGeneralMessage = () => {
+    if (!id || !generalMessageText.trim()) return;
+    setPostingGeneral(true);
+    sharedReadings
+      .postGeneralMessage(id, generalMessageText.trim())
+      .then(() => {
+        setGeneralMessageText('');
+        return sharedReadings.getMessages(id).then(setMessages);
+      })
+      .catch(() => alert(t('common.error'), t('sharedReadings.postError')))
+      .finally(() => setPostingGeneral(false));
   };
 
   const react = (emoji: string) => {
@@ -314,8 +371,10 @@ export default function SharedReadingDetailScreen() {
   type TimelineEntry =
     | { kind: 'message'; percent: number; message: sharedReadings.SharedReadingMessage }
     | { kind: 'reaction'; percent: number; emoji: string; percentage: number };
+  const bookMessages = messages.filter((m) => m.kind !== 'general');
+  const generalMessages = messages.filter((m) => m.kind === 'general');
   const timeline: TimelineEntry[] = [
-    ...messages.map((m): TimelineEntry => ({ kind: 'message', percent: m.percent_threshold, message: m })),
+    ...bookMessages.map((m): TimelineEntry => ({ kind: 'message', percent: m.percent_threshold, message: m })),
     ...Object.entries(reactionsByBucket).map(([bucket, stats]): TimelineEntry => {
       const total = stats.reduce((s, x) => s + x.count, 0);
       const top = [...stats].sort((a, b) => b.count - a.count)[0];
@@ -522,7 +581,14 @@ export default function SharedReadingDetailScreen() {
             </>
           )}
 
-          <Text style={styles.sectionTitle}>{t('sharedReadings.roster')}</Text>
+          <View style={styles.sectionTitleRow}>
+            <Text style={styles.sectionTitle}>{t('sharedReadings.roster')}</Text>
+            {isCreator && !reading.is_public && (
+              <TouchableOpacity onPress={() => setShowAddMember(true)} hitSlop={8}>
+                <Feather name="user-plus" size={16} color={colors.purple} />
+              </TouchableOpacity>
+            )}
+          </View>
           {roster.map((r) => (
             <View key={r.user_id} style={styles.rosterRow}>
               <View style={styles.avatarSmall}>
@@ -540,6 +606,43 @@ export default function SharedReadingDetailScreen() {
               )}
             </View>
           ))}
+
+          <Text style={[styles.sectionTitle, { marginTop: 24 }]}>{t('sharedReadings.generalChat')}</Text>
+          <Text style={styles.spoilerHint}>{t('sharedReadings.generalChatHint')}</Text>
+          {generalMessages.length === 0 ? (
+            <Text style={styles.emptyText}>{t('sharedReadings.noMessages')}</Text>
+          ) : (
+            generalMessages.map((m) => (
+              <View key={m.id} style={styles.generalMessageRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.messageAuthor}>{m.username}</Text>
+                  <Text style={styles.messageContent}>{m.content}</Text>
+                </View>
+                {m.user_id === profile?.id ? (
+                  <TouchableOpacity onPress={() => deleteMessage(m.id)} hitSlop={8}>
+                    <Feather name="trash-2" size={14} color={colors.gray} />
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity onPress={() => reportMessage(m.id, m.content)} hitSlop={8}>
+                    <Feather name="flag" size={14} color={colors.gray} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))
+          )}
+          <View style={styles.composer}>
+            <TextInput
+              style={styles.composerInput}
+              value={generalMessageText}
+              onChangeText={setGeneralMessageText}
+              placeholder={t('sharedReadings.generalChatPlaceholder')}
+              placeholderTextColor={colors.gray}
+              multiline
+            />
+            <TouchableOpacity onPress={submitGeneralMessage} disabled={postingGeneral || !generalMessageText.trim()} hitSlop={8} accessibilityLabel={t('sharedReadings.sendMessage')}>
+              <Feather name="send" size={20} color={generalMessageText.trim() ? colors.purple : colors.gray} />
+            </TouchableOpacity>
+          </View>
 
           <Text style={[styles.sectionTitle, { marginTop: 24 }]}>{t('sharedReadings.timeline')}</Text>
           <Text style={styles.spoilerHint}>
@@ -741,6 +844,64 @@ export default function SharedReadingDetailScreen() {
           </TouchableOpacity>
         </Modal>
       )}
+
+      {showAddMember && (
+        <Modal
+          transparent
+          animationType="fade"
+          onRequestClose={() => { setShowAddMember(false); setMemberQuery(''); setMemberResults([]); }}
+        >
+          <TouchableOpacity
+            style={styles.menuOverlay}
+            activeOpacity={1}
+            onPress={() => { setShowAddMember(false); setMemberQuery(''); setMemberResults([]); }}
+          >
+            <TouchableOpacity style={styles.editSheet} activeOpacity={1}>
+              <Text style={styles.sectionTitle}>{t('sharedReadings.addMember')}</Text>
+              <View style={styles.memberSearchBar}>
+                <Feather name="search" size={15} color={colors.gray} />
+                <TextInput
+                  style={styles.memberSearchInput}
+                  value={memberQuery}
+                  onChangeText={setMemberQuery}
+                  onSubmitEditing={searchMembers}
+                  placeholder={t('sharedReadings.addMemberSearchPlaceholder')}
+                  placeholderTextColor={colors.gray}
+                  autoCapitalize="none"
+                  returnKeyType="search"
+                />
+              </View>
+              {searchingMembers ? (
+                <ActivityIndicator color={colors.purple} />
+              ) : memberResults.length === 0 ? (
+                memberQuery.trim() ? <Text style={styles.emptyText}>{t('sharedReadings.noUsersFound')}</Text> : null
+              ) : (
+                memberResults.map((u) => (
+                  <View key={u.id} style={styles.memberResultRow}>
+                    <View style={styles.avatarSmall}>
+                      <Text style={styles.avatarText}>{u.username?.slice(0, 2).toUpperCase()}</Text>
+                    </View>
+                    <Text style={styles.rosterName} numberOfLines={1}>{u.username}</Text>
+                    <TouchableOpacity
+                      onPress={() => addMemberToReading(u.id)}
+                      disabled={addingMemberId === u.id}
+                      hitSlop={8}
+                    >
+                      {addingMemberId === u.id ? (
+                        <ActivityIndicator size="small" color={colors.purple} />
+                      ) : (
+                        <Text style={{ color: colors.purple, fontFamily: fonts.bodySemiBold, fontSize: 13 }}>
+                          {t('sharedReadings.add')}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                ))
+              )}
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
+      )}
     </Screen>
   );
 }
@@ -768,6 +929,16 @@ const makeStyles = (colors: ColorPalette) =>
     quizCard: { backgroundColor: colors.card, borderRadius: radius.md, padding: 14, marginBottom: 20 },
     quizAnswerRow: { paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.divider },
     sectionTitle: { fontSize: 14, fontFamily: fonts.headingBold, color: colors.white, marginBottom: 12 },
+    sectionTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    memberSearchBar: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      backgroundColor: colors.card2, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 16,
+    },
+    memberSearchInput: { flex: 1, fontSize: 14, color: colors.white },
+    memberResultRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10,
+      borderBottomWidth: 1, borderBottomColor: colors.divider,
+    },
     paceBanner: {
       flexDirection: 'row', alignItems: 'center', gap: 8,
       backgroundColor: colors.card, borderRadius: radius.md, padding: 12, marginBottom: 16,
@@ -803,6 +974,10 @@ const makeStyles = (colors: ColorPalette) =>
     emptyText: { fontSize: 13, color: colors.gray, textAlign: 'center', paddingVertical: 20 },
     messageAuthor: { fontSize: 12, fontFamily: fonts.headingBold, color: colors.white },
     messageContent: { fontSize: 13, color: colors.muted, marginTop: 2 },
+    generalMessageRow: {
+      flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+      backgroundColor: colors.card, borderRadius: radius.md, padding: 12, marginBottom: 8,
+    },
     composer: {
       flexDirection: 'row', alignItems: 'flex-end', gap: 10,
       backgroundColor: colors.card, borderRadius: radius.md, padding: 10, marginTop: 12,

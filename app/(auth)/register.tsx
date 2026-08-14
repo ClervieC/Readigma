@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { fonts, ColorPalette } from '../../theme';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -16,6 +17,7 @@ export default function RegisterScreen() {
   const { colors } = useTheme();
   const { signUp } = useAuth();
   const router = useRouter();
+  const { t } = useTranslation();
   const styles = makeStyles(colors);
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -24,7 +26,7 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
 
   const register = async () => {
-    if (!username || !email || !password) { alert('Erreur', 'Tous les champs sont requis'); return; }
+    if (!username || !email || !password) { alert(t('common.error'), t('auth.register.errors.fieldsRequired')); return; }
     setLoading(true);
     try {
       const { needsEmailConfirmation } = await signUp(email, password, username);
@@ -32,7 +34,7 @@ export default function RegisterScreen() {
         router.push({ pathname: '/(auth)/confirm-email', params: { email } });
       }
     } catch (err: any) {
-      alert('Erreur', err.message || 'Erreur inscription');
+      alert(t('common.error'), err.message || t('auth.register.errors.registerFailed'));
     } finally {
       setLoading(false);
     }
@@ -44,22 +46,22 @@ export default function RegisterScreen() {
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.top}>
           <Text style={styles.logo}>Readigma</Text>
-          <Text style={styles.tagline}>Stop searching. Start discovering.</Text>
+          <Text style={styles.tagline}>{t('auth.tagline')}</Text>
         </View>
 
-        <Text style={styles.title}>Créer un compte</Text>
-        <Text style={styles.subtitle}>Rejoins la communauté de lecteurs</Text>
+        <Text style={styles.title}>{t('auth.register.title')}</Text>
+        <Text style={styles.subtitle}>{t('auth.register.subtitle')}</Text>
 
-        <Text style={styles.label}>Nom d'utilisateur</Text>
+        <Text style={styles.label}>{t('auth.register.username')}</Text>
         <TextInput style={styles.input} value={username} onChangeText={setUsername}
-          placeholder="ton_pseudo" placeholderTextColor={colors.gray} autoCapitalize="none" />
+          placeholder={t('auth.register.usernamePlaceholder')} placeholderTextColor={colors.gray} autoCapitalize="none" />
 
-        <Text style={styles.label}>Email</Text>
+        <Text style={styles.label}>{t('auth.register.email')}</Text>
         <TextInput style={styles.input} value={email} onChangeText={setEmail}
-          placeholder="ton@email.com" placeholderTextColor={colors.gray}
+          placeholder={t('auth.register.emailPlaceholder')} placeholderTextColor={colors.gray}
           keyboardType="email-address" autoCapitalize="none" />
 
-        <Text style={styles.label}>Mot de passe</Text>
+        <Text style={styles.label}>{t('auth.register.password')}</Text>
         <View style={styles.passwordRow}>
           <TextInput
             style={styles.passwordInput}
@@ -74,12 +76,12 @@ export default function RegisterScreen() {
           </TouchableOpacity>
         </View>
 
-        <Button label="Créer mon compte" onPress={register} loading={loading} style={{ marginTop: 24 }} />
+        <Button label={t('auth.register.submit')} onPress={register} loading={loading} style={{ marginTop: 24 }} />
 
         <Link href="/(auth)/login" asChild>
           <TouchableOpacity>
             <Text style={styles.switchText}>
-              Déjà un compte ? <Text style={styles.switchLink}>Se connecter</Text>
+              {t('auth.register.hasAccount')} <Text style={styles.switchLink}>{t('auth.register.loginLink')}</Text>
             </Text>
           </TouchableOpacity>
         </Link>

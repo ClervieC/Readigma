@@ -33,7 +33,11 @@ export default function OnboardingScreen() {
 
   const [step, setStep] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
-  const dotAnim = useRef(STEPS.map(() => new Animated.Value(0))).current;
+  // Step 0's dot starts "active" (1, not 0) — nothing else ever runs the
+  // spring animation for the initial render, so leaving this at 0 made
+  // every dot render small/gray on first paint despite actually being on
+  // step 0 already.
+  const dotAnim = useRef(STEPS.map((_, i) => new Animated.Value(i === 0 ? 1 : 0))).current;
 
   const onDone = () => {
     completeOnboarding();

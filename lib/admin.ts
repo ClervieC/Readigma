@@ -215,6 +215,22 @@ export async function updateBookDirect(bookId: string, book: BookFormFields) {
 export async function addBookManually(book: BookFormFields) {
   const isbn = book.isbn.trim() || null;
 
+  // No ISBN to de-dupe against below — approveSuggestion calls this, then
+  // marks the suggestion decided as a second, separate request; if that
+  // second step fails and an admin retries, this exact-title/author check
+  // is what stops the retry from inserting a second manual_ row for the
+  // same book (imperfect — a typo'd retry wouldn't match — but covers the
+  // actual retry-the-same-suggestion case, which is the one that matters).
+  if (!isbn) {
+    const title = book.title.trim();
+    const author = book.author.trim() || null;
+    let dupeQuery = supabase.from('books').select('id').eq('title', title).limit(1);
+    dupeQuery = author ? dupeQuery.eq('author', author) : dupeQuery.is('author', null);
+    const { data: existingByTitle, error: titleFindError } = await dupeQuery;
+    if (titleFindError) throw new Error(titleFindError.message);
+    if (existingByTitle && existingByTitle.length > 0) return;
+  }
+
   // Same reasoning as lib/books.ts's addBookToDb: a matching ISBN means
   // it's the same real-world book, so complement the existing catalog row
   // instead of blind-inserting a duplicate under a new manual_ external_id

@@ -78,7 +78,9 @@ export default function AdminScreen() {
   };
 
   const reject = (s: admin.BookSuggestion) => {
-    admin.rejectSuggestion(s).then(() => setSuggestions(cur => cur.map(x => x.id === s.id ? { ...x, status: 'rejected' } : x)));
+    admin.rejectSuggestion(s)
+      .then(() => setSuggestions(cur => cur.map(x => x.id === s.id ? { ...x, status: 'rejected' } : x)))
+      .catch(() => alert(t('common.error'), t('admin.errors.rejectSuggestionFailed')));
   };
 
   const editThenApprove = (s: admin.BookSuggestion) => {
@@ -328,7 +330,7 @@ export default function AdminScreen() {
                 </Text>
                 <Text style={styles.cardTime}>{timeAgo(r.created_at, t)}</Text>
               </View>
-              <Text style={styles.suggestionAuthor}>{t('admin.reportedBy', { username: r.reporter_username ?? '?', reason: r.reason })}</Text>
+              <Text style={styles.suggestionAuthor}>{t('admin.reportedBy', { username: r.reporter_username ?? '?', reason: t(`report.reasons.${r.reason}`, { defaultValue: r.reason }) })}</Text>
               {r.details ? <Text style={styles.cardBody}>{r.details}</Text> : null}
               {r.status === 'pending' && (
                 <View style={styles.suggestionActions}>
@@ -414,6 +416,12 @@ export default function AdminScreen() {
               <View style={styles.editingBanner}>
                 <Feather name="edit-2" size={13} color={colors.purple} />
                 <Text style={styles.editingBannerText}>{t('admin.editingSuggestionBanner')}</Text>
+                <TouchableOpacity
+                  onPress={() => { setEditingSuggestionId(null); setBook(EMPTY_BOOK_FORM); }}
+                  hitSlop={8}
+                >
+                  <Text style={styles.editingBannerCancel}>{t('common.cancel')}</Text>
+                </TouchableOpacity>
               </View>
             ) : null}
             <BookForm value={book} onChange={setBook} />
@@ -451,6 +459,7 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   actionText: { fontSize: 12, fontWeight: '600', color: colors.purple },
   editingBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.purpleGlow, borderRadius: 8, padding: 10, marginBottom: 16 },
   editingBannerText: { flex: 1, fontSize: 12, color: colors.lavender },
+  editingBannerCancel: { fontSize: 12, fontWeight: '700', color: colors.purple },
   backfillCard: { backgroundColor: colors.card, borderRadius: 10, padding: 14, marginBottom: 20, gap: 8 },
   backfillTitle: { fontSize: 13, fontWeight: '700', color: colors.white },
   backfillSub: { fontSize: 12, color: colors.gray, lineHeight: 17 },

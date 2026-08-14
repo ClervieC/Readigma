@@ -2133,11 +2133,11 @@ export default function LibraryScreen() {
         nearestFrame = f;
       }
     }
-    // Empty shelves (see the "+" divider between rows, addShelfBreak) have
-    // no books of their own to hit-test against, so they're registered
-    // separately under an "empty:<anchorId>" key — any landing inside that
-    // whole box fills the shelf, no center-vs-edge distinction needed since
-    // there's nothing there to accidentally merge into.
+    // Empty shelves have no books of their own to hit-test against, so
+    // they're registered separately under an "empty:<anchorId>" key — any
+    // landing inside that whole box fills the shelf, no center-vs-edge
+    // distinction needed since there's nothing there to accidentally merge
+    // into.
     for (const row of rows) {
       if (row.type !== "empty") continue;
       const f = frames[`empty:${row.anchorId}`];
@@ -2796,6 +2796,7 @@ export default function LibraryScreen() {
           onOpenShelf={(status) => {
             setActiveTab(status);
             setRoomZoomed(true);
+            setPoppedBook(null);
           }}
         />
       ) : (
@@ -2811,6 +2812,7 @@ export default function LibraryScreen() {
                   onPress={() => {
                     setRoomZoomed(false);
                     setShowScrollTop(false);
+                    setPoppedBook(null);
                   }}
                 >
                   <Feather name="arrow-left" size={14} color={colors.white} />
@@ -3269,7 +3271,7 @@ export default function LibraryScreen() {
                                     color="#FFFFFF"
                                   />
                                   <Text style={styles.pileGripText}>
-                                    Déplacer la pile
+                                    {t('library.movePile')}
                                   </Text>
                                 </View>
                               </DraggableHandle>
@@ -4192,30 +4194,6 @@ const makeStyles = (colors: ColorPalette) => {
       top: 6,
       right: 6,
     },
-    // The "+" divider between two rows in reorder mode — inserts an empty
-    // shelf there (addShelfBreak). Hidden right before an already-empty
-    // shelf since there'd be nothing to add.
-    addShelfDivider: {
-      flexDirection: "row",
-      alignItems: "center",
-      marginTop: 6,
-      marginBottom: 16,
-      height: 20,
-    },
-    addShelfLine: {
-      flex: 1,
-      height: 1,
-      backgroundColor: "rgba(255,255,255,0.12)",
-    },
-    addShelfBtn: {
-      width: 22,
-      height: 22,
-      borderRadius: 11,
-      backgroundColor: colors.purple,
-      alignItems: "center",
-      justifyContent: "center",
-      marginHorizontal: 8,
-    },
 
     // A photo frame dropped into the shelf — as wide as 3 standing spines
     // (see FRAME_WIDTH), styled to look like a hung picture rather than a
@@ -4269,18 +4247,6 @@ const makeStyles = (colors: ColorPalette) => {
       height: 22,
       borderRadius: 11,
       backgroundColor: "rgba(0,0,0,0.6)",
-      alignItems: "center",
-      justifyContent: "center",
-      zIndex: 5,
-    },
-    frameMoveBtn: {
-      position: "absolute",
-      top: -8,
-      left: -8,
-      width: 22,
-      height: 22,
-      borderRadius: 11,
-      backgroundColor: colors.purple,
       alignItems: "center",
       justifyContent: "center",
       zIndex: 5,
@@ -4463,24 +4429,6 @@ const makeStyles = (colors: ColorPalette) => {
       backgroundColor: "rgba(0,0,0,0.55)",
     },
     pileGripText: { color: "#FFFFFF", fontSize: 11, fontWeight: "700" },
-    // Reorder mode's whole-row drag grip — a plain block *below* the shelf
-    // rather than a flex sibling squeezed in beside it, so it never eats
-    // into the width buildRows already packed the row's books against (that
-    // mismatch was what wrapped rows onto extra lines and crammed books
-    // together).
-    rowGrip: {
-      alignSelf: "flex-start",
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      marginTop: -24,
-      marginBottom: 0,
-      paddingHorizontal: 10,
-      paddingVertical: 5,
-      borderRadius: 12,
-      backgroundColor: colors.purple,
-    },
-    rowGripText: { color: "#FFFFFF", fontSize: 11, fontWeight: "700" },
     stackBar: {
       width: STACK_WIDTH,
       height: STACK_BAR_HEIGHT,

@@ -38,6 +38,7 @@ export default function EditProfileScreen() {
   };
 
   const save = async () => {
+    if (!username.trim()) { alert(t('common.error'), t('editProfile.errors.usernameRequired')); return; }
     if (password && password !== confirmPassword) { alert(t('common.error'), t('editProfile.errors.passwordsDontMatch')); return; }
     if (password && password.length < 6) { alert(t('common.error'), t('editProfile.errors.passwordTooShort')); return; }
     if (!session) return;
@@ -49,15 +50,24 @@ export default function EditProfileScreen() {
           .upsert({ id: session.user.id, username, avatar_url: avatarUri }, { onConflict: 'id' });
         if (error) throw new Error(error.message);
       }
-      if (email !== session.user.email || password) {
+      // Changing email requires clicking a confirmation link before it
+      // actually takes effect (same flow as signup — see confirm-email.tsx)
+      // — session.user.email stays the old address until then, so the
+      // success message below has to say so rather than claim it's done.
+      const emailChanged = email !== session.user.email;
+      if (emailChanged || password) {
         const { error } = await supabase.auth.updateUser({
-          ...(email !== session.user.email ? { email } : {}),
+          ...(emailChanged ? { email } : {}),
           ...(password ? { password } : {}),
         });
         if (error) throw new Error(error.message);
       }
       await refreshProfile();
-      alert(t('editProfile.done'), t('editProfile.profileUpdated'), [{ text: t('common.ok'), onPress: () => router.back() }]);
+      alert(
+        t('editProfile.done'),
+        emailChanged ? t('editProfile.emailChangePending') : t('editProfile.profileUpdated'),
+        [{ text: t('common.ok'), onPress: () => router.back() }],
+      );
     } catch (err: any) {
       alert(t('common.error'), err.message || t('editProfile.errors.updateFailed'));
     } finally {

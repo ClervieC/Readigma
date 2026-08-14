@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import * as reports from '../lib/reports';
@@ -8,12 +9,16 @@ import { alert } from '../lib/alert';
 import Screen from '../components/Screen';
 import Button from '../components/Button';
 
-const BOOK_REASONS = ['Informations incorrectes', 'Contenu inapproprié', 'Doublon', 'Autre'];
-const USER_REASONS = ['Comportement abusif', 'Faux compte', 'Spam', 'Autre'];
+// Stable keys (not translated display text) sent as the `reason` value to
+// reports.submitReport/stored server-side — app/admin.tsx looks them up via
+// t(`report.reasons.${reason}`) to display in the admin's own UI language,
+// regardless of which language the reporter used.
+const BOOK_REASONS = ['bookIncorrectInfo', 'bookInappropriate', 'bookDuplicate', 'bookOther'];
+const USER_REASONS = ['userAbusive', 'userFakeAccount', 'userSpam', 'userOther'];
 // Shared by shared-reading messages and book reviews — both are free-text
 // user content with the same realistic set of things worth flagging
 // (a review can contain a spoiler just as easily as a message can).
-const CONTENT_REASONS = ['Spoiler', 'Contenu inapproprié', 'Harcèlement', 'Spam', 'Autre'];
+const CONTENT_REASONS = ['contentSpoiler', 'contentInappropriate', 'contentHarassment', 'contentSpam', 'contentOther'];
 
 // Generic report form for a book, a user, a shared-reading message, or a
 // book review — reached from the "..." menu on app/book/[id].tsx and
@@ -21,6 +26,7 @@ const CONTENT_REASONS = ['Spoiler', 'Contenu inapproprié', 'Harcèlement', 'Spa
 export default function ReportScreen() {
   const { colors } = useTheme();
   const router = useRouter();
+  const { t } = useTranslation();
   const styles = makeStyles(colors);
   const { targetType, targetId, label } = useLocalSearchParams<{ targetType: 'book' | 'user' | 'shared_reading_message' | 'book_review'; targetId: string; label?: string }>();
   const reasons =
@@ -36,41 +42,42 @@ export default function ReportScreen() {
     setSending(true);
     reports.submitReport(targetType, targetId, reason, details).then(() => {
       setSending(false);
-      alert('Merci', 'Ton signalement a été envoyé à l\'équipe.', [{ text: 'OK', onPress: () => router.back() }]);
-    }).catch(() => { setSending(false); alert('Erreur', "Impossible d'envoyer le signalement"); });
+      alert(t('report.thanksTitle'), t('report.thanksMessage'), [{ text: t('common.ok'), onPress: () => router.back() }]);
+    }).catch(() => { setSending(false); alert(t('common.error'), t('report.sendError')); });
   };
 
+  const title =
+    targetType === 'user' ? t('report.titleUser')
+    : targetType === 'shared_reading_message' ? t('report.titleMessage')
+    : targetType === 'book_review' ? t('report.titleReview')
+    : t('report.titleBook');
+
   return (
-    <Screen back title={
-      targetType === 'user' ? 'Signaler ce profil'
-      : targetType === 'shared_reading_message' ? 'Signaler ce message'
-      : targetType === 'book_review' ? 'Signaler cet avis'
-      : 'Signaler ce livre'
-    } atmosphere="pink">
+    <Screen back title={title} atmosphere="pink">
       {label ? <Text style={styles.target}>{label}</Text> : null}
 
-      <Text style={styles.label}>Motif</Text>
+      <Text style={styles.label}>{t('report.reasonLabel')}</Text>
       {reasons.map((r) => (
         <TouchableOpacity key={r} style={styles.reasonRow} onPress={() => setReason(r)}>
           <View style={[styles.radio, reason === r && styles.radioActive]}>
             {reason === r && <View style={styles.radioDot} />}
           </View>
-          <Text style={styles.reasonText}>{r}</Text>
+          <Text style={styles.reasonText}>{t(`report.reasons.${r}`)}</Text>
         </TouchableOpacity>
       ))}
 
-      <Text style={styles.label}>Détails (optionnel)</Text>
+      <Text style={styles.label}>{t('report.detailsLabel')}</Text>
       <TextInput
         style={styles.input}
         value={details}
         onChangeText={setDetails}
-        placeholder="Précise si besoin..."
+        placeholder={t('report.detailsPlaceholder')}
         placeholderTextColor={colors.gray}
         multiline
         maxLength={500}
       />
 
-      <Button label={sending ? 'Envoi...' : 'Envoyer le signalement'} variant="danger" onPress={submit} disabled={sending} style={{ marginTop: 20 }} />
+      <Button label={sending ? t('report.sending') : t('report.send')} variant="danger" onPress={submit} disabled={sending} style={{ marginTop: 20 }} />
     </Screen>
   );
 }

@@ -30,6 +30,7 @@ import ProgressBar from "../../components/ProgressBar";
 import StarRating from "../../components/StarRating";
 import { REACTION_EMOJIS as EMOJIS } from "../../lib/emojis";
 import { alert } from "../../lib/alert";
+import ShareBookModal from "../../components/ShareBookModal";
 
 const STATUS_OPTIONS: {
   labelKey: string;
@@ -47,6 +48,16 @@ const TABS = [
   { labelKey: "book.tabReading", value: "lecture" },
   { labelKey: "book.tabReviews", value: "avis" },
 ] as const;
+
+// "Mon voyage de lecture" timeline — cycling the accent per entry (rather
+// than one flat color for the whole list) is what makes a run of reactions
+// read as a journey instead of a plain log.
+const TIMELINE_ACCENTS = (colors: ColorPalette) => [
+  colors.purple,
+  colors.teal,
+  colors.pink,
+  colors.lavender,
+];
 
 function Card({
   title,
@@ -83,6 +94,7 @@ export default function BookDetailScreen() {
   const [reactions, setReactions] = useState<any[]>([]);
   const [showReactionModal, setShowReactionModal] = useState(false);
   const [showFinishModal, setShowFinishModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [selectedEmojis, setSelectedEmojis] = useState<string[]>([]);
   const [reactionNote, setReactionNote] = useState("");
   const [isPublic, setIsPublic] = useState(true);
@@ -295,13 +307,24 @@ export default function BookDetailScreen() {
     const total = parseInt(totalPages) || 0;
     if (progressMode === "pages") {
       pages = parseInt(currentPage) || 0;
-      if (total > 0) percent = Math.round((pages / total) * 100 * 100) / 100;
+      if (total > 0) {
+        if (pages > total) {
+          alert(t("common.error"), t("book.errors.pageOverTotal"));
+          return;
+        }
+        percent = Math.round((pages / total) * 100 * 100) / 100;
+      }
+      // Nothing to save (and nothing to re-share to the feed) if the page/
+      // total match what's already stored — re-tapping "update" without
+      // actually changing anything used to post a redundant progress_update.
+      if (pages === (currentBook.current_page || 0) && total === (currentBook.total_pages || 0)) return;
     } else {
       percent = parseFloat(progressPercent) || 0;
       if (percent > 100) {
         alert(t("common.error"), t("book.errors.percentOver100"));
         return;
       }
+      if (percent === (currentBook.progress_percent || 0)) return;
     }
     setLoading(true);
     ensureReading()
@@ -328,15 +351,20 @@ export default function BookDetailScreen() {
       setShowFinishModal(true);
       return;
     }
-    userBooks
-      .addBook(id, status)
+    // A running timer on this book would otherwise keep accumulating time
+    // against a book that's no longer "reading" (e.g. moved to "dnf") —
+    // stop() is a no-op if nothing's running, so this is safe to always call.
+    const isTimingThisBook = activeSession && activeSession.book_id === id;
+    (isTimingThisBook ? stopGlobalTimer().catch(() => {}) : Promise.resolve())
+      .then(() => userBooks.addBook(id, status))
       .then(() => setCurrentBook((cur: any) => ({ ...cur, status })))
       .catch(() => alert(t("common.error"), t("book.errors.updateFailed")));
   };
 
   const finishBook = () => {
-    userBooks
-      .addBook(id, "done")
+    const isTimingThisBook = activeSession && activeSession.book_id === id;
+    (isTimingThisBook ? stopGlobalTimer().catch(() => {}) : Promise.resolve())
+      .then(() => userBooks.addBook(id, "done"))
       .then(() =>
         userBooks.updateBook(id, {
           status: "done",
@@ -972,6 +1000,13 @@ export default function BookDetailScreen() {
                     }
                     style={{ marginTop: 12 }}
                   />
+                  <TouchableOpacity
+                    style={styles.shareRow}
+                    onPress={() => setShowShareModal(true)}
+                  >
+                    <Feather name="share" size={14} color={colors.lavender} />
+                    <Text style={styles.shareRowText}>{t("book.share.button")}</Text>
+                  </TouchableOpacity>
                 </Card>
               )}
 
@@ -991,39 +1026,48 @@ export default function BookDetailScreen() {
                   </Text>
                 ) : (
                   <View style={styles.timeline}>
-                    {reactions.map((r, i) => (
-                      <View key={i} style={styles.timelineItem}>
-                        <View style={styles.timelineLine}>
-                          <View style={styles.timelineDot} />
-                          {i < reactions.length - 1 && (
-                            <View style={styles.timelineConnector} />
-                          )}
-                        </View>
-                        <View style={styles.timelineContent}>
-                          <View style={styles.timelineHeader}>
-                            <Text style={styles.timelineEmoji}>{r.emoji}</Text>
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.timelinePercent}>
-                                {r.progress_percent
-                                  ? `${Math.round(r.progress_percent)}%`
-                                  : ""}
-                                {r.page_number
-                                  ? ` · Page ${r.page_number}`
-                                  : ""}
-                              </Text>
-                              <Feather
-                                name={r.is_public ? "globe" : "lock"}
-                                size={10}
-                                color={colors.gray}
-                              />
+                    {reactions.map((r, i) => {
+                      const accent = TIMELINE_ACCENTS(colors)[i % 4];
+                      return (
+                        <View key={i} style={styles.timelineItem}>
+                          <View style={styles.timelineLine}>
+                            <View style={[styles.timelineDotGlow, { backgroundColor: accent + "26" }]}>
+                              <View style={[styles.timelineDot, { backgroundColor: accent }]} />
+                            </View>
+                            {i < reactions.length - 1 && (
+                              <View style={[styles.timelineConnector, { backgroundColor: accent + "40" }]} />
+                            )}
+                          </View>
+                          <View style={styles.timelineContent}>
+                            <View style={[styles.timelineBubble, shadows.card]}>
+                              <View style={styles.timelineHeader}>
+                                <View style={[styles.timelineEmojiBadge, { backgroundColor: accent + "1F" }]}>
+                                  <Text style={styles.timelineEmoji}>{r.emoji}</Text>
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={[styles.timelinePercent, { color: accent }]}>
+                                    {r.progress_percent
+                                      ? `${Math.round(r.progress_percent)}%`
+                                      : ""}
+                                    {r.page_number
+                                      ? ` · Page ${r.page_number}`
+                                      : ""}
+                                  </Text>
+                                  <Feather
+                                    name={r.is_public ? "globe" : "lock"}
+                                    size={10}
+                                    color={colors.gray}
+                                  />
+                                </View>
+                              </View>
+                              {r.note ? (
+                                <Text style={styles.timelineNote}>{r.note}</Text>
+                              ) : null}
                             </View>
                           </View>
-                          {r.note ? (
-                            <Text style={styles.timelineNote}>{r.note}</Text>
-                          ) : null}
                         </View>
-                      </View>
-                    ))}
+                      );
+                    })}
                   </View>
                 )}
               </Card>
@@ -1200,6 +1244,21 @@ export default function BookDetailScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      <ShareBookModal
+        visible={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        data={{
+          title: currentBook.title,
+          author: currentBook.author,
+          coverUrl: currentBook.cover_url,
+          rating: rating || 0,
+          comment: comment || null,
+          formats: currentBook.formats ?? [],
+          readingSeconds: totalReadingTime,
+          journeyEmojis: reactions.map((r: any) => r.emoji),
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -1411,32 +1470,62 @@ const makeStyles = (colors: ColorPalette) =>
       fontSize: 13,
       fontWeight: "600",
     },
+    shareRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      marginTop: 14,
+      alignSelf: "center",
+    },
+    shareRowText: {
+      color: colors.lavender,
+      fontSize: 13,
+      fontWeight: "600",
+    },
     emptyText: { color: colors.muted, fontSize: 13 },
     timeline: { paddingLeft: 4 },
-    timelineItem: { flexDirection: "row", gap: 12, marginBottom: 16 },
-    timelineLine: { alignItems: "center", width: 20 },
+    timelineItem: { flexDirection: "row", gap: 12, marginBottom: 14 },
+    timelineLine: { alignItems: "center", width: 28 },
+    timelineDotGlow: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      alignItems: "center",
+      justifyContent: "center",
+    },
     timelineDot: {
       width: 10,
       height: 10,
       borderRadius: 5,
-      backgroundColor: colors.purple,
     },
     timelineConnector: {
       flex: 1,
-      width: 1,
-      backgroundColor: colors.divider,
+      width: 2,
+      borderRadius: 1,
       marginTop: 4,
     },
-    timelineContent: { flex: 1, paddingBottom: 8 },
+    timelineContent: { flex: 1, paddingBottom: 4 },
+    timelineBubble: {
+      backgroundColor: colors.card,
+      borderRadius: radius.md,
+      padding: 12,
+    },
     timelineHeader: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 8,
+      gap: 10,
       marginBottom: 4,
     },
+    timelineEmojiBadge: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: "center",
+      justifyContent: "center",
+    },
     timelineEmoji: { fontSize: 22 },
-    timelinePercent: { fontSize: 12, color: colors.teal, fontWeight: "600" },
-    timelineNote: { fontSize: 13, color: colors.white, lineHeight: 18 },
+    timelinePercent: { fontSize: 14, fontFamily: fonts.headingBold },
+    timelineNote: { fontSize: 13, color: colors.white, lineHeight: 18, marginTop: 2 },
     communityHeader: {
       flexDirection: "row",
       alignItems: "center",

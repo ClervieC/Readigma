@@ -682,11 +682,16 @@ export async function addBookToDb(book: NormalizedBook) {
 }
 
 // Manual edit of the shared catalog's series name/tome number (book detail
-// screen) — separate from addBookToDb since this targets `books` directly,
-// not through the upsert-on-search-result path, and needs to allow clearing
-// a field back to null (unlike addBookToDb's undefined-skips-column guard).
+// screen) — routed through the update_book_series RPC (db/schema.sql)
+// rather than a direct `books` update, since that table's row policy is
+// admin-only; the RPC is a narrow security-definer carve-out that only ever
+// touches series/series_index, open to any signed-in reader.
 export async function updateBookSeries(bookId: string, patch: { series?: string | null; series_index?: number | null }) {
-  const { error } = await supabase.from('books').update(patch).eq('id', bookId);
+  const { error } = await supabase.rpc('update_book_series', {
+    p_book_id: bookId,
+    p_series: patch.series ?? null,
+    p_series_index: patch.series_index ?? null,
+  });
   if (error) throw new Error(error.message);
 }
 

@@ -4,6 +4,51 @@
     "cancel": "Annuler",
     "ok": "OK"
   },
+  "auth": {
+    "tagline": "Stop searching. Start discovering.",
+    "login": {
+      "title": "Bon retour",
+      "subtitle": "Connecte-toi pour retrouver ta pile",
+      "email": "Email",
+      "emailPlaceholder": "ton@email.com",
+      "password": "Mot de passe",
+      "submit": "Se connecter",
+      "noAccount": "Pas encore de compte ?",
+      "signUpLink": "S'inscrire",
+      "errors": {
+        "fieldsRequired": "Tous les champs sont requis",
+        "loginFailed": "Erreur de connexion"
+      }
+    },
+    "register": {
+      "title": "Créer un compte",
+      "subtitle": "Rejoins la communauté de lecteurs",
+      "username": "Nom d'utilisateur",
+      "usernamePlaceholder": "ton_pseudo",
+      "email": "Email",
+      "emailPlaceholder": "ton@email.com",
+      "password": "Mot de passe",
+      "submit": "Créer mon compte",
+      "hasAccount": "Déjà un compte ?",
+      "loginLink": "Se connecter",
+      "errors": {
+        "fieldsRequired": "Tous les champs sont requis",
+        "registerFailed": "Erreur inscription"
+      }
+    },
+    "confirmEmail": {
+      "title": "Vérifie tes emails",
+      "subtitleWithEmail": "On a envoyé un lien de confirmation à {{email}}. Ouvre-le pour activer ton compte.",
+      "subtitleNoEmail": "On a envoyé un lien de confirmation. Ouvre-le pour activer ton compte.",
+      "note": "L'email vient de Supabase Auth (notre système d'authentification) — regarde aussi dans tes spams s'il n'apparaît pas.",
+      "confirmed": "J'ai confirmé, me connecter",
+      "resend": "Je n'ai pas reçu l'email",
+      "resending": "Envoi...",
+      "resentTitle": "Envoyé",
+      "resentMessage": "Email de confirmation renvoyé."
+    },
+    "bannedError": "Ce compte a été suspendu. Contacte le support si tu penses qu'il y a une erreur."
+  },
   "tabs": {
     "discover": "Découvrir",
     "feed": "Fil",
@@ -126,12 +171,27 @@
     "privateNoJoin": "Lecture privée — invitation requise",
     "joinError": "Impossible de rejoindre",
     "roster": "Participants",
+    "generalChat": "Discussion générale",
+    "generalChatHint": "Pour discuter de tout sauf du livre — pas de spoilers ici de toute façon, ça reste visible à tout le monde tout de suite.",
+    "generalChatPlaceholder": "Dire un truc, sans rapport avec le livre...",
     "timeline": "Chronologie",
     "spoilerHint": "Tu vois le contenu jusqu'à ta progression actuelle ({{percent}}%) — rien au-delà.",
     "noMessages": "Rien pour l'instant.",
     "messagePlaceholder": "Écrire un message...",
     "postError": "Impossible d'envoyer le message",
     "leave": "Quitter cette lecture commune",
+    "leaveConfirmTitle": "Quitter cette lecture commune ?",
+    "leaveConfirmPrivate": "Cette lecture est privée : si tu la quittes, seul(e) le/la créateur/créatrice pourra t'y réinviter.",
+    "leaveConfirmPublic": "Tu pourras la rejoindre à nouveau à tout moment tant qu'elle reste publique.",
+    "leaveError": "Impossible de quitter la lecture commune",
+    "removeMemberError": "Impossible de retirer ce membre",
+    "deleteMessageError": "Impossible de supprimer le message",
+    "deleteReadingError": "Impossible de supprimer la lecture commune",
+    "addMember": "Ajouter un membre",
+    "addMemberSearchPlaceholder": "Chercher un pseudo...",
+    "addMemberError": "Impossible d'ajouter ce membre",
+    "noUsersFound": "Aucun utilisateur trouvé",
+    "add": "Ajouter",
     "avgProgress": "Progression moyenne",
     "mostAdvanced": "Le plus avancé",
     "mostBehind": "Le plus en retard",
@@ -282,6 +342,15 @@
     "format": "Format",
     "formatPhysical": "Physique",
     "formatEreader": "Liseuse",
+    "share": {
+      "kicker": "Vient de terminer",
+      "button": "Partager ma lecture",
+      "shareSheetTitle": "Ma lecture sur Readigma",
+      "downloadedTitle": "Image téléchargée",
+      "downloadedMessage": "L'image a été téléchargée — tu peux la partager depuis tes fichiers.",
+      "error": "Impossible de créer l'image à partager",
+      "unavailable": "Le partage n'est pas disponible sur cet appareil"
+    },
     "readingTimer": "Chrono de lecture",
     "stop": "Arrêter",
     "loadingEllipsis": "...",
@@ -324,6 +393,7 @@
       "stopTimer": "Impossible d'arrêter le chrono",
       "updateFormat": "Impossible de mettre à jour le format",
       "percentOver100": "Le pourcentage ne peut pas dépasser 100%",
+      "pageOverTotal": "La page ne peut pas dépasser le nombre total de pages",
       "progressUpdated": "Progression mise à jour !",
       "updateFailed": "Impossible de mettre à jour",
       "finishedCongrats": "Félicitations ! Tu as terminé ce livre !",
@@ -561,6 +631,10 @@
       {
         "q": "Mes notifications ne fonctionnent pas.",
         "a": "Assure-toi d'avoir autorisé les notifications pour Readigma dans les paramètres de ton téléphone. Les notifs push arrivent dès que quelqu'un commence à te suivre."
+      },
+      {
+        "q": "Comment fonctionne une lecture commune ?",
+        "a": "Une lecture commune a deux espaces séparés. La \"Chronologie\" est réservée au livre : chaque message y est rattaché à un pourcentage de progression, et tu ne vois que ce qui se situe à ta progression actuelle ou avant — zéro spoiler. La \"Discussion générale\", juste au-dessus, sert à parler de tout le reste (comment ça va, une private joke, autre chose) : ces messages sont visibles par tout le monde tout de suite, quelle que soit l'avancée de chacun."
       }
     ]
   },
@@ -674,6 +748,7 @@
     "shelfDragHint": "Glisse pour déplacer ou empiler · touche un livre pour ajouter un espace à gauche ou à droite",
     "frameDragHint": "Glisse le cadre pour le positionner, puis dépose-le pour choisir son contenu",
     "backToRoom": "Retour au salon",
+    "movePile": "Déplacer la pile",
     "searchPlaceholder": "Chercher dans ma bibliothèque...",
     "noResultsFor": "Aucun résultat pour \"{{query}}\"",
     "noBooksHere": "Aucun livre ici",
@@ -747,8 +822,10 @@
     "confirmPassword": "Confirmer le mot de passe",
     "done": "Fait",
     "profileUpdated": "Profil mis à jour !",
+    "emailChangePending": "Vérifie ta boîte mail pour confirmer ta nouvelle adresse — elle ne sera active qu'après confirmation.",
     "errors": {
       "galleryAccessNeeded": "L'accès à la galerie est nécessaire.",
+      "usernameRequired": "Le nom d'utilisateur ne peut pas être vide",
       "passwordsDontMatch": "Les mots de passe ne correspondent pas",
       "passwordTooShort": "Le mot de passe doit faire au moins 6 caractères",
       "updateFailed": "Impossible de mettre à jour"
@@ -763,6 +840,35 @@
     "placeholder": "Écrire un message...",
     "errors": {
       "sendFailed": "Impossible d'envoyer le message"
+    }
+  },
+  "report": {
+    "titleUser": "Signaler ce profil",
+    "titleMessage": "Signaler ce message",
+    "titleReview": "Signaler cet avis",
+    "titleBook": "Signaler ce livre",
+    "reasonLabel": "Motif",
+    "detailsLabel": "Détails (optionnel)",
+    "detailsPlaceholder": "Précise si besoin...",
+    "send": "Envoyer le signalement",
+    "sending": "Envoi...",
+    "thanksTitle": "Merci",
+    "thanksMessage": "Ton signalement a été envoyé à l'équipe.",
+    "sendError": "Impossible d'envoyer le signalement",
+    "reasons": {
+      "bookIncorrectInfo": "Informations incorrectes",
+      "bookInappropriate": "Contenu inapproprié",
+      "bookDuplicate": "Doublon",
+      "bookOther": "Autre",
+      "userAbusive": "Comportement abusif",
+      "userFakeAccount": "Faux compte",
+      "userSpam": "Spam",
+      "userOther": "Autre",
+      "contentSpoiler": "Spoiler",
+      "contentInappropriate": "Contenu inapproprié",
+      "contentHarassment": "Harcèlement",
+      "contentSpam": "Spam",
+      "contentOther": "Autre"
     }
   },
   "suggestBook": {
@@ -915,6 +1021,7 @@
       "addBookFailed": "Impossible d'ajouter ce livre",
       "applyEditFailed": "Impossible d'appliquer cette modification",
       "rejectEditFailed": "Impossible de refuser cette modification",
+      "rejectSuggestionFailed": "Impossible de refuser cette suggestion",
       "titleRequired": "Le titre est requis",
       "backfillFailed": "Le balayage a échoué.",
       "repopulateFailed": "Le repeuplement a échoué."

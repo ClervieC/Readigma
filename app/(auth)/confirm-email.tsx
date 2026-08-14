@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { fonts, ColorPalette } from '../../theme';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -15,6 +16,7 @@ export default function ConfirmEmailScreen() {
   const router = useRouter();
   const { session, signOut } = useAuth();
   const params = useLocalSearchParams<{ email?: string }>();
+  const { t } = useTranslation();
   const styles = makeStyles(colors);
   const [resending, setResending] = useState(false);
 
@@ -36,8 +38,8 @@ export default function ConfirmEmailScreen() {
     setResending(true);
     supabase.auth.resend({ type: 'signup', email: params.email }).then(({ error }) => {
       setResending(false);
-      if (error) alert('Erreur', error.message);
-      else alert('Envoyé', 'Email de confirmation renvoyé.');
+      if (error) alert(t('common.error'), error.message);
+      else alert(t('auth.confirmEmail.resentTitle'), t('auth.confirmEmail.resentMessage'));
     });
   };
 
@@ -46,17 +48,17 @@ export default function ConfirmEmailScreen() {
       <AtmosphericBackground tint="purple" />
       <View style={styles.card}>
         <Feather name="mail" size={32} color={colors.purple} />
-        <Text style={styles.title}>Vérifie tes emails</Text>
+        <Text style={styles.title}>{t('auth.confirmEmail.title')}</Text>
         <Text style={styles.subtitle}>
-          On a envoyé un lien de confirmation{params.email ? ` à ${params.email}` : ''}. Ouvre-le pour activer ton compte.
+          {params.email
+            ? t('auth.confirmEmail.subtitleWithEmail', { email: params.email })
+            : t('auth.confirmEmail.subtitleNoEmail')}
         </Text>
-        <Text style={styles.note}>
-          L'email vient de Supabase Auth (notre système d'authentification) — regarde aussi dans tes spams s'il n'apparaît pas.
-        </Text>
+        <Text style={styles.note}>{t('auth.confirmEmail.note')}</Text>
 
-        <Button label="J'ai confirmé, me connecter" onPress={() => router.replace('/(auth)/login')} style={{ marginTop: 28, alignSelf: 'stretch' }} />
+        <Button label={t('auth.confirmEmail.confirmed')} onPress={() => router.replace('/(auth)/login')} style={{ marginTop: 28, alignSelf: 'stretch' }} />
         <Text style={styles.resend} onPress={resending ? undefined : resend}>
-          {resending ? 'Envoi...' : "Je n'ai pas reçu l'email"}
+          {resending ? t('auth.confirmEmail.resending') : t('auth.confirmEmail.resend')}
         </Text>
       </View>
     </View>

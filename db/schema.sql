@@ -337,7 +337,11 @@ create table shared_reading_messages (
   user_id           uuid not null references profiles(id) on delete cascade,
   content           text not null,
   percent_threshold numeric(5,2) not null default 0,
-  created_at        timestamptz not null default now()
+  created_at        timestamptz not null default now(),
+  -- 'book' (default): anti-spoiler gated, tied to a point in the book. See
+  -- db/migrations/057_shared_reading_general_chat.sql. 'general': plain
+  -- chit-chat, always visible to every member regardless of progress.
+  kind              varchar(10) not null default 'book' check (kind in ('book', 'general'))
 );
 
 create or replace function add_shared_reading_creator_as_member() returns trigger
@@ -619,8 +623,29 @@ create policy books_select_all on books for select
   to authenticated using (true);
 create policy books_insert_any on books for insert
   to authenticated with check (true);
-create policy books_update_any on books for update
-  to authenticated using (true);
+-- Row-level, not column-level — admin-only rather than "any authenticated
+-- user" (that used to let anyone vandalize any catalog entry, bypassing the
+-- suggest-then-admin-approves flow in lib/bookEdits.ts/app/admin.tsx). The
+-- one legitimate non-admin write — book/[id].tsx's "set series/tome" field —
+-- is carved out as its own security-definer RPC below instead, since it
+-- only ever touches series/series_index regardless of this row policy.
+create policy books_update_admin on books for update
+  to authenticated using (
+    exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
+  );
+
+create or replace function update_book_series(p_book_id uuid, p_series text, p_series_index numeric)
+returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+  update books set series = p_series, series_index = p_series_index where id = p_book_id;
+end;
+$$;
+
+grant execute on function update_book_series(uuid, text, numeric) to authenticated;
 
 -- book-spines Storage bucket: a user's own photo of their physical copy's
 -- spine (user_books.spine_photo_url). Public for reads, same trust level as
@@ -892,6 +917,33 @@ create policy shared_reading_book_votes_insert on shared_reading_book_votes for 
   );
 create policy shared_reading_book_votes_delete_own on shared_reading_book_votes for delete
   to authenticated using (user_id = auth.uid());
+
+-- Atomic switch-vote (delete + insert in one implicit transaction) so a
+-- failed insert can't silently wipe the caller's previous vote — see
+-- lib/sharedReadings.ts's voteFor(). SECURITY DEFINER bypasses the insert
+-- policy above, so its membership check is re-implemented here.
+create or replace function vote_for_proposal(p_reading_id uuid, p_proposal_id uuid)
+returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+  if not exists (
+    select 1 from shared_reading_members m
+    where m.shared_reading_id = p_reading_id and m.user_id = auth.uid()
+  ) then
+    raise exception 'not a member of this shared reading';
+  end if;
+
+  delete from shared_reading_book_votes
+    where shared_reading_id = p_reading_id and user_id = auth.uid();
+  insert into shared_reading_book_votes (proposal_id, shared_reading_id, user_id)
+    values (p_proposal_id, p_reading_id, auth.uid());
+end;
+$$;
+
+grant execute on function vote_for_proposal(uuid, uuid) to authenticated;
 
 create policy shared_reading_quizzes_select on shared_reading_quizzes for select
   to authenticated using (
@@ -1451,10 +1503,13 @@ begin
 end;
 $$;
 
--- The anti-spoiler read path: only returns messages at or before the
--- caller's own progress on this reading's book.
+-- The anti-spoiler read path: only returns 'book'-kind messages at or before
+-- the caller's own progress on this reading's book — 'general' ones (plain
+-- chit-chat, not tied to a point in the book) always pass through.
+drop function if exists get_shared_reading_messages(uuid);
+
 create or replace function get_shared_reading_messages(p_reading_id uuid)
-returns table(id uuid, user_id uuid, username varchar, avatar_url text, content text, percent_threshold numeric, created_at timestamptz)
+returns table(id uuid, user_id uuid, username varchar, avatar_url text, content text, percent_threshold numeric, created_at timestamptz, kind varchar)
 language plpgsql security definer set search_path = public as $$
 declare
   v_book_id uuid;
@@ -1466,12 +1521,12 @@ begin
   v_my_percent := coalesce(v_my_percent, 0);
 
   return query
-    select m.id, m.user_id, p.username, p.avatar_url, m.content, m.percent_threshold, m.created_at
+    select m.id, m.user_id, p.username, p.avatar_url, m.content, m.percent_threshold, m.created_at, m.kind
     from shared_reading_messages m
     join profiles p on p.id = m.user_id
     where m.shared_reading_id = p_reading_id
-      and m.percent_threshold <= v_my_percent
-    order by m.percent_threshold asc, m.created_at asc;
+      and (m.kind = 'general' or m.percent_threshold <= v_my_percent)
+    order by m.created_at asc;
 end;
 $$;
 

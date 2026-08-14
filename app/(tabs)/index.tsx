@@ -184,12 +184,17 @@ function ReadingBookCard({
   // quarter-star precision), just reachable straight from this card.
   const finishBook = () => {
     setFinishing(true);
-    userBooks
-      .updateBook(book.book_id, {
-        status: "done",
-        rating: rating || undefined,
-        comment: comment || undefined,
-      })
+    // A running timer on this exact book would otherwise keep accumulating
+    // time against a book that's now "done" — stop() is a no-op if nothing's
+    // running, so this is safe to always call.
+    (isTimingThisBook ? stopTimer().catch(() => {}) : Promise.resolve())
+      .then(() =>
+        userBooks.updateBook(book.book_id, {
+          status: "done",
+          rating: rating || undefined,
+          comment: comment || undefined,
+        }),
+      )
       .then(() => {
         setShowFinishModal(false);
         onFinish(book.book_id);
@@ -258,13 +263,24 @@ function ReadingBookCard({
     const total = parseInt(totalInput) || 0;
     if (progressMode === "pages") {
       pages = parseInt(pageInput) || 0;
-      if (total > 0) percent = Math.round((pages / total) * 100 * 100) / 100;
+      if (total > 0) {
+        if (pages > total) {
+          alert(t("common.error"), t("book.errors.pageOverTotal"));
+          return;
+        }
+        percent = Math.round((pages / total) * 100 * 100) / 100;
+      }
+      // Nothing to save (and nothing to re-share to the feed) if the page/
+      // total match what's already stored — re-tapping "update" without
+      // actually changing anything used to post a redundant progress_update.
+      if (pages === (book.current_page || 0) && total === (book.total_pages || 0)) return;
     } else {
       percent = parseFloat(percentInput) || 0;
       if (percent > 100) {
         alert(t("common.error"), t("book.errors.percentOver100"));
         return;
       }
+      if (percent === (book.progress_percent || 0)) return;
     }
     setProgressLoading(true);
     userBooks
@@ -300,9 +316,19 @@ function ReadingBookCard({
     const total = parseInt(totalInput) || book.total_pages || 0;
     if (progressMode === "pages") {
       pages = parseInt(pageInput) || pages;
-      if (total > 0) percent = Math.round((pages / total) * 100 * 100) / 100;
+      if (total > 0) {
+        if (pages > total) {
+          alert(t("common.error"), t("book.errors.pageOverTotal"));
+          return;
+        }
+        percent = Math.round((pages / total) * 100 * 100) / 100;
+      }
     } else {
       percent = parseFloat(percentInput) || percent;
+      if (percent > 100) {
+        alert(t("common.error"), t("book.errors.percentOver100"));
+        return;
+      }
     }
     // Only touch progress (and re-share a progress_update to the feed) if
     // it actually moved — picking an emoji without editing the page/percent
@@ -647,7 +673,14 @@ export default function DiscoverScreen() {
       userBooks
         .getMyBooks("to_read")
         .then((res) => {
-          setRecentBooks(res.slice(0, 6));
+          // getMyBooks orders by shelf position first (for the shelf/pile
+          // views that share this same call) — "recently added" needs
+          // actual add date instead, or a manually-reordered book jumps to
+          // the front regardless of when it was added.
+          const byRecency = [...res].sort(
+            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+          );
+          setRecentBooks(byRecency.slice(0, 6));
           setToReadBooks(res);
           const genreSet = new Set<string>();
           res.forEach((b: any) =>
@@ -699,6 +732,11 @@ export default function DiscoverScreen() {
     try {
       await userBooks.addBook(currentBook.book_id, "reading");
       setCurrentBook(null);
+      // Otherwise the newly-"reading" book only shows up in the "Currently
+      // reading" carousel after leaving and re-entering this tab, since
+      // readingBooks/toReadBooks are only loaded once on focus.
+      userBooks.getMyBooks("reading").then(setReadingBooks).catch(() => {});
+      userBooks.getMyBooks("to_read").then(setToReadBooks).catch(() => {});
     } catch (err: any) {
       setError(err.message || t("search.addError"));
     }

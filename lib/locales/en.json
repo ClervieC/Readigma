@@ -4,6 +4,51 @@
     "cancel": "Cancel",
     "ok": "OK"
   },
+  "auth": {
+    "tagline": "Stop searching. Start discovering.",
+    "login": {
+      "title": "Welcome back",
+      "subtitle": "Log in to get back to your pile",
+      "email": "Email",
+      "emailPlaceholder": "you@email.com",
+      "password": "Password",
+      "submit": "Log in",
+      "noAccount": "No account yet?",
+      "signUpLink": "Sign up",
+      "errors": {
+        "fieldsRequired": "All fields are required",
+        "loginFailed": "Login failed"
+      }
+    },
+    "register": {
+      "title": "Create an account",
+      "subtitle": "Join the community of readers",
+      "username": "Username",
+      "usernamePlaceholder": "your_username",
+      "email": "Email",
+      "emailPlaceholder": "you@email.com",
+      "password": "Password",
+      "submit": "Create my account",
+      "hasAccount": "Already have an account?",
+      "loginLink": "Log in",
+      "errors": {
+        "fieldsRequired": "All fields are required",
+        "registerFailed": "Registration failed"
+      }
+    },
+    "confirmEmail": {
+      "title": "Check your email",
+      "subtitleWithEmail": "We sent a confirmation link to {{email}}. Open it to activate your account.",
+      "subtitleNoEmail": "We sent a confirmation link. Open it to activate your account.",
+      "note": "The email comes from Supabase Auth (our authentication system) — check your spam folder if you don't see it.",
+      "confirmed": "I've confirmed, log me in",
+      "resend": "I didn't get the email",
+      "resending": "Sending...",
+      "resentTitle": "Sent",
+      "resentMessage": "Confirmation email resent."
+    },
+    "bannedError": "This account has been suspended. Contact support if you think this is a mistake."
+  },
   "tabs": {
     "discover": "Discover",
     "feed": "Feed",
@@ -124,12 +169,27 @@
     "privateNoJoin": "Private reading — invite only",
     "joinError": "Couldn't join",
     "roster": "Participants",
+    "generalChat": "General chat",
+    "generalChatHint": "For anything unrelated to the book — no spoilers here anyway, so it's visible to everyone right away.",
+    "generalChatPlaceholder": "Say something, unrelated to the book...",
     "timeline": "Timeline",
     "spoilerHint": "You see content up to your current progress ({{percent}}%) — nothing beyond.",
     "noMessages": "Nothing yet.",
     "messagePlaceholder": "Write a message...",
     "postError": "Couldn't send the message",
     "leave": "Leave this shared reading",
+    "leaveConfirmTitle": "Leave this shared reading?",
+    "leaveConfirmPrivate": "This reading is private: once you leave, only the creator can add you back.",
+    "leaveConfirmPublic": "You can join it again anytime as long as it stays public.",
+    "leaveError": "Couldn't leave the shared reading",
+    "removeMemberError": "Couldn't remove this member",
+    "deleteMessageError": "Couldn't delete the message",
+    "deleteReadingError": "Couldn't delete the shared reading",
+    "addMember": "Add a member",
+    "addMemberSearchPlaceholder": "Search a username...",
+    "addMemberError": "Couldn't add this member",
+    "noUsersFound": "No user found",
+    "add": "Add",
     "avgProgress": "Average progress",
     "mostAdvanced": "Furthest along",
     "mostBehind": "Furthest behind",
@@ -280,6 +340,15 @@
     "format": "Format",
     "formatPhysical": "Physical",
     "formatEreader": "E-reader",
+    "share": {
+      "kicker": "Just finished",
+      "button": "Share my read",
+      "shareSheetTitle": "My read on Readigma",
+      "downloadedTitle": "Image downloaded",
+      "downloadedMessage": "The image was downloaded — you can share it from your files.",
+      "error": "Couldn't create the image to share",
+      "unavailable": "Sharing isn't available on this device"
+    },
     "readingTimer": "Reading timer",
     "stop": "Stop",
     "loadingEllipsis": "...",
@@ -322,6 +391,7 @@
       "stopTimer": "Couldn't stop the timer",
       "updateFormat": "Couldn't update the format",
       "percentOver100": "The percentage can't exceed 100%",
+      "pageOverTotal": "The page can't exceed the total number of pages",
       "progressUpdated": "Progress updated!",
       "updateFailed": "Couldn't update",
       "finishedCongrats": "Congratulations! You finished this book!",
@@ -559,6 +629,10 @@
       {
         "q": "My notifications aren't working.",
         "a": "Make sure you've allowed notifications for Readigma in your phone's settings. Push notifications arrive as soon as someone starts following you."
+      },
+      {
+        "q": "How does a shared reading work?",
+        "a": "A shared reading has two separate spaces. The \"Timeline\" is book-only: every message there is tied to a progress percentage, and you only see what's at or before your own progress — zero spoilers. \"General chat\", right above it, is for everything else (how's it going, an inside joke, anything) — those messages are visible to everyone right away, no matter where each person is in the book."
       }
     ]
   },
@@ -672,6 +746,7 @@
     "shelfDragHint": "Drag to move or stack · tap a book to add space to its left or right",
     "frameDragHint": "Drag the frame to position it, then drop it to choose its content",
     "backToRoom": "Back to the room",
+    "movePile": "Move the pile",
     "searchPlaceholder": "Search my library...",
     "noResultsFor": "No results for \"{{query}}\"",
     "noBooksHere": "No books here",
@@ -745,8 +820,10 @@
     "confirmPassword": "Confirm password",
     "done": "Done",
     "profileUpdated": "Profile updated!",
+    "emailChangePending": "Check your inbox to confirm your new address — it won't be active until you do.",
     "errors": {
       "galleryAccessNeeded": "Gallery access is required.",
+      "usernameRequired": "Username can't be empty",
       "passwordsDontMatch": "Passwords don't match",
       "passwordTooShort": "Password must be at least 6 characters",
       "updateFailed": "Couldn't update"
@@ -761,6 +838,35 @@
     "placeholder": "Write a message...",
     "errors": {
       "sendFailed": "Couldn't send the message"
+    }
+  },
+  "report": {
+    "titleUser": "Report this profile",
+    "titleMessage": "Report this message",
+    "titleReview": "Report this review",
+    "titleBook": "Report this book",
+    "reasonLabel": "Reason",
+    "detailsLabel": "Details (optional)",
+    "detailsPlaceholder": "Add details if needed...",
+    "send": "Send report",
+    "sending": "Sending...",
+    "thanksTitle": "Thanks",
+    "thanksMessage": "Your report has been sent to the team.",
+    "sendError": "Couldn't send the report",
+    "reasons": {
+      "bookIncorrectInfo": "Incorrect information",
+      "bookInappropriate": "Inappropriate content",
+      "bookDuplicate": "Duplicate",
+      "bookOther": "Other",
+      "userAbusive": "Abusive behavior",
+      "userFakeAccount": "Fake account",
+      "userSpam": "Spam",
+      "userOther": "Other",
+      "contentSpoiler": "Spoiler",
+      "contentInappropriate": "Inappropriate content",
+      "contentHarassment": "Harassment",
+      "contentSpam": "Spam",
+      "contentOther": "Other"
     }
   },
   "suggestBook": {
@@ -913,6 +1019,7 @@
       "addBookFailed": "Could not add this book",
       "applyEditFailed": "Could not apply this edit",
       "rejectEditFailed": "Could not reject this edit",
+      "rejectSuggestionFailed": "Could not reject this suggestion",
       "titleRequired": "Title is required",
       "backfillFailed": "The sweep failed.",
       "repopulateFailed": "The repopulate failed."

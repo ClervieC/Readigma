@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { stashPendingUsername, consumePendingUsername } from '../lib/pendingUsername';
+import i18n from '../lib/i18n';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -151,7 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: prof } = await supabase.from('profiles').select('banned').eq('id', data.user.id).maybeSingle();
     if (prof?.banned) {
       await supabase.auth.signOut();
-      throw new Error('Ce compte a été suspendu. Contacte le support si tu penses qu\'il y a une erreur.');
+      throw new Error(i18n.t('auth.bannedError'));
     }
   };
 

@@ -49,6 +49,7 @@ export type SharedReadingMessage = {
   content: string;
   percent_threshold: number;
   created_at: string;
+  kind: 'book' | 'general';
 };
 
 export type SharedReadingReactionStat = {
@@ -240,6 +241,18 @@ export async function removeMember(readingId: string, userId: string) {
   if (error) throw new Error(error.message);
 }
 
+// Creator-only (shared_reading_members_insert_creator, already RLS-enforced
+// server-side since db/migrations/038_shared_readings.sql — just never had a
+// UI). The only way back into a *private* reading: joinSharedReading only
+// works when is_public is true, so a member who leaves or gets removed from
+// a private one has no self-serve way back in otherwise.
+export async function addMember(readingId: string, userId: string) {
+  const { error } = await supabase
+    .from('shared_reading_members')
+    .insert({ shared_reading_id: readingId, user_id: userId });
+  if (error) throw new Error(error.message);
+}
+
 export async function isMemberOf(readingId: string): Promise<boolean> {
   const userId = await requireUserId();
   const { data, error } = await supabase
@@ -378,18 +391,15 @@ export async function getProposals(readingId: string): Promise<SharedReadingProp
 }
 
 // One active vote per reading (unique on shared_reading_id, user_id) — a
-// re-vote deletes the previous pick first rather than upserting, since
-// switching to a *different* proposal_id isn't a conflict on that same key.
+// re-vote deletes the previous pick and inserts the new one. Routed through
+// the vote_for_proposal RPC (db/schema.sql) so that's atomic: two separate
+// client round trips used to mean a failed insert could silently wipe the
+// previous vote with no way to tell.
 export async function voteFor(readingId: string, proposalId: string) {
-  const userId = await requireUserId();
-  await supabase
-    .from('shared_reading_book_votes')
-    .delete()
-    .eq('shared_reading_id', readingId)
-    .eq('user_id', userId);
-  const { error } = await supabase
-    .from('shared_reading_book_votes')
-    .insert({ proposal_id: proposalId, shared_reading_id: readingId, user_id: userId });
+  const { error } = await supabase.rpc('vote_for_proposal', {
+    p_reading_id: readingId,
+    p_proposal_id: proposalId,
+  });
   if (error) throw new Error(error.message);
 }
 
@@ -423,7 +433,19 @@ export async function postMessage(readingId: string, bookId: string, content: st
   }
   const { error } = await supabase
     .from('shared_reading_messages')
-    .insert({ shared_reading_id: readingId, user_id: userId, content, percent_threshold: threshold });
+    .insert({ shared_reading_id: readingId, user_id: userId, content, percent_threshold: threshold, kind: 'book' });
+  if (error) throw new Error(error.message);
+}
+
+// Plain chit-chat, not tied to a point in the book — always visible to
+// every member regardless of their own progress (see db/migrations/
+// 057_shared_reading_general_chat.sql), unlike postMessage's spoiler-gated
+// book discussion.
+export async function postGeneralMessage(readingId: string, content: string) {
+  const userId = await requireUserId();
+  const { error } = await supabase
+    .from('shared_reading_messages')
+    .insert({ shared_reading_id: readingId, user_id: userId, content, percent_threshold: 0, kind: 'general' });
   if (error) throw new Error(error.message);
 }
 

@@ -41,9 +41,15 @@ export default function FollowsScreen() {
 
   const toggleFollow = (userId: string, username: string) => {
     const action = followingIds.has(userId) ? follows.unfollowUser(userId) : follows.followUser(userId);
-    action.then(loadFollowing).catch(() =>
-      alert(t('common.error'), followingIds.has(userId) ? t('follows.errors.unfollow') : t('follows.errors.follow', { username }))
-    );
+    action
+      // Also reloads followers, not just following — the "followers" tab's
+      // "follow back" button is driven by each row's own followed_back flag
+      // (loaded once on focus), which otherwise goes stale after a follow/
+      // unfollow here and can be tapped again into a duplicate-follow error.
+      .then(() => { loadFollowing(); loadFollowers(); })
+      .catch(() =>
+        alert(t('common.error'), followingIds.has(userId) ? t('follows.errors.unfollow') : t('follows.errors.follow', { username }))
+      );
   };
 
   const goToProfile = (id: string, username: string) => router.push({ pathname: '/friends/[id]', params: { id, username } });
