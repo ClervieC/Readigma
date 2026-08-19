@@ -7,11 +7,11 @@ import {
   FlatList,
   TouchableOpacity,
   StyleSheet,
-  Image,
   useWindowDimensions,
   Platform,
   ActivityIndicator,
 } from "react-native";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -391,7 +391,7 @@ function CoverSliver({
   return (
     <Image
       source={{ uri }}
-      resizeMode="cover"
+      contentFit="cover"
       style={
         horizontal
           ? {
@@ -910,7 +910,7 @@ function RoomView({
           <Image
             source={SALON_IMAGE}
             style={styles.salonImage}
-            resizeMode="contain"
+            contentFit="contain"
           />
           {SALON_SHELF_ZONES.map((zone) => (
             <TouchableOpacity
@@ -1560,7 +1560,7 @@ export default function LibraryScreen() {
               <Image
                 source={plantImageFor(frame.id)}
                 style={styles.plantImage}
-                resizeMode="cover"
+                contentFit="cover"
               />
             )}
           </TouchableOpacity>
@@ -1594,7 +1594,7 @@ export default function LibraryScreen() {
               <Image
                 source={candleImageFor(frame.id)}
                 style={styles.candleImage}
-                resizeMode="cover"
+                contentFit="cover"
               />
             )}
           </TouchableOpacity>
@@ -2565,13 +2565,13 @@ export default function LibraryScreen() {
           {faceOut ? (
             <Image
               source={{ uri: book.cover_url }}
-              resizeMode="cover"
+              contentFit="cover"
               style={[styles.spineFaceImg, { width }]}
             />
           ) : book.spine_photo_url ? (
             <Image
               source={{ uri: book.spine_photo_url }}
-              resizeMode="cover"
+              contentFit="cover"
               style={styles.spineFaceImg}
             />
           ) : (

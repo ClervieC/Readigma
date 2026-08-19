@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -168,7 +169,12 @@ export default function CreateSharedReadingScreen() {
               <Text style={styles.resultTitle} numberOfLines={1}>{selectedBook.title}</Text>
               <Text style={styles.resultAuthor} numberOfLines={1}>{selectedBook.author}</Text>
             </View>
-            <TouchableOpacity onPress={() => setSelectedBook(null)} hitSlop={8}>
+            <TouchableOpacity
+              onPress={() => setSelectedBook(null)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t('common.close')}
+            >
               <Feather name="x" size={18} color={colors.gray} />
             </TouchableOpacity>
           </View>

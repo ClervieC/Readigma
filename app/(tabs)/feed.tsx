@@ -1,8 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import {
-  View, Text, TextInput, ScrollView, TouchableOpacity,
-  StyleSheet, RefreshControl, Image, ActivityIndicator
+  View, Text, TextInput, FlatList, TouchableOpacity,
+  StyleSheet, RefreshControl, ActivityIndicator
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -246,7 +247,7 @@ export default function FeedScreen() {
   const [feedItems, setFeedItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<FlatList>(null);
 
   const handleLike = (feedId: string) => {
     setFeedItems(cur => cur.map(it => it.id === feedId
@@ -274,11 +275,11 @@ export default function FeedScreen() {
   };
 
   useFocusEffect(useCallback(() => {
-    requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: 0, animated: false }));
+    requestAnimationFrame(() => scrollRef.current?.scrollToOffset({ offset: 0, animated: false }));
     loadFeed();
   }, []));
 
-  useEffect(() => onScrollToTop('feed', () => scrollRef.current?.scrollTo({ y: 0, animated: true })), []);
+  useEffect(() => onScrollToTop('feed', () => scrollRef.current?.scrollToOffset({ offset: 0, animated: true })), []);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -297,20 +298,23 @@ export default function FeedScreen() {
         </View>
       </View>
 
-      <ScrollView ref={scrollRef} style={styles.scroll} showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadFeed(true)} tintColor={colors.purple} />}>
-        {loading && <Text style={styles.loadingText}>{t('feed.loading')}</Text>}
-
-        {!loading && feedItems.length === 0 && (
+      <FlatList
+        ref={scrollRef}
+        style={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        data={feedItems}
+        keyExtractor={(item) => item.id}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadFeed(true)} tintColor={colors.purple} />}
+        ListHeaderComponent={loading ? <Text style={styles.loadingText}>{t('feed.loading')}</Text> : null}
+        ListEmptyComponent={!loading ? (
           <View style={styles.emptyState}>
             <Feather name="inbox" size={40} color={colors.gray} />
             <Text style={styles.emptyTitle}>{t('feed.emptyTitle')}</Text>
             <Text style={styles.emptyText}>{t('feed.emptyText')}</Text>
           </View>
-        )}
-
-        {feedItems.map((item, i) => (
-          <Animated.View key={i} entering={FadeInDown.duration(300).delay(Math.min(i, 8) * 40)}>
+        ) : null}
+        renderItem={({ item, index: i }) => (
+          <Animated.View entering={FadeInDown.duration(300).delay(Math.min(i, 8) * 40)}>
             <ActivityCard item={item} styles={styles} colors={colors} last={i === feedItems.length - 1}
               onUserPress={(userId, username) => router.push({ pathname: '/friends/[id]', params: { id: userId, username } })}
               onBookPress={(bookId) => router.push(`/book/${bookId}`)}
@@ -321,10 +325,9 @@ export default function FeedScreen() {
                 this stays cheap to always render. */}
             {(i + 1) % 5 === 0 && <AdBanner />}
           </Animated.View>
-        ))}
-
-        <View style={{ height: 20 }} />
-      </ScrollView>
+        )}
+        ListFooterComponent={<View style={{ height: 20 }} />}
+      />
     </SafeAreaView>
   );
 }

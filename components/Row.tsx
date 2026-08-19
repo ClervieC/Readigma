@@ -26,6 +26,8 @@ export default function Row({ onPress, icon, children, right, chevron, last }: R
       style={[styles.row, !last && styles.divider]}
       onPress={onPress}
       activeOpacity={onPress ? 0.6 : undefined}
+      accessible={!!onPress}
+      accessibilityRole={onPress ? 'button' : undefined}
     >
       {icon}
       <View style={styles.body}>{children}</View>

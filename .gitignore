@@ -45,3 +45,8 @@ yarn-error.*
 /blob-report
 /playwright/.cache
 .claude/settings.json
+
+# Claude Code skills (local tooling, not project source)
+.agents/
+.claude/skills/
+/skills-lock.json

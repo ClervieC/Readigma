@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming, interpolateColor } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming, interpolateColor, useReducedMotion } from 'react-native-reanimated';
 import { ColorPalette, fonts } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import { emitScrollToTop } from '../lib/tabScrollEmitter';
@@ -28,13 +28,17 @@ type TabBarProps = {
 function TabItem({ tab, focused, onPress, colors }: { tab: typeof TABS[number]; focused: boolean; onPress: () => void; colors: ColorPalette }) {
   const styles = makeStyles(colors);
   const { t } = useTranslation();
+  const reducedMotion = useReducedMotion();
   const progress = useSharedValue(focused ? 1 : 0);
   const scale = useSharedValue(focused ? 1 : 1);
 
   useEffect(() => {
-    progress.value = withTiming(focused ? 1 : 0, { duration: 180 });
-    if (focused) scale.value = withSequence(withTiming(1.18, { duration: 110 }), withTiming(1, { duration: 140 }));
-  }, [focused]);
+    // The color/pill transition carries the selected-tab state and stays even
+    // under Reduce Motion (just instant instead of eased); only the bouncy
+    // icon overshoot below is pure decoration and gets skipped.
+    progress.value = withTiming(focused ? 1 : 0, { duration: reducedMotion ? 0 : 180 });
+    if (focused && !reducedMotion) scale.value = withSequence(withTiming(1.18, { duration: 110 }), withTiming(1, { duration: 140 }));
+  }, [focused, reducedMotion]);
 
   const iconStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   const labelStyle = useAnimatedStyle(() => ({ color: interpolateColor(progress.value, [0, 1], [colors.gray, colors.purple]) }));
@@ -44,7 +48,14 @@ function TabItem({ tab, focused, onPress, colors }: { tab: typeof TABS[number]; 
   }));
 
   return (
-    <TouchableOpacity style={styles.item} onPress={onPress} activeOpacity={0.6}>
+    <TouchableOpacity
+      style={styles.item}
+      onPress={onPress}
+      activeOpacity={0.6}
+      accessibilityRole="tab"
+      accessibilityLabel={t(tab.labelKey)}
+      accessibilityState={{ selected: focused }}
+    >
       <Animated.View style={[styles.iconPill, pillStyle]}>
         <Animated.View style={iconStyle}>
           <Feather name={tab.icon} size={20} color={focused ? colors.purple : colors.gray} />

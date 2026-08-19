@@ -73,7 +73,12 @@ export default function AdminThreadScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <AtmosphericBackground tint="purple" />
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.back')}
+        >
           <Feather name="arrow-left" size={20} color={colors.white} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>

@@ -5,12 +5,13 @@ import {
   Text,
   TextInput,
   ScrollView,
+  FlatList,
   TouchableOpacity,
   StyleSheet,
-  Image,
   ActivityIndicator,
   Modal,
 } from "react-native";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
@@ -40,6 +41,7 @@ const STATUS_OPTIONS: { status: string; labelKey: string }[] = [
 const BookItem = ({
   book,
   onPress,
+  onAdd,
   added,
   last,
   colors,
@@ -47,11 +49,13 @@ const BookItem = ({
 }: {
   book: any;
   onPress: (book: any) => void;
+  onAdd: (book: any) => void;
   added: boolean;
   last: boolean;
   colors: ColorPalette;
   styles: any;
 }) => {
+  const { t } = useTranslation();
   const tags = books.normalizeTags(book.genres);
   return (
     <Row
@@ -67,13 +71,23 @@ const BookItem = ({
         </View>
       }
       right={
-        <View style={[styles.addBtn, added && styles.addBtnDone]}>
+        // Its own TouchableOpacity, nested inside Row's own — tapping it
+        // adds straight to "to read" instead of falling through to Row's
+        // onPress (which only opens the detail sheet), matching what a "+"
+        // button is expected to do everywhere else in the app.
+        <TouchableOpacity
+          style={[styles.addBtn, added && styles.addBtnDone]}
+          onPress={() => onAdd(book)}
+          disabled={added}
+          hitSlop={8}
+          accessibilityLabel={`${t("search.addToToRead")} — ${book.title}`}
+        >
           <Feather
             name={added ? "check" : "plus"}
             size={16}
             color={added ? colors.bg : colors.lavender}
           />
-        </View>
+        </TouchableOpacity>
       }
     >
       <Text style={styles.resultTitle} numberOfLines={2}>
@@ -166,7 +180,13 @@ export default function SearchScreen() {
   const [showDetail, setShowDetail] = useState(false);
   const [recommended, setRecommended] = useState<any[]>([]);
   const [loadingRecs, setLoadingRecs] = useState(true);
+  // Discover mode (recommendations/trending, all small bounded lists) uses a
+  // plain ScrollView; result mode swaps in a virtualized FlatList since a
+  // search can return far more rows. Only one is ever mounted at a time
+  // (see showDiscover below), so exactly one of these refs is non-null.
   const scrollRef = useRef<ScrollView>(null);
+  const listRef = useRef<FlatList>(null);
+  const showDiscover = !query && !searched;
 
   useEffect(() => {
     loadTrending();
@@ -178,9 +198,10 @@ export default function SearchScreen() {
   // button should land on the same search, not an empty one.
   useFocusEffect(
     useCallback(() => {
-      requestAnimationFrame(() =>
-        scrollRef.current?.scrollTo({ y: 0, animated: false }),
-      );
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+        listRef.current?.scrollToOffset({ offset: 0, animated: false });
+      });
       loadRecommendations();
       loadLibrary();
     }, []),
@@ -345,7 +366,9 @@ export default function SearchScreen() {
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.back')}
         >
           <Feather name="arrow-left" size={20} color={colors.white} />
         </TouchableOpacity>
@@ -373,86 +396,58 @@ export default function SearchScreen() {
               setResults([]);
               setSearched(false);
             }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.close')}
           >
             <Feather name="x" size={16} color={colors.gray} />
           </TouchableOpacity>
         ) : null}
       </View>
 
-      <ScrollView
-        ref={scrollRef}
-        style={styles.scroll}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        {loading && (
-          <ActivityIndicator color={colors.purple} style={{ marginTop: 32 }} />
-        )}
-
-        {!loading && results.length > 0 && (
-          <>
-            <Text style={styles.resultsCount}>
-              {t("search.resultsCount", { count: results.length, query })}
-            </Text>
-            {results.map((book, i) => (
-              <BookItem
-                key={i}
-                book={book}
+      {showDiscover ? (
+        <ScrollView
+          ref={scrollRef}
+          style={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {!loadingRecs && recommended.length > 0 && (
+            <View>
+              <Text style={styles.sectionLabel}>{t("search.forYou")}</Text>
+              <HorizontalBooks
+                books={recommended}
                 onPress={openDetail}
-                added={isOwned(book)}
-                last={i === results.length - 1}
+                isOwned={isOwned}
                 colors={colors}
                 styles={styles}
               />
-            ))}
-          </>
-        )}
-
-        {!loading && searched && results.length === 0 && (
-          <View style={styles.emptyState}>
-            <Feather name="search" size={36} color={colors.gray} />
-            <Text style={styles.emptyText}>
-              {t("search.noResults", { query })}
-            </Text>
-          </View>
-        )}
-
-        {!query && !searched && (
-          <>
-            {!loadingRecs && recommended.length > 0 && (
-              <View>
-                <Text style={styles.sectionLabel}>{t("search.forYou")}</Text>
-                <HorizontalBooks
-                  books={recommended}
-                  onPress={openDetail}
-                  isOwned={isOwned}
-                  colors={colors}
-                  styles={styles}
-                />
-              </View>
-            )}
-            {loadingTrending ? (
-              <ActivityIndicator
-                color={colors.purple}
-                style={{ marginTop: 32 }}
-              />
-            ) : (
-              <>
-                {popular.length > 0 && (
-                  <View>
-                    <Text style={styles.sectionLabel}>
-                      {t("search.popularOnReadigma")}
-                    </Text>
-                    <HorizontalBooks
-                      books={popular}
-                      onPress={openDetail}
-                      isOwned={isOwned}
-                      colors={colors}
-                      styles={styles}
-                    />
-                  </View>
-                )}
-                {trending.map((section, i) => (
+            </View>
+          )}
+          {loadingTrending ? (
+            <ActivityIndicator
+              color={colors.purple}
+              style={{ marginTop: 32 }}
+            />
+          ) : (
+            <>
+              {popular.length > 0 && (
+                <View>
+                  <Text style={styles.sectionLabel}>
+                    {t("search.popularOnReadigma")}
+                  </Text>
+                  <HorizontalBooks
+                    books={popular}
+                    onPress={openDetail}
+                    isOwned={isOwned}
+                    colors={colors}
+                    styles={styles}
+                  />
+                </View>
+              )}
+              {trending
+                .filter((section) => section.books.length > 0)
+                .map((section, i) => (
                   <View key={i}>
                     <Text style={styles.sectionLabel}>
                       {t(section.labelKey)}
@@ -466,13 +461,55 @@ export default function SearchScreen() {
                     />
                   </View>
                 ))}
-              </>
-            )}
-          </>
-        )}
+            </>
+          )}
 
-        <View style={{ height: 20 }} />
-      </ScrollView>
+          <View style={{ height: 20 }} />
+        </ScrollView>
+      ) : (
+        <FlatList
+          ref={listRef}
+          style={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          data={results}
+          keyExtractor={(_book, i) => String(i)}
+          ListHeaderComponent={
+            <>
+              {loading && (
+                <ActivityIndicator color={colors.purple} style={{ marginTop: 32 }} />
+              )}
+              {!loading && results.length > 0 && (
+                <Text style={styles.resultsCount}>
+                  {t("search.resultsCount", { count: results.length, query })}
+                </Text>
+              )}
+            </>
+          }
+          renderItem={({ item: book, index: i }) => (
+            <BookItem
+              book={book}
+              onPress={openDetail}
+              onAdd={(b) => addBook(b, "to_read")}
+              added={isOwned(book)}
+              last={i === results.length - 1}
+              colors={colors}
+              styles={styles}
+            />
+          )}
+          ListEmptyComponent={
+            !loading && searched ? (
+              <View style={styles.emptyState}>
+                <Feather name="search" size={36} color={colors.gray} />
+                <Text style={styles.emptyText}>
+                  {t("search.noResults", { query })}
+                </Text>
+              </View>
+            ) : null
+          }
+          ListFooterComponent={<View style={{ height: 20 }} />}
+        />
+      )}
 
       {successMsg ? (
         <View style={styles.toast}>

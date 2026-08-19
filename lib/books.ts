@@ -1,7 +1,7 @@
 import { XMLParser } from 'fast-xml-parser';
 import { supabase } from './supabase';
 import { API_BASE } from './apiUrl';
-import { searchHardcover, searchHardcoverByGenre, getHardcoverTrending } from './hardcover';
+import { searchHardcover, searchHardcoverByGenre, getHardcoverTrending, getHardcoverGenrePopular } from './hardcover';
 
 // Open Library's API needs no key and sends `Access-Control-Allow-Origin: *`,
 // so — unlike a provider with a secret key — this can be called straight
@@ -370,22 +370,26 @@ export async function search(q: string): Promise<NormalizedBook[]> {
 // labelKey resolves against lib/locales/{fr,en}.json's "search.trending.*" —
 // getTrending() itself has no useTranslation() (it's a plain data-fetching
 // function, not a component), so the caller (app/search.tsx) is what
-// actually calls t() on these.
+// actually calls t() on these. `subject` is the Open Library subject slug
+// (OL fallback path below); `genreFacet` is Hardcover's own display name for
+// the same genre (primary path, see getTrending()) — verified against the
+// live `tags` table, not just a guess, since Typesense's `filter_by` needs
+// an exact facet-value match rather than a keyword.
 const TRENDING_SUBJECTS = [
-  { labelKey: 'search.trending.fantasy', subject: 'fantasy' },
-  { labelKey: 'search.trending.thriller', subject: 'thriller' },
-  { labelKey: 'search.trending.romance', subject: 'romance' },
-  { labelKey: 'search.trending.scifi', subject: 'science_fiction' },
+  { labelKey: 'search.trending.fantasy', subject: 'fantasy', genreFacet: 'Fantasy' },
+  { labelKey: 'search.trending.thriller', subject: 'thriller', genreFacet: 'Thriller' },
+  { labelKey: 'search.trending.romance', subject: 'romance', genreFacet: 'Romance' },
+  { labelKey: 'search.trending.scifi', subject: 'science_fiction', genreFacet: 'Science Fiction' },
 ];
 
-// Hardcover-backed replacement for the OL-subject sections above — kept as
-// a genuine fallback (see getTrending), not deleted, since it's the only
-// path that works with no Hardcover token configured.
-const HARDCOVER_TRENDING_SECTIONS: { labelKey: string; duration: import('./hardcover').HardcoverTrendingDuration }[] = [
-  { labelKey: 'search.trending.week', duration: 'week' },
-  { labelKey: 'search.trending.month', duration: 'month' },
-  { labelKey: 'search.trending.year', duration: 'one_year' },
-];
+// Week/year duration sections were dropped — three near-identical "trending"
+// shelves (week/month/year) read as noise, and genre browsing (see
+// TRENDING_SUBJECTS above) is a more useful way to fill the rest of this
+// screen than slicing the same all-platform trending list three ways.
+const MONTH_TRENDING: { labelKey: string; duration: import('./hardcover').HardcoverTrendingDuration } = {
+  labelKey: 'search.trending.month',
+  duration: 'month',
+};
 
 // Open Library's `published_in=YYYY-YYYY` filter on this endpoint doesn't
 // actually restrict results (verified against the live API — classics from
@@ -435,19 +439,24 @@ async function fetchFrenchBooks(): Promise<NormalizedBook[]> {
 }
 
 export async function getTrending(): Promise<{ labelKey: string; books: NormalizedBook[] }[]> {
-  const [hcSettled, frenchBooks] = await Promise.all([
-    Promise.allSettled(HARDCOVER_TRENDING_SECTIONS.map((s) => getHardcoverTrending(s.duration))),
+  const [monthBooks, genreSettled, frenchBooks] = await Promise.all([
+    getHardcoverTrending(MONTH_TRENDING.duration).catch(() => []),
+    // Most-popular-by-genre, ranked by Hardcover's own users_count (real
+    // popularity), via the exact genre facet — not a keyword search, which
+    // ranks books literally *titled* "Romance" above actual romance novels.
+    Promise.allSettled(TRENDING_SUBJECTS.map((c) => getHardcoverGenrePopular(c.genreFacet))),
     fetchFrenchBooks().catch(() => []),
   ]);
-  const hcSections = HARDCOVER_TRENDING_SECTIONS.map((s, i) => ({
-    labelKey: s.labelKey,
-    books: hcSettled[i].status === 'fulfilled' ? (hcSettled[i] as PromiseFulfilledResult<NormalizedBook[]>).value : [],
+  const genreSections = TRENDING_SUBJECTS.map((c, i) => ({
+    labelKey: c.labelKey,
+    books: genreSettled[i].status === 'fulfilled' ? (genreSettled[i] as PromiseFulfilledResult<NormalizedBook[]>).value : [],
   }));
 
-  // Hardcover unavailable (no token, or every duration came back empty) —
-  // fall back to the old Open-Library-subject sections rather than showing
-  // nothing.
-  if (hcSections.every((s) => s.books.length === 0)) {
+  // Hardcover unavailable (no token, or everything came back empty) — fall
+  // back to the old Open-Library-subject sections rather than showing
+  // nothing. No OL equivalent for the month-trending section, so it's just
+  // dropped in this path.
+  if (monthBooks.length === 0 && genreSections.every((s) => s.books.length === 0)) {
     const olResults = await Promise.allSettled(TRENDING_SUBJECTS.map((c) => fetchSubject(c.subject)));
     const olSections = TRENDING_SUBJECTS.map((c, i) => ({
       labelKey: c.labelKey,
@@ -456,7 +465,11 @@ export async function getTrending(): Promise<{ labelKey: string; books: Normaliz
     return [...olSections, { labelKey: 'search.trending.frenchAuthors', books: frenchBooks }];
   }
 
-  return [...hcSections, { labelKey: 'search.trending.frenchAuthors', books: frenchBooks }];
+  return [
+    { labelKey: MONTH_TRENDING.labelKey, books: monthBooks },
+    ...genreSections,
+    { labelKey: 'search.trending.frenchAuthors', books: frenchBooks },
+  ];
 }
 
 // Search/subject results don't include a description — fetched on demand

@@ -1,9 +1,10 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import { useTranslation } from 'react-i18next';
 import { fonts, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import AtmosphericBackground, { AtmosphereTint } from './AtmosphericBackground';
@@ -30,13 +31,19 @@ type ScreenProps = {
 export default function Screen({ title, back, left, right, scroll = true, children, atmosphere }: ScreenProps) {
   const router = useRouter();
   const { colors } = useTheme();
+  const { t } = useTranslation();
   const styles = makeStyles(colors);
 
   const header = (title || back || left || right) && (
     <View style={styles.header}>
       <View style={styles.side}>
         {back ? (
-          <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.back')}
+          >
             <Feather name="arrow-left" size={20} color={colors.white} />
           </TouchableOpacity>
         ) : (
@@ -59,9 +66,11 @@ export default function Screen({ title, back, left, right, scroll = true, childr
       ) : null}
       <Animated.View entering={FadeIn.duration(220)}>{header}</Animated.View>
       {scroll ? (
-        <ScrollView style={styles.content} contentContainerStyle={styles.contentInner} showsVerticalScrollIndicator={false}>
-          <Animated.View entering={FadeInDown.duration(280).springify().damping(18)}>{children}</Animated.View>
-        </ScrollView>
+        <KeyboardAvoidingView style={styles.content} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <ScrollView style={styles.content} contentContainerStyle={styles.contentInner} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <Animated.View entering={FadeInDown.duration(280).springify().damping(18)}>{children}</Animated.View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       ) : (
         <Animated.View style={[styles.content, styles.contentInner]} entering={FadeInDown.duration(280).springify().damping(18)}>
           {children}

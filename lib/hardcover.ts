@@ -58,14 +58,14 @@ function bookRowToNormalized(row: any): NormalizedBook {
 // title-only row with no cover or author in a results list.
 const hasEnoughData = (b: NormalizedBook) => !!(b.cover_url || b.author);
 
-export async function searchHardcover(query: string, limit = 20): Promise<NormalizedBook[]> {
-  const trimmed = query.trim();
-  if (!trimmed) return [];
+async function runHardcoverSearch(
+  body: { query: string; limit: number; filterBy?: string; sort?: string },
+): Promise<NormalizedBook[]> {
   try {
     const res = await fetch(`${API_BASE}/api/hardcover-search`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: trimmed, limit }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) return [];
     const json = await res.json();
@@ -77,6 +77,12 @@ export async function searchHardcover(query: string, limit = 20): Promise<Normal
   } catch {
     return [];
   }
+}
+
+export async function searchHardcover(query: string, limit = 20): Promise<NormalizedBook[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+  return runHardcoverSearch({ query: trimmed, limit });
 }
 
 export type HardcoverTrendingDuration = 'week' | 'month' | 'three_month' | 'one_year' | 'all';
@@ -103,7 +109,30 @@ export async function getHardcoverTrending(
 
 // Used for "recommendations": a live keyword search scoped to the reader's
 // own top genres, same idea as the Open Library subject search it
-// supplements/replaces, just backed by Hardcover's richer index.
+// supplements/replaces, just backed by Hardcover's richer index. Unlike
+// getHardcoverGenrePopular below, this is a genuine free-text query (the
+// reader's own genre strings aren't reliably one of Hardcover's exact facet
+// values), so it's still ranked by search relevance, not popularity.
 export async function searchHardcoverByGenre(genre: string, limit = 12): Promise<NormalizedBook[]> {
   return searchHardcover(genre, limit);
+}
+
+// Most-popular-within-a-genre, for search.tsx's genre trending shelves
+// (fantasy/thriller/romance/sci-fi). A bare keyword search for e.g.
+// "romance" ranks books *titled* "Romance" above actual romance novels —
+// verified live, `searchHardcover('romance')` surfaces three different
+// books literally called "Romance" before anything genre-appropriate. This
+// instead uses Typesense's `filter_by` against the indexed `genres` facet
+// (exact match, so `genre` must be one of Hardcover's own display names —
+// "Fantasy", "Thriller", "Romance", "Science Fiction", verified against the
+// live tags table) with `query: "*"` (match everything) and `sort` on
+// `users_count` so results are genuinely the most-read books in that genre,
+// not a relevance-ranked keyword hit.
+export async function getHardcoverGenrePopular(genre: string, limit = 12): Promise<NormalizedBook[]> {
+  return runHardcoverSearch({
+    query: '*',
+    limit,
+    filterBy: `genres:=[${genre}]`,
+    sort: 'users_count:desc',
+  });
 }

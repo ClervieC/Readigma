@@ -8,8 +8,10 @@ import {
   TextInput,
   Modal,
   ActivityIndicator,
-  Image,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -425,7 +427,12 @@ export default function BookDetailScreen() {
       <SafeAreaView style={styles.container} edges={["top"]}>
         <AtmosphericBackground tint="teal" />
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.back')}
+          >
             <Feather name="arrow-left" size={20} color={colors.white} />
           </TouchableOpacity>
         </View>
@@ -451,7 +458,9 @@ export default function BookDetailScreen() {
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.back')}
         >
           <Feather name="arrow-left" size={20} color={colors.white} />
         </TouchableOpacity>
@@ -459,6 +468,8 @@ export default function BookDetailScreen() {
         <TouchableOpacity
           onPress={() => setShowMoreMenu(true)}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.moreOptions')}
         >
           <Feather name="more-vertical" size={20} color={colors.white} />
         </TouchableOpacity>
@@ -547,7 +558,8 @@ export default function BookDetailScreen() {
         </Modal>
       )}
 
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView style={styles.scroll} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.hero}>
           <View style={styles.heroCover}>
             {currentBook.cover_url ? (
@@ -1028,6 +1040,12 @@ export default function BookDetailScreen() {
                   <View style={styles.timeline}>
                     {reactions.map((r, i) => {
                       const accent = TIMELINE_ACCENTS(colors)[i % 4];
+                      // r.emoji can be several emoji concatenated into one
+                      // string (multi-select — see toggleEmoji) — split into
+                      // individual glyphs so the cluster below can wrap and
+                      // scale to however many were picked, instead of
+                      // cramming them into one fixed-size badge.
+                      const emojis = Array.from(r.emoji as string);
                       return (
                         <View key={i} style={styles.timelineItem}>
                           <View style={styles.timelineLine}>
@@ -1039,30 +1057,39 @@ export default function BookDetailScreen() {
                             )}
                           </View>
                           <View style={styles.timelineContent}>
-                            <View style={[styles.timelineBubble, shadows.card]}>
+                            <View style={[styles.timelineBubble, { borderColor: accent }, shadows.card]}>
+                              {/* Oversized, near-transparent numeral behind the
+                                  content — a page-marker watermark rather than
+                                  a functional label, purely for the editorial/
+                                  journal feel. Clipped by the card's own
+                                  overflow:hidden, so it never spills into
+                                  neighboring entries. */}
+                              <Text style={[styles.timelineWatermark, { color: accent + "1A" }]} numberOfLines={1}>
+                                {r.progress_percent ? Math.round(r.progress_percent) : ""}
+                              </Text>
                               <View style={styles.timelineHeader}>
-                                <View style={[styles.timelineEmojiBadge, { backgroundColor: accent + "1F" }]}>
-                                  <Text style={styles.timelineEmoji}>{r.emoji}</Text>
+                                <View style={styles.timelineEmojiCluster}>
+                                  {emojis.map((e, ei) => (
+                                    <Text key={ei} style={styles.timelineEmoji}>{e}</Text>
+                                  ))}
                                 </View>
-                                <View style={{ flex: 1 }}>
-                                  <Text style={[styles.timelinePercent, { color: accent }]}>
-                                    {r.progress_percent
-                                      ? `${Math.round(r.progress_percent)}%`
-                                      : ""}
-                                    {r.page_number
-                                      ? ` · Page ${r.page_number}`
-                                      : ""}
-                                  </Text>
-                                  <Feather
-                                    name={r.is_public ? "globe" : "lock"}
-                                    size={10}
-                                    color={colors.gray}
-                                  />
-                                </View>
+                                <Feather
+                                  name={r.is_public ? "globe" : "lock"}
+                                  size={12}
+                                  color={colors.gray}
+                                />
                               </View>
                               {r.note ? (
-                                <Text style={styles.timelineNote}>{r.note}</Text>
+                                <Text style={styles.timelineNote}>&ldquo;{r.note}&rdquo;</Text>
                               ) : null}
+                              <View style={styles.timelineFooterRow}>
+                                <Text style={[styles.timelinePercentLabel, { color: accent }]}>
+                                  {r.progress_percent ? `${Math.round(r.progress_percent)}%` : ""}
+                                </Text>
+                                {r.page_number ? (
+                                  <Text style={styles.timelineMetaText}>{`Page ${r.page_number}`}</Text>
+                                ) : null}
+                              </View>
                             </View>
                           </View>
                         </View>
@@ -1152,8 +1179,10 @@ export default function BookDetailScreen() {
 
         <View style={{ height: 30 }} />
       </ScrollView>
+      </KeyboardAvoidingView>
 
       <Modal visible={showReactionModal} transparent animationType="slide">
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <TouchableOpacity
           style={styles.modalOverlay}
           activeOpacity={1}
@@ -1175,18 +1204,19 @@ export default function BookDetailScreen() {
               </TouchableOpacity>
             )}
             <View style={styles.emojiGrid}>
-              {EMOJIS.map((emoji) => (
-                <TouchableOpacity
-                  key={emoji}
-                  style={[
-                    styles.emojiBtn,
-                    selectedEmojis.includes(emoji) && styles.emojiBtnSelected,
-                  ]}
-                  onPress={() => toggleEmoji(emoji)}
-                >
-                  <Text style={styles.emojiText}>{emoji}</Text>
-                </TouchableOpacity>
-              ))}
+              {EMOJIS.map((emoji) => {
+                const active = selectedEmojis.includes(emoji);
+                return (
+                  <TouchableOpacity
+                    key={emoji}
+                    style={[styles.emojiBtn, active && styles.emojiBtnSelected]}
+                    onPress={() => toggleEmoji(emoji)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[styles.emojiText, active && styles.emojiTextSelected]}>{emoji}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
             <TextInput
               style={styles.noteInput}
@@ -1216,9 +1246,11 @@ export default function BookDetailScreen() {
             <Button label={t("book.add")} onPress={addReaction} />
           </TouchableOpacity>
         </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={showFinishModal} transparent animationType="slide">
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <TouchableOpacity
           style={styles.modalOverlay}
           activeOpacity={1}
@@ -1243,6 +1275,7 @@ export default function BookDetailScreen() {
             <Button label={t("book.finishReadingBtn")} onPress={finishBook} />
           </TouchableOpacity>
         </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
 
       <ShareBookModal
@@ -1256,7 +1289,7 @@ export default function BookDetailScreen() {
           comment: comment || null,
           formats: currentBook.formats ?? [],
           readingSeconds: totalReadingTime,
-          journeyEmojis: reactions.map((r: any) => r.emoji),
+          journey: reactions.map((r: any) => ({ emoji: r.emoji, percent: r.progress_percent ?? null })),
         }}
       />
     </SafeAreaView>
@@ -1508,24 +1541,51 @@ const makeStyles = (colors: ColorPalette) =>
     timelineBubble: {
       backgroundColor: colors.card,
       borderRadius: radius.md,
-      padding: 12,
+      borderLeftWidth: 3,
+      padding: 16,
+      overflow: "hidden",
+      position: "relative",
+    },
+    timelineWatermark: {
+      position: "absolute",
+      top: -22,
+      right: -6,
+      fontSize: 76,
+      fontFamily: fonts.headingBold,
+      transform: [{ rotate: "-6deg" }],
     },
     timelineHeader: {
       flexDirection: "row",
       alignItems: "center",
+      justifyContent: "space-between",
       gap: 10,
-      marginBottom: 4,
     },
-    timelineEmojiBadge: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      alignItems: "center",
-      justifyContent: "center",
+    timelineEmojiCluster: {
+      flex: 1,
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 4,
     },
-    timelineEmoji: { fontSize: 22 },
-    timelinePercent: { fontSize: 14, fontFamily: fonts.headingBold },
-    timelineNote: { fontSize: 13, color: colors.white, lineHeight: 18, marginTop: 2 },
+    timelineEmoji: { fontSize: 28, lineHeight: 32 },
+    timelineFooterRow: {
+      flexDirection: "row",
+      alignItems: "baseline",
+      gap: 8,
+      marginTop: 10,
+    },
+    timelinePercentLabel: {
+      fontSize: 20,
+      fontFamily: fonts.headingBold,
+      fontVariant: ["tabular-nums"],
+    },
+    timelineMetaText: { fontSize: 11, color: colors.gray },
+    timelineNote: {
+      fontSize: 13,
+      fontStyle: "italic",
+      color: colors.muted,
+      lineHeight: 19,
+      marginTop: 10,
+    },
     communityHeader: {
       flexDirection: "row",
       alignItems: "center",
@@ -1608,27 +1668,34 @@ const makeStyles = (colors: ColorPalette) =>
       alignItems: "center",
       gap: 4,
       alignSelf: "center",
-      marginTop: -12,
-      marginBottom: 12,
+      marginBottom: 8,
     },
     clearEmojisText: { fontSize: 12, color: colors.muted, fontWeight: "600" },
     emojiGrid: {
       flexDirection: "row",
       flexWrap: "wrap",
-      gap: 8,
+      gap: 10,
       justifyContent: "center",
-      marginBottom: 16,
+      marginTop: 4,
+      marginBottom: 18,
     },
     emojiBtn: {
-      width: 44,
-      height: 44,
-      borderRadius: 10,
+      width: 50,
+      height: 50,
+      borderRadius: 16,
       backgroundColor: colors.card2,
       alignItems: "center",
       justifyContent: "center",
+      borderWidth: 1.5,
+      borderColor: "transparent",
     },
-    emojiBtnSelected: { borderWidth: 1, borderColor: colors.purple },
-    emojiText: { fontSize: 22 },
+    emojiBtnSelected: {
+      backgroundColor: colors.purpleGlow,
+      borderColor: colors.purple,
+      ...shadows.glow,
+    },
+    emojiText: { fontSize: 24 },
+    emojiTextSelected: { transform: [{ scale: 1.15 }] },
     noteInput: {
       backgroundColor: colors.card2,
       borderRadius: radius.sm,

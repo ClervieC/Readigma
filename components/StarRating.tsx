@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, TextInput, PanResponder, GestureResponderEvent } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import Svg, { Path } from 'react-native-svg';
 import { ColorPalette } from '../theme';
 
@@ -42,6 +43,7 @@ export default function StarRating({
   onChange: (r: number) => void;
   colors: ColorPalette;
 }) {
+  const { t } = useTranslation();
   const [editingText, setEditingText] = useState<string | null>(null);
 
   const handleTouch = (evt: GestureResponderEvent) => {
@@ -63,11 +65,25 @@ export default function StarRating({
     setEditingText(null);
   };
 
+  // VoiceOver/TalkBack can't drag, so the PanResponder strip above is
+  // paired with the standard adjustable-control gesture (swipe up/down)
+  // as an equivalent path to the same onChange, in quarter-star steps.
+  const handleAccessibilityAction = (event: { nativeEvent: { actionName: string } }) => {
+    if (event.nativeEvent.actionName === 'increment') onChange(clampToQuarter(rating + 0.25));
+    else if (event.nativeEvent.actionName === 'decrement') onChange(clampToQuarter(rating - 0.25));
+  };
+
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
       <View
-        style={{ flexDirection: 'row', gap: GAP }}
+        style={{ flexDirection: 'row', gap: GAP, paddingVertical: 6, alignItems: 'center' }}
         {...panResponder.panHandlers}
+        accessible
+        accessibilityRole="adjustable"
+        accessibilityLabel={t('book.myRating')}
+        accessibilityValue={{ min: 0, max: 5, now: rating, text: rating.toFixed(2) }}
+        accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+        onAccessibilityAction={handleAccessibilityAction}
       >
         {[1, 2, 3, 4, 5].map((star) => {
           const fraction = Math.max(0, Math.min(1, rating - (star - 1)));
@@ -117,7 +133,13 @@ export default function StarRating({
           }}
         />
       ) : (
-        <TouchableOpacity onPress={() => setEditingText(rating > 0 ? rating.toFixed(2) : '')}>
+        <TouchableOpacity
+          onPress={() => setEditingText(rating > 0 ? rating.toFixed(2) : '')}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('book.myRating')}
+          accessibilityHint={rating.toFixed(2)}
+        >
           <Text style={{ fontSize: 13, color: colors.gray, marginLeft: 8 }}>
             {rating > 0 ? rating.toFixed(2) : '—'}
           </Text>

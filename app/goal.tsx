@@ -61,7 +61,14 @@ export default function GoalScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <AtmosphericBackground tint="lavender" />
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}><Feather name="arrow-left" size={20} color={colors.white} /></TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.back')}
+        >
+          <Feather name="arrow-left" size={20} color={colors.white} />
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('goal.title', { year })}</Text>
         <View style={{ width: 20 }} />
       </View>

@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Text, TouchableOpacity, View, StyleSheet } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming, withSequence, interpolateColor } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming, withSequence, interpolateColor, useReducedMotion } from 'react-native-reanimated';
 import { ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 
@@ -27,13 +27,14 @@ export default function Pill({ label, active, onPress, tone = 'accent', accessib
   const styles = makeStyles(colors);
   const Wrapper: any = onPress ? AnimatedTouchable : AnimatedView;
   const toneColor = tone === 'gilt' ? colors.teal : colors.purple;
+  const reducedMotion = useReducedMotion();
   const progress = useSharedValue(active ? 1 : 0);
   const scale = useSharedValue(1);
 
   useEffect(() => {
-    progress.value = withTiming(active ? 1 : 0, { duration: 180 });
-    if (active) scale.value = withSequence(withTiming(1.06, { duration: 90 }), withTiming(1, { duration: 120 }));
-  }, [active]);
+    progress.value = withTiming(active ? 1 : 0, { duration: reducedMotion ? 0 : 180 });
+    if (active && !reducedMotion) scale.value = withSequence(withTiming(1.06, { duration: 90 }), withTiming(1, { duration: 120 }));
+  }, [active, reducedMotion]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     borderColor: interpolateColor(progress.value, [0, 1], [colors.divider, toneColor]),
@@ -47,6 +48,8 @@ export default function Pill({ label, active, onPress, tone = 'accent', accessib
       onPress={onPress}
       activeOpacity={onPress ? 0.7 : undefined}
       accessibilityLabel={accessibilityLabel}
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityState={onPress ? { selected: !!active } : undefined}
     >
       <Text style={[styles.text, { color: active ? 'white' : tone === 'gilt' ? toneColor : colors.gray }]}>{label}</Text>
     </Wrapper>

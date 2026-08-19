@@ -38,14 +38,18 @@ export const lightColors = {
   pink: '#B5677A',
   pinkGlow: 'rgba(181,103,122,0.08)',
   cyan: '#4F8B83',
-  teal: '#B98A3F',
-  tealGlow: 'rgba(185,138,63,0.08)',
+  // Darkened from #B98A3F — that value only hit ~3.1:1 on white/card
+  // (fails WCAG AA's 4.5:1) yet was used directly as text color for review
+  // ratings, badge status, admin actions, and feed progress labels. This
+  // shade holds ~4.9:1 on #FFFFFF while staying the same warm gold hue.
+  teal: '#8F6A2F',
+  tealGlow: 'rgba(143,106,47,0.08)',
   white: '#1E1B15',
   muted: '#6B6459',
   gray: '#948C7C',
   success: '#4C7A5C',
   error: '#A5453A',
-  warning: '#B98A3F',
+  warning: '#8F6A2F',
   divider: 'rgba(30,27,21,0.08)',
   border: 'rgba(91,58,99,0.20)',
 };

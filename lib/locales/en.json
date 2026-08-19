@@ -2,7 +2,10 @@
   "common": {
     "error": "Error",
     "cancel": "Cancel",
-    "ok": "OK"
+    "ok": "OK",
+    "back": "Back",
+    "close": "Close",
+    "moreOptions": "More options"
   },
   "auth": {
     "tagline": "Stop searching. Start discovering.",
@@ -299,9 +302,7 @@
       "thriller": "🔪 Thrillers of the moment",
       "romance": "💕 Romance",
       "scifi": "🚀 Science fiction",
-      "week": "🔥 Trending this week",
       "month": "📈 Trending this month",
-      "year": "⭐ Trending this year",
       "frenchAuthors": "🇫🇷 French authors"
     },
     "yourStatus": "Your status",
@@ -930,6 +931,8 @@
   },
   "notifications": {
     "title": "Notifications",
+    "unreadCount_one": "Notifications, {{count}} unread",
+    "unreadCount_other": "Notifications, {{count}} unread",
     "emptyTitle": "No notifications",
     "emptyText": "Your new followers and activity from readers you follow will appear here.",
     "newFollowers": "New followers",

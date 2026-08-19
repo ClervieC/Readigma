@@ -7,13 +7,14 @@ import {
   TouchableOpacity,
   StyleSheet,
   Animated as RNAnimated,
-  Image,
   TextInput,
   useWindowDimensions,
   ActivityIndicator,
   Modal,
 } from "react-native";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
 import Animated, {
@@ -23,8 +24,9 @@ import Animated, {
   useAnimatedStyle,
   withTiming,
   interpolateColor,
+  useReducedMotion,
 } from "react-native-reanimated";
-import { radius, fonts, ColorPalette } from "../../theme";
+import { radius, fonts, shadows, ColorPalette } from "../../theme";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useTimer } from "../../context/TimerContext";
@@ -132,10 +134,11 @@ function ReadingDot({
   styles: any;
 }) {
   const progress = useSharedValue(focused ? 1 : 0);
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
-    progress.value = withTiming(focused ? 1 : 0, { duration: 220 });
-  }, [focused]);
+    progress.value = withTiming(focused ? 1 : 0, { duration: reducedMotion ? 0 : 220 });
+  }, [focused, reducedMotion]);
 
   const dotStyle = useAnimatedStyle(() => ({
     width: 6 + progress.value * 10,
@@ -371,6 +374,12 @@ function ReadingBookCard({
 
   return (
     <View style={styles.readingCard}>
+      <LinearGradient
+        colors={[colors.purpleGlow, "transparent"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0.7 }}
+        style={StyleSheet.absoluteFill}
+      />
       <TouchableOpacity
         style={styles.readingCardLink}
         onPress={() => router.push(`/book/${book.book_id}`)}
@@ -402,15 +411,19 @@ function ReadingBookCard({
             {book.author}
           </Text>
           <View style={{ flex: 1 }} />
-          <ProgressBar
-            percent={book.progress_percent || 0}
-            color={colors.teal}
-            trackColor={colors.card2}
-            height={5}
-          />
-          <Text style={styles.progressText}>
-            {t("discover.percentRead", { percent: Math.round(book.progress_percent || 0) })}
-          </Text>
+          <View style={styles.progressRow}>
+            <View style={{ flex: 1 }}>
+              <ProgressBar
+                percent={book.progress_percent || 0}
+                color={colors.teal}
+                trackColor={colors.card2}
+                height={6}
+              />
+            </View>
+            <Text style={styles.progressText}>
+              {t("discover.percentRead", { percent: Math.round(book.progress_percent || 0) })}
+            </Text>
+          </View>
         </View>
       </TouchableOpacity>
 
@@ -605,18 +618,19 @@ function ReadingBookCard({
               </TouchableOpacity>
             )}
             <View style={styles.emojiGrid}>
-              {REACTION_EMOJIS.map((emoji) => (
-                <TouchableOpacity
-                  key={emoji}
-                  style={[
-                    styles.emojiBtn,
-                    selectedEmojis.includes(emoji) && styles.emojiBtnSelected,
-                  ]}
-                  onPress={() => toggleEmoji(emoji)}
-                >
-                  <Text style={styles.emojiText}>{emoji}</Text>
-                </TouchableOpacity>
-              ))}
+              {REACTION_EMOJIS.map((emoji) => {
+                const active = selectedEmojis.includes(emoji);
+                return (
+                  <TouchableOpacity
+                    key={emoji}
+                    style={[styles.emojiBtn, active && styles.emojiBtnSelected]}
+                    onPress={() => toggleEmoji(emoji)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[styles.emojiText, active && styles.emojiTextSelected]}>{emoji}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
             <TextInput
               style={styles.noteInput}
@@ -1115,6 +1129,8 @@ const makeStyles = (colors: ColorPalette) =>
       borderWidth: 1,
       borderColor: colors.border,
       padding: 16,
+      overflow: "hidden",
+      ...shadows.card,
     },
     readingCardLink: { position: "absolute", top: 14, right: 14, zIndex: 1 },
     readingHeaderRow: {
@@ -1134,26 +1150,33 @@ const makeStyles = (colors: ColorPalette) =>
       borderRadius: 3,
       backgroundColor: colors.divider,
     },
-    readingTop: { flexDirection: "row", gap: 14, paddingRight: 22 },
+    readingTop: { flexDirection: "row", gap: 16, paddingRight: 22 },
     readingCover: {
-      width: 56,
-      height: 80,
+      width: 64,
+      height: 92,
       backgroundColor: colors.card2,
-      borderRadius: 8,
+      borderRadius: radius.sm,
       alignItems: "center",
       justifyContent: "center",
       overflow: "hidden",
+      ...shadows.card,
     },
-    readingCoverImg: { width: 56, height: 80 },
+    readingCoverImg: { width: 64, height: 92 },
     readingInfo: { flex: 1, justifyContent: "flex-start" },
     readingTitle: {
-      fontSize: 15,
+      fontSize: 16,
       fontFamily: fonts.headingBold,
       color: colors.white,
       marginBottom: 3,
     },
     readingAuthor: { fontSize: 11, color: colors.gray },
-    progressText: { fontSize: 10, color: colors.teal, marginTop: 4 },
+    progressRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    progressText: {
+      fontSize: 12,
+      fontFamily: fonts.bodySemiBold,
+      color: colors.teal,
+      fontVariant: ["tabular-nums"],
+    },
     readingDivider: {
       height: 1,
       backgroundColor: colors.divider,
@@ -1171,16 +1194,20 @@ const makeStyles = (colors: ColorPalette) =>
       alignItems: "center",
       gap: 6,
       flexShrink: 0,
+      backgroundColor: colors.card2,
+      borderRadius: radius.md,
+      paddingVertical: 6,
+      paddingHorizontal: 8,
     },
     pagesRowIcon: { marginRight: -2 },
     pageInput: {
       width: 40,
-      backgroundColor: colors.card2,
-      borderRadius: radius.sm,
-      paddingVertical: 8,
+      backgroundColor: "transparent",
+      paddingVertical: 4,
       paddingHorizontal: 4,
       color: colors.white,
       fontSize: 13,
+      fontFamily: fonts.bodySemiBold,
       textAlign: "center",
     },
     slash: { fontSize: 14, color: colors.gray },
@@ -1188,9 +1215,10 @@ const makeStyles = (colors: ColorPalette) =>
       width: 32,
       height: 32,
       borderRadius: 16,
-      backgroundColor: colors.purpleGlow,
+      backgroundColor: colors.card,
       alignItems: "center",
       justifyContent: "center",
+      ...shadows.card,
     },
     timerBtn: {
       flex: 1,
@@ -1198,14 +1226,14 @@ const makeStyles = (colors: ColorPalette) =>
       alignItems: "center",
       justifyContent: "center",
       gap: 6,
-      paddingVertical: 9,
+      paddingVertical: 10,
       borderRadius: radius.md,
       backgroundColor: colors.purpleGlow,
     },
-    timerBtnActive: { backgroundColor: colors.purple },
+    timerBtnActive: { backgroundColor: colors.purple, ...shadows.glow },
     timerBtnText: {
       fontSize: 13,
-      fontWeight: "600",
+      fontFamily: fonts.bodySemiBold,
       color: colors.purple,
       fontVariant: ["tabular-nums"],
     },
@@ -1216,14 +1244,13 @@ const makeStyles = (colors: ColorPalette) =>
       justifyContent: "center",
       gap: 6,
       marginTop: 10,
-      paddingVertical: 9,
+      paddingVertical: 10,
       borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: colors.teal,
+      backgroundColor: colors.tealGlow,
     },
     finishReadingBtnText: {
       fontSize: 13,
-      fontWeight: "600",
+      fontFamily: fonts.bodySemiBold,
       color: colors.teal,
     },
     modalOverlay: {
@@ -1280,27 +1307,34 @@ const makeStyles = (colors: ColorPalette) =>
       alignItems: "center",
       gap: 4,
       alignSelf: "center",
-      marginTop: -12,
-      marginBottom: 12,
+      marginBottom: 8,
     },
     clearEmojisText: { fontSize: 12, color: colors.muted, fontWeight: "600" },
     emojiGrid: {
       flexDirection: "row",
       flexWrap: "wrap",
-      gap: 8,
+      gap: 10,
       justifyContent: "center",
-      marginBottom: 16,
+      marginTop: 4,
+      marginBottom: 18,
     },
     emojiBtn: {
-      width: 44,
-      height: 44,
-      borderRadius: 10,
+      width: 50,
+      height: 50,
+      borderRadius: 16,
       backgroundColor: colors.card2,
       alignItems: "center",
       justifyContent: "center",
+      borderWidth: 1.5,
+      borderColor: "transparent",
     },
-    emojiBtnSelected: { borderWidth: 1, borderColor: colors.purple },
-    emojiText: { fontSize: 22 },
+    emojiBtnSelected: {
+      backgroundColor: colors.purpleGlow,
+      borderColor: colors.purple,
+      ...shadows.glow,
+    },
+    emojiText: { fontSize: 24 },
+    emojiTextSelected: { transform: [{ scale: 1.15 }] },
     filterRow: { marginBottom: 20 },
     randCard: {
       borderRadius: radius.lg,

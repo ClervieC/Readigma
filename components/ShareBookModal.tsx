@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet, Platform, ActivityIndicator } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, StyleSheet, Platform, ActivityIndicator, ScrollView } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import { Feather } from '@expo/vector-icons';
@@ -12,9 +12,17 @@ import ShareBookCard, { ShareBookCardData } from './ShareBookCard';
 // Native: captureRef writes a real tmp file, shared via the OS share sheet
 // (Sharing.shareAsync) — Instagram Stories shows up there as a target if
 // the app is installed, same as any other photo-sharing flow. Web: view-shot
-// falls back to a canvas data-URI (see RNViewShot.web.ts) with no share
-// sheet to hand it to, so it's downloaded instead — the closest equivalent
-// a browser can do without Instagram's own API.
+// falls back to a canvas data-URI (see RNViewShot.web.ts); the Web Share
+// API (navigator.share with a File) opens the same kind of OS-level "where
+// do you want to share this" sheet on browsers that support it (mobile
+// Safari/Chrome, and recent desktop Chrome/Edge) — a plain forced download
+// only kicks in as a last-resort fallback where that API isn't available.
+async function dataUriToFile(dataUri: string, filename: string): Promise<File> {
+  const res = await fetch(dataUri);
+  const blob = await res.blob();
+  return new File([blob], filename, { type: blob.type || 'image/png' });
+}
+
 export default function ShareBookModal({
   visible,
   onClose,
@@ -36,11 +44,23 @@ export default function ShareBookModal({
     try {
       if (Platform.OS === 'web') {
         const dataUri = await captureRef(cardRef, { format: 'png', quality: 1, result: 'data-uri' });
-        const link = document.createElement('a');
-        link.href = dataUri;
-        link.download = 'readigma.png';
-        link.click();
-        alert(t('book.share.downloadedTitle'), t('book.share.downloadedMessage'));
+        const file = await dataUriToFile(dataUri, 'readigma.png');
+        const nav = navigator as any;
+        if (nav.share && nav.canShare?.({ files: [file] })) {
+          try {
+            await nav.share({ files: [file], title: t('book.share.shareSheetTitle') });
+          } catch (shareErr: any) {
+            // AbortError just means the user closed the share sheet without
+            // picking anything — not a real failure, nothing to report.
+            if (shareErr?.name !== 'AbortError') throw shareErr;
+          }
+        } else {
+          const link = document.createElement('a');
+          link.href = dataUri;
+          link.download = 'readigma.png';
+          link.click();
+          alert(t('book.share.downloadedTitle'), t('book.share.downloadedMessage'));
+        }
       } else {
         const available = await Sharing.isAvailableAsync();
         if (!available) {
@@ -59,34 +79,56 @@ export default function ShareBookModal({
 
   return (
     <Modal transparent animationType="fade" visible={visible} onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
-        <View style={styles.sheet}>
-          <ShareBookCard ref={cardRef} colors={colors} data={data} />
-          <View style={styles.actions}>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={10}>
-              <Feather name="x" size={20} color={colors.gray} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={share} disabled={sharing} style={styles.shareBtn}>
-              {sharing ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <>
-                  <Feather name="share" size={16} color="#FFFFFF" />
-                  <Text style={styles.shareBtnText}>{t('book.share.button')}</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
+      {/* Same nested-TouchableOpacity "tap outside closes, tap content
+          doesn't" pattern used by every other modal in this app (finish
+          modal, shared-reading menus, etc.) — the inner one claims the touch
+          so it never reaches the outer's onPress. */}
+      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
+        {/* The card's height depends on its content (a long review, many
+            reactions — see ShareBookCard's minHeight-not-height) and can
+            exceed a small phone's viewport. A plain centered View clipped
+            the action row (close/share) off the bottom with no way to reach
+            it in that case — this has to scroll instead of just center. */}
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.sheet} onPress={() => {}}>
+            <ShareBookCard ref={cardRef} colors={colors} data={data} />
+            <View style={styles.actions}>
+              <TouchableOpacity
+                onPress={onClose}
+                style={styles.closeBtn}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.close')}
+              >
+                <Feather name="x" size={20} color={colors.gray} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={share} disabled={sharing} style={styles.shareBtn}>
+                {sharing ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Feather name="share" size={16} color="#FFFFFF" />
+                    <Text style={styles.shareBtnText}>{t('book.share.button')}</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </ScrollView>
+      </TouchableOpacity>
     </Modal>
   );
 }
 
 const makeStyles = (colors: ColorPalette) =>
   StyleSheet.create({
-    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
+    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' },
+    scroll: { flex: 1 },
+    scrollContent: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24, paddingVertical: 40 },
     sheet: { alignItems: 'center', gap: 18 },
     actions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
     closeBtn: {

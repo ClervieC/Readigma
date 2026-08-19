@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, Image, StyleSheet, useWindowDimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter, useSegments } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import Animated, {
-  useAnimatedStyle, useSharedValue, withRepeat, withSequence, withSpring, withTiming, runOnJS,
+  useAnimatedStyle, useSharedValue, withRepeat, withSequence, withSpring, withTiming, runOnJS, useReducedMotion,
 } from 'react-native-reanimated';
 import { ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
@@ -36,6 +37,7 @@ export default function TimerBubble() {
   const { width, height } = useWindowDimensions();
   const styles = makeStyles(colors);
   const pulse = useSharedValue(1);
+  const reducedMotion = useReducedMotion();
   const [corner, setCorner] = useState<Corner>('bottom-right');
   const [ready, setReady] = useState(false);
 
@@ -77,8 +79,11 @@ export default function TimerBubble() {
 
   useEffect(() => {
     if (!session) return;
-    pulse.value = withRepeat(withSequence(withTiming(0.4, { duration: 700 }), withTiming(1, { duration: 700 })), -1, true);
-  }, [session?.id]);
+    // An indefinite opacity loop is exactly what Reduce Motion asks apps to
+    // drop — the active-session state is still visible from the timer text
+    // itself, so holding at full opacity loses no information.
+    pulse.value = reducedMotion ? 1 : withRepeat(withSequence(withTiming(0.4, { duration: 700 }), withTiming(1, { duration: 700 })), -1, true);
+  }, [session?.id, reducedMotion]);
 
   const pulseStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
 

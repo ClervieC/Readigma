@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import * as follows from '../lib/follows';
@@ -14,6 +15,7 @@ import { getNotificationsSeenAt } from '../lib/notificationsSeen';
 export default function NotificationBell() {
   const { colors } = useTheme();
   const router = useRouter();
+  const { t } = useTranslation();
   const styles = makeStyles(colors);
   const [recentCount, setRecentCount] = useState(0);
 
@@ -24,7 +26,12 @@ export default function NotificationBell() {
   }, []));
 
   return (
-    <TouchableOpacity onPress={() => router.push('/notifications')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+    <TouchableOpacity
+      onPress={() => router.push('/notifications')}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      accessibilityRole="button"
+      accessibilityLabel={recentCount > 0 ? t('notifications.unreadCount', { count: recentCount }) : t('notifications.title')}
+    >
       <Feather name="bell" size={20} color={colors.white} />
       {recentCount > 0 && (
         <View style={styles.badge}>

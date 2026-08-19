@@ -2,7 +2,10 @@
   "common": {
     "error": "Erreur",
     "cancel": "Annuler",
-    "ok": "OK"
+    "ok": "OK",
+    "back": "Retour",
+    "close": "Fermer",
+    "moreOptions": "Plus d'options"
   },
   "auth": {
     "tagline": "Stop searching. Start discovering.",
@@ -301,9 +304,7 @@
       "thriller": "🔪 Thrillers du moment",
       "romance": "💕 Romance",
       "scifi": "🚀 Science-fiction",
-      "week": "🔥 Tendances cette semaine",
       "month": "📈 Tendances ce mois-ci",
-      "year": "⭐ Tendances de l'année",
       "frenchAuthors": "🇫🇷 Auteurs français"
     },
     "yourStatus": "Ton statut",
@@ -932,6 +933,8 @@
   },
   "notifications": {
     "title": "Notifications",
+    "unreadCount_one": "Notifications, {{count}} non lue",
+    "unreadCount_other": "Notifications, {{count}} non lues",
     "emptyTitle": "Aucune notification",
     "emptyText": "Tes nouveaux abonnés et l'activité des lecteurs que tu suis apparaîtront ici.",
     "newFollowers": "Nouveaux abonnés",

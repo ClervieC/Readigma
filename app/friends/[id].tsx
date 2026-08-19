@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Modal } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -44,7 +45,14 @@ export default function UserProfileScreen() {
       <SafeAreaView style={styles.container} edges={['top']}>
         <AtmosphericBackground tint="pink" />
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}><Feather name="arrow-left" size={20} color={colors.white} /></TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.back')}
+          >
+            <Feather name="arrow-left" size={20} color={colors.white} />
+          </TouchableOpacity>
           <Text style={styles.headerTitle}>{username ?? t('userProfile.defaultTitle')}</Text>
           <View style={{ width: 20 }} />
         </View>
@@ -58,7 +66,14 @@ export default function UserProfileScreen() {
       <SafeAreaView style={styles.container} edges={['top']}>
         <AtmosphericBackground tint="pink" />
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}><Feather name="arrow-left" size={20} color={colors.white} /></TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.back')}
+          >
+            <Feather name="arrow-left" size={20} color={colors.white} />
+          </TouchableOpacity>
         </View>
         <View style={styles.loader}><Text style={styles.errorText}>{t('userProfile.loadError')}</Text></View>
       </SafeAreaView>
@@ -73,9 +88,21 @@ export default function UserProfileScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
         <AtmosphericBackground tint="pink" />
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}><Feather name="arrow-left" size={20} color={colors.white} /></TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.back')}
+        >
+          <Feather name="arrow-left" size={20} color={colors.white} />
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('userProfile.defaultTitle')}</Text>
-        <TouchableOpacity onPress={() => setShowMoreMenu(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity
+          onPress={() => setShowMoreMenu(true)}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.moreOptions')}
+        >
           <Feather name="more-vertical" size={20} color={colors.white} />
         </TouchableOpacity>
       </View>

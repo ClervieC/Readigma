@@ -27,6 +27,9 @@ export default function Button({ label, onPress, variant = 'primary', disabled, 
         disabled={disabled || loading}
         onPressIn={() => { scale.value = withTiming(0.97, { duration: 100 }); }}
         onPressOut={() => { scale.value = withTiming(1, { duration: 150 }); }}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityState={{ disabled: disabled || loading, busy: loading }}
       >
         {loading ? (
           <ActivityIndicator color={variant === 'ghost' ? colors.purple : 'white'} size="small" />
