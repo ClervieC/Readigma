@@ -78,7 +78,7 @@ const ShareBookCard = forwardRef<View, { colors: ColorPalette; data: ShareBookCa
     // Only web needs the CORS proxy — native capture reads real view
     // layers, not a canvas snapshot of DOM images, so it never hits this.
     const coverSrc =
-      Platform.OS === 'web' && data.coverUrl
+      Platform.OS === 'web' && data.coverUrl && !data.coverUrl.startsWith('data:')
         ? `${API_BASE}/api/image-proxy?url=${encodeURIComponent(data.coverUrl)}`
         : data.coverUrl;
 
