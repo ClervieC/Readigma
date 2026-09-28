@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet, Platform, ActivityIndicator, ScrollView } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { fonts, radius, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import { alert } from '../lib/alert';
+import { API_BASE } from '../lib/apiUrl';
 import ShareBookCard, { ShareBookCardData } from './ShareBookCard';
 
 // Native: captureRef writes a real tmp file, shared via the OS share sheet
@@ -23,6 +24,37 @@ async function dataUriToFile(dataUri: string, filename: string): Promise<File> {
   return new File([blob], filename, { type: blob.type || 'image/png' });
 }
 
+const CAPTURE_TIMEOUT_MS = 15000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), ms);
+    promise.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
+}
+
+// Inlines the (proxied) cover as a data URI so the html2canvas capture never
+// waits on a network image — a slow/failed cover fetch used to leave the
+// capture hanging forever. Returns null on any failure (placeholder is used).
+async function coverToDataUri(coverUrl: string): Promise<string | null> {
+  try {
+    const res = await withTimeout(fetch(`${API_BASE}/api/image-proxy?url=${encodeURIComponent(coverUrl)}`), 8000);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
 export default function ShareBookModal({
   visible,
   onClose,
@@ -37,93 +69,93 @@ export default function ShareBookModal({
   const styles = makeStyles(colors);
   const cardRef = useRef<View>(null);
   const [sharing, setSharing] = useState(false);
+  // Web only: the image is rendered as soon as the modal opens so the share
+  // tap can call navigator.share synchronously — browsers reject share()
+  // once the tap's user activation has expired during a slow capture.
+  const [webCover, setWebCover] = useState<string | null | undefined>(undefined);
+  const [webImage, setWebImage] = useState<{ file: File; dataUri: string } | null>(null);
+  const [webFailed, setWebFailed] = useState(false);
 
-  // iOS Safari only lets navigator.share() run inside a fresh user gesture
-  // — the html2canvas capture + dataUri->File conversion took long enough
-  // that the tap's activation had expired by the time share() was called,
-  // so it rejected with NotAllowedError and surfaced as the generic error.
-  // Web now snapshots the card as soon as the modal is open and the cover
-  // has painted, so tapping Share can hand the ready File straight over.
-  const preparedFile = useRef<File | null>(null);
-  const [coverSettled, setCoverSettled] = useState(false);
-  const onCoverSettled = useCallback(() => setCoverSettled(true), []);
-  // The parent passes a fresh data object every render — compare by value
-  // so the cached snapshot survives unrelated re-renders.
-  const dataKey = JSON.stringify(data);
+  const isWeb = Platform.OS === 'web';
+  const cardData: ShareBookCardData =
+    isWeb && data.coverUrl ? { ...data, coverUrl: webCover ?? null } : data;
 
   useEffect(() => {
-    preparedFile.current = null;
-    if (!visible) setCoverSettled(false);
-  }, [visible, dataKey]);
-
-  const captureWebFile = useCallback(async () => {
-    const dataUri = await captureRef(cardRef, { format: 'png', quality: 1, result: 'data-uri' });
-    const file = await dataUriToFile(dataUri, 'readigma.png');
-    preparedFile.current = file;
-    return file;
-  }, []);
-
-  useEffect(() => {
-    if (Platform.OS !== 'web' || !visible || !coverSettled) return;
-    // Small delay so fonts/emoji have laid out before the snapshot.
-    const timer = setTimeout(() => {
-      captureWebFile().catch((err) => console.warn('[share] pre-capture failed', err));
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [visible, coverSettled, dataKey, captureWebFile]);
-
-  const shareWeb = async () => {
-    const cached = preparedFile.current;
-    const file = cached ?? (await captureWebFile());
-    const nav = navigator as any;
-    if (nav.share && nav.canShare?.({ files: [file] })) {
+    if (!isWeb || !visible) return;
+    let cancelled = false;
+    setWebCover(undefined);
+    setWebImage(null);
+    setWebFailed(false);
+    (async () => {
+      const cover = data.coverUrl ? await coverToDataUri(data.coverUrl) : null;
+      if (cancelled) return;
+      setWebCover(cover);
+      // Let the card re-render with the inlined cover before capturing.
+      await new Promise((r) => setTimeout(r, 500));
+      if (cancelled || !cardRef.current) return;
       try {
-        await nav.share({ files: [file], title: t('book.share.shareSheetTitle') });
-      } catch (shareErr: any) {
-        // AbortError just means the user closed the share sheet without
-        // picking anything — not a real failure, nothing to report.
-        if (shareErr?.name === 'AbortError') return;
-        // The on-demand capture outlived the tap's user activation; the
-        // file is cached now, so a second tap shares instantly.
-        if (shareErr?.name === 'NotAllowedError' && !cached) {
-          alert(t('book.share.readyTitle'), t('book.share.readyMessage'));
-          return;
-        }
-        throw shareErr;
+        const dataUri = await withTimeout(
+          captureRef(cardRef, { format: 'png', quality: 1, result: 'data-uri' }),
+          CAPTURE_TIMEOUT_MS,
+        );
+        const file = await dataUriToFile(dataUri, 'readigma.png');
+        if (!cancelled) setWebImage({ file, dataUri });
+      } catch (err) {
+        console.warn('[share] pre-capture failed', err);
+        if (!cancelled) setWebFailed(true);
       }
-    } else {
-      const url = URL.createObjectURL(file);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'readigma.png';
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
-      alert(t('book.share.downloadedTitle'), t('book.share.downloadedMessage'));
-    }
-  };
+    })();
+    return () => { cancelled = true; };
+  }, [visible, isWeb, data.coverUrl, data.title, data.comment, data.rating]);
 
   const share = async () => {
+    if (sharing) return;
+    if (isWeb) {
+      if (!webImage) {
+        if (webFailed) alert(t('common.error'), t('book.share.error'));
+        return;
+      }
+      const { file, dataUri } = webImage;
+      const nav = navigator as any;
+      try {
+        if (nav.share && nav.canShare?.({ files: [file] })) {
+          await nav.share({ files: [file], title: t('book.share.shareSheetTitle') });
+        } else {
+          const link = document.createElement('a');
+          link.href = dataUri;
+          link.download = 'readigma.png';
+          link.click();
+          alert(t('book.share.downloadedTitle'), t('book.share.downloadedMessage'));
+        }
+      } catch (shareErr: any) {
+        // AbortError = user closed the share sheet; not a failure.
+        if (shareErr?.name === 'AbortError') return;
+        console.warn('[share] failed', shareErr);
+        alert(t('common.error'), t('book.share.error'));
+      }
+      return;
+    }
     if (!cardRef.current) return;
     setSharing(true);
     try {
-      if (Platform.OS === 'web') {
-        await shareWeb();
-      } else {
-        const available = await Sharing.isAvailableAsync();
-        if (!available) {
-          alert(t('common.error'), t('book.share.unavailable'));
-          return;
-        }
-        const uri = await captureRef(cardRef, { format: 'png', quality: 1, result: 'tmpfile' });
-        await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: t('book.share.shareSheetTitle') });
+      const available = await Sharing.isAvailableAsync();
+      if (!available) {
+        alert(t('common.error'), t('book.share.unavailable'));
+        return;
       }
-    } catch (err) {
-      console.warn('[share] failed', err);
+      const uri = await withTimeout(
+        captureRef(cardRef, { format: 'png', quality: 1, result: 'tmpfile' }),
+        CAPTURE_TIMEOUT_MS,
+      );
+      await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: t('book.share.shareSheetTitle') });
+    } catch {
       alert(t('common.error'), t('book.share.error'));
     } finally {
       setSharing(false);
     }
   };
+
+  const busy = sharing || (isWeb && !webImage && !webFailed);
 
   return (
     <Modal transparent animationType="fade" visible={visible} onRequestClose={onClose}>
@@ -143,7 +175,7 @@ export default function ShareBookModal({
           showsVerticalScrollIndicator={false}
         >
           <TouchableOpacity activeOpacity={1} style={styles.sheet} onPress={() => {}}>
-            <ShareBookCard ref={cardRef} colors={colors} data={data} onCoverSettled={onCoverSettled} />
+            <ShareBookCard ref={cardRef} colors={colors} data={cardData} />
             <View style={styles.actions}>
               <TouchableOpacity
                 onPress={onClose}
@@ -154,8 +186,8 @@ export default function ShareBookModal({
               >
                 <Feather name="x" size={20} color={colors.gray} />
               </TouchableOpacity>
-              <TouchableOpacity onPress={share} disabled={sharing} style={styles.shareBtn}>
-                {sharing ? (
+              <TouchableOpacity onPress={share} disabled={busy} style={styles.shareBtn}>
+                {busy ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
                   <>

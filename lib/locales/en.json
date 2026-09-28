@@ -348,9 +348,7 @@
       "downloadedTitle": "Image downloaded",
       "downloadedMessage": "The image was downloaded — you can share it from your files.",
       "error": "Couldn't create the image to share",
-      "unavailable": "Sharing isn't available on this device",
-      "readyTitle": "Image ready",
-      "readyMessage": "Tap \"Share my read\" again to open the share sheet."
+      "unavailable": "Sharing isn't available on this device"
     },
     "readingTimer": "Reading timer",
     "stop": "Stop",
