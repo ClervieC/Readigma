@@ -1,4 +1,4 @@
-import { forwardRef, useState } from 'react';
+import { forwardRef, useEffect, useState } from 'react';
 import { View, Text, Image, StyleSheet, Platform } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Feather } from '@expo/vector-icons';
@@ -65,8 +65,11 @@ export type ShareBookCardData = {
 const CARD_WIDTH = 320;
 const CARD_MIN_HEIGHT = Math.round((CARD_WIDTH * 16) / 9);
 
-const ShareBookCard = forwardRef<View, { colors: ColorPalette; data: ShareBookCardData }>(
-  ({ colors, data }, ref) => {
+const ShareBookCard = forwardRef<
+  View,
+  { colors: ColorPalette; data: ShareBookCardData; onCoverSettled?: () => void }
+>(
+  ({ colors, data, onCoverSettled }, ref) => {
     const { t } = useTranslation();
     const styles = makeStyles(colors);
     // Falls back to the book glyph if the cover URL 404s or the host
@@ -81,6 +84,12 @@ const ShareBookCard = forwardRef<View, { colors: ColorPalette; data: ShareBookCa
       Platform.OS === 'web' && data.coverUrl
         ? `${API_BASE}/api/image-proxy?url=${encodeURIComponent(data.coverUrl)}`
         : data.coverUrl;
+
+    // Lets ShareBookModal know the card is fully painted (cover loaded or
+    // swapped for the placeholder) before it snapshots it ahead of time.
+    useEffect(() => {
+      if (!data.coverUrl) onCoverSettled?.();
+    }, [data.coverUrl, onCoverSettled]);
 
     return (
       <View ref={ref} style={styles.card} collapsable={false}>
@@ -98,7 +107,11 @@ const ShareBookCard = forwardRef<View, { colors: ColorPalette; data: ShareBookCa
               <Image
                 source={{ uri: coverSrc! }}
                 style={styles.cover}
-                onError={() => setCoverFailed(true)}
+                onLoad={() => onCoverSettled?.()}
+                onError={() => {
+                  setCoverFailed(true);
+                  onCoverSettled?.();
+                }}
               />
             ) : (
               <View style={[styles.cover, styles.coverPlaceholder]}>

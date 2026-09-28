@@ -350,7 +350,9 @@
       "downloadedTitle": "Image téléchargée",
       "downloadedMessage": "L'image a été téléchargée — tu peux la partager depuis tes fichiers.",
       "error": "Impossible de créer l'image à partager",
-      "unavailable": "Le partage n'est pas disponible sur cet appareil"
+      "unavailable": "Le partage n'est pas disponible sur cet appareil",
+      "readyTitle": "Image prête",
+      "readyMessage": "Touche à nouveau « Partager ma lecture » pour ouvrir le partage."
     },
     "readingTimer": "Chrono de lecture",
     "stop": "Arrêter",

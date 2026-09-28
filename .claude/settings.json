@@ -1,7 +1,40 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(python3 -c ' *)",
+      "Read(//tmp/**)",
+      "Read(//private/tmp/**)",
+      "Bash(python3 -)",
+      "Bash(sort -t_ -k1 -n)",
+      "Bash(cat ~/.ssh/config 2>/dev/null | head -50; echo \"---known hosts \\(hostnames only\\)---\"; cut -d' ' -f1 ~/.ssh/known_hosts 2>/dev/null | cut -d',' -f1 | sort -u | head -20)",
+      "Read(//Users/clervie/.ssh/**)",
+      "Bash(ssh -o ConnectTimeout=10 ubuntu@54.37.9.86 \"echo connected && whoami && hostname\")",
+      "Bash(ssh ubuntu@54.37.9.86 \"docker ps --format 'table {{.Names}}\\\\t{{.Image}}\\\\t{{.Status}}' 2>&1 || echo 'no docker or no perms'; echo '---'; find / -maxdepth 3 -iname 'docker-compose*.yml' 2>/dev/null; find / -maxdepth 4 -iname 'docker-compose*.yml' 2>/dev/null | grep -i supabase\")",
+      "Bash(ssh ubuntu@54.37.9.86 \"docker inspect supabase_db_Readigma --format '{{range .Config.Env}}{{println .}}{{end}}' 2>&1 | grep -i 'POSTGRES\\\\|PGDATA' \")",
+      "Bash(ssh ubuntu@54.37.9.86 \"docker exec -e PGPASSWORD=postgres supabase_db_Readigma psql -U supabase_admin -d postgres -c 'select current_database\\(\\), current_user;' -c '\\\\dt public.*' \")",
+      "Bash(ssh ubuntu@54.37.9.86 \"docker exec -e PGPASSWORD=postgres supabase_db_Readigma psql -U supabase_admin -d postgres -c \\\\\"select column_name from information_schema.columns where table_name='user_books' order by ordinal_position;\\\\\"\")",
+      "Bash(ssh ubuntu@54.37.9.86 \"docker exec -e PGPASSWORD=postgres supabase_db_Readigma psql -U supabase_admin -d postgres -c \\\\\"\\\\dt public.*\\\\\" -c \\\\\"select routine_name from information_schema.routines where routine_schema='public' order by routine_name;\\\\\" -c \\\\\"select tablename, policyname from pg_policies where schemaname in \\('public','storage'\\) order by tablename, policyname;\\\\\"\")",
+      "Bash(ssh ubuntu@54.37.9.86 \"docker exec -i -e PGPASSWORD=postgres supabase_db_Readigma psql -U supabase_admin -d postgres\")",
+      "Bash(ssh ubuntu@54.37.9.86 \"docker exec -e PGPASSWORD=postgres supabase_db_Readigma psql -U supabase_admin -d postgres -c \\\\\"select tablename, policyname from pg_policies where tablename='books';\\\\\" -c \\\\\"select proname from pg_proc where proname='update_book_series';\\\\\"\")",
+      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('lib/locales/fr.json','utf8'\\)\\); JSON.parse\\(require\\('fs'\\).readFileSync\\('lib/locales/en.json','utf8'\\)\\); console.log\\('ok'\\)\")",
+      "Bash(awk 'NR==953,NR==3274 && /^function |^export default function |^const .*= \\\\\\(.*\\\\\\) =>.*{$/' \"app/\\(tabs\\)/library.tsx\")",
+      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('lib/locales/fr.json','utf8'\\)\\); JSON.parse\\(require\\('fs'\\).readFileSync\\('lib/locales/en.json','utf8'\\)\\); console.log\\('locales ok'\\)\")",
+      "Bash(npx playwright *)",
+      "Bash(lsof -nP -iTCP:8099 -sTCP:LISTEN)",
+      "Bash(nohup npx expo start --web --port 8099)",
+      "Bash(disown)",
+      "Bash(echo \"started, pid $!\")",
+      "Bash(tail -40 /tmp/expo-8099.log)",
+      "Bash(node -e \"console.log\\(process.platform, process.arch\\)\")",
+      "Bash(npm install *)",
+      "Bash(kill 31581)",
+      "Bash(pkill -f \"expo start --web --port 8099\")",
+      "Bash(curl -s -o /dev/null -w \"status: %{http_code}\\\\n\" -m 10 https://ebdicnwpvewfgxzlpbjd.supabase.co/rest/v1/)",
+      "Bash(nslookup ebdicnwpvewfgxzlpbjd.supabase.co)",
+      "Bash(curl -s -o /dev/null -w \"status: %{http_code}\\\\n\" -m 10 https://supabase.com)",
+      "Bash(npm run *)",
+      "Bash(ssh ubuntu@54.37.9.86 'docker exec -e PGPASSWORD=postgres supabase_db_Readigma psql -U supabase_admin -d postgres -c \" *)"
     ]
   }
 }
