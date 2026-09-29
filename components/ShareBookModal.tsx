@@ -26,6 +26,15 @@ async function dataUriToFile(dataUri: string, filename: string): Promise<File> {
 
 const CAPTURE_TIMEOUT_MS = 15000;
 
+// The iPhone home-screen web app has no visible console — appending the
+// real cause to the generic message is the only way to tell a failed
+// capture from a rejected share when it happens on a phone.
+function errorDetail(err: unknown): string {
+  const e = err as { name?: string; message?: string } | null;
+  const detail = [e?.name, e?.message].filter(Boolean).join(': ');
+  return detail ? `\n\n(${detail})` : '';
+}
+
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('timeout')), ms);
@@ -75,6 +84,7 @@ export default function ShareBookModal({
   const [webCover, setWebCover] = useState<string | null | undefined>(undefined);
   const [webImage, setWebImage] = useState<{ file: File; dataUri: string } | null>(null);
   const [webFailed, setWebFailed] = useState(false);
+  const webError = useRef<unknown>(null);
 
   const isWeb = Platform.OS === 'web';
   const cardData: ShareBookCardData =
@@ -102,6 +112,7 @@ export default function ShareBookModal({
         if (!cancelled) setWebImage({ file, dataUri });
       } catch (err) {
         console.warn('[share] pre-capture failed', err);
+        webError.current = err;
         if (!cancelled) setWebFailed(true);
       }
     })();
@@ -112,7 +123,7 @@ export default function ShareBookModal({
     if (sharing) return;
     if (isWeb) {
       if (!webImage) {
-        if (webFailed) alert(t('common.error'), t('book.share.error'));
+        if (webFailed) alert(t('common.error'), t('book.share.error') + errorDetail(webError.current));
         return;
       }
       const { file, dataUri } = webImage;
@@ -131,7 +142,7 @@ export default function ShareBookModal({
         // AbortError = user closed the share sheet; not a failure.
         if (shareErr?.name === 'AbortError') return;
         console.warn('[share] failed', shareErr);
-        alert(t('common.error'), t('book.share.error'));
+        alert(t('common.error'), t('book.share.error') + errorDetail(shareErr));
       }
       return;
     }
