@@ -8,12 +8,14 @@ import { fonts, radius, ColorPalette } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import { alert } from '../lib/alert';
 import { API_BASE } from '../lib/apiUrl';
+import { renderShareCardImage } from '../lib/shareCardImage';
 import ShareBookCard, { ShareBookCardData } from './ShareBookCard';
 
 // Native: captureRef writes a real tmp file, shared via the OS share sheet
 // (Sharing.shareAsync) — Instagram Stories shows up there as a target if
-// the app is installed, same as any other photo-sharing flow. Web: view-shot
-// falls back to a canvas data-URI (see RNViewShot.web.ts); the Web Share
+// the app is installed, same as any other photo-sharing flow. Web: the card
+// is painted onto a canvas by lib/shareCardImage.ts (the on-screen
+// ShareBookCard is only the preview there); the Web Share
 // API (navigator.share with a File) opens the same kind of OS-level "where
 // do you want to share this" sheet on browsers that support it (mobile
 // Safari/Chrome, and recent desktop Chrome/Edge) — a plain forced download
@@ -100,12 +102,16 @@ export default function ShareBookModal({
       const cover = data.coverUrl ? await coverToDataUri(data.coverUrl) : null;
       if (cancelled) return;
       setWebCover(cover);
-      // Let the card re-render with the inlined cover before capturing.
-      await new Promise((r) => setTimeout(r, 500));
-      if (cancelled || !cardRef.current) return;
       try {
         const dataUri = await withTimeout(
-          captureRef(cardRef, { format: 'png', quality: 1, result: 'data-uri' }),
+          renderShareCardImage({ ...data, coverUrl: cover }, colors, {
+            kicker: t('book.share.kicker'),
+            format: {
+              physical: t('book.formatPhysical'),
+              ereader: t('book.formatEreader'),
+              audiobook: t('book.formatAudiobook'),
+            },
+          }),
           CAPTURE_TIMEOUT_MS,
         );
         const file = await dataUriToFile(dataUri, 'readigma.png');
