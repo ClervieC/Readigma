@@ -29,6 +29,7 @@ const NOTIF_ICON: Record<string, keyof typeof Feather.glyphMap> = {
   finished: 'check-circle',
   reaction: 'message-circle',
   progress_update: 'book-open',
+  dnf: 'x-circle',
 };
 
 export default function NotificationsScreen() {
@@ -61,6 +62,7 @@ export default function NotificationsScreen() {
     switch (item.activity_type) {
       case 'finished': return `${item.username} ${t('notifications.finished', { title: item.book_title })}`;
       case 'reaction': return `${item.username} ${t('notifications.reaction', { title: item.book_title })}`;
+      case 'dnf': return `${item.username} ${t('notifications.dnf', { title: item.book_title })}`;
       case 'progress_update': return `${item.username} ${t('notifications.progressUpdate', { percent: Math.round(item.metadata?.percent || 0), title: item.book_title })}`;
       default: return `${item.username} ${t('notifications.defaultActivity')}`;
     }

@@ -260,6 +260,8 @@
     "sendTheory": "Send theory"
   },
   "feed": {
+    "activityDnf": "didn't finish",
+    "dnfLabel": "Abandoned (DNF)",
     "title": "Feed",
     "subtitle": "Activity from readers you follow",
     "loading": "Loading...",
@@ -311,6 +313,9 @@
     "addedToDnf": "\"{{title}}\" added as did-not-finish"
   },
   "book": {
+    "dnfTitle": "Abandon this book?",
+    "dnfReasonPlaceholder": "Why did you stop? (optional)",
+    "dnfConfirmBtn": "Mark as DNF",
     "editSuggestion": "Suggest an edit",
     "reportBook": "Report this book",
     "reportReview": "Report this review",
@@ -930,6 +935,7 @@
     }
   },
   "notifications": {
+    "dnf": "abandoned \"{{title}}\"",
     "title": "Notifications",
     "unreadCount_one": "Notifications, {{count}} unread",
     "unreadCount_other": "Notifications, {{count}} unread",

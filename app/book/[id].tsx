@@ -96,6 +96,8 @@ export default function BookDetailScreen() {
   const [reactions, setReactions] = useState<any[]>([]);
   const [showReactionModal, setShowReactionModal] = useState(false);
   const [showFinishModal, setShowFinishModal] = useState(false);
+  const [showDnfModal, setShowDnfModal] = useState(false);
+  const [dnfReason, setDnfReason] = useState("");
   const [showShareModal, setShowShareModal] = useState(false);
   const [selectedEmojis, setSelectedEmojis] = useState<string[]>([]);
   const [reactionNote, setReactionNote] = useState("");
@@ -353,6 +355,12 @@ export default function BookDetailScreen() {
       setShowFinishModal(true);
       return;
     }
+    if (status === "dnf") {
+      if (currentBook?.status === "dnf") return;
+      setDnfReason("");
+      setShowDnfModal(true);
+      return;
+    }
     // A running timer on this book would otherwise keep accumulating time
     // against a book that's no longer "reading" (e.g. moved to "dnf") —
     // stop() is a no-op if nothing's running, so this is safe to always call.
@@ -360,6 +368,17 @@ export default function BookDetailScreen() {
     (isTimingThisBook ? stopGlobalTimer().catch(() => {}) : Promise.resolve())
       .then(() => userBooks.addBook(id, status))
       .then(() => setCurrentBook((cur: any) => ({ ...cur, status })))
+      .catch(() => alert(t("common.error"), t("book.errors.updateFailed")));
+  };
+
+  const abandonBook = () => {
+    const isTimingThisBook = activeSession && activeSession.book_id === id;
+    (isTimingThisBook ? stopGlobalTimer().catch(() => {}) : Promise.resolve())
+      .then(() => userBooks.markDnf(id, dnfReason))
+      .then(() => {
+        setShowDnfModal(false);
+        setCurrentBook((cur: any) => ({ ...cur, status: "dnf" }));
+      })
       .catch(() => alert(t("common.error"), t("book.errors.updateFailed")));
   };
 
@@ -1273,6 +1292,33 @@ export default function BookDetailScreen() {
             />
             <Text style={styles.charCount}>{comment.length}/500</Text>
             <Button label={t("book.finishReadingBtn")} onPress={finishBook} />
+          </TouchableOpacity>
+        </TouchableOpacity>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal visible={showDnfModal} transparent animationType="slide">
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowDnfModal(false)}
+        >
+          <TouchableOpacity style={styles.modalSheet} activeOpacity={1}>
+            <View style={styles.handle} />
+            <Text style={styles.modalTitle}>{t("book.dnfTitle")}</Text>
+            <Text style={styles.modalSubtitle}>{currentBook.title}</Text>
+            <TextInput
+              style={[styles.noteInput, { marginTop: 16 }]}
+              value={dnfReason}
+              onChangeText={setDnfReason}
+              placeholder={t("book.dnfReasonPlaceholder")}
+              placeholderTextColor={colors.gray}
+              multiline
+              maxLength={500}
+            />
+            <Text style={styles.charCount}>{dnfReason.length}/500</Text>
+            <Button label={t("book.dnfConfirmBtn")} onPress={abandonBook} />
           </TouchableOpacity>
         </TouchableOpacity>
         </KeyboardAvoidingView>

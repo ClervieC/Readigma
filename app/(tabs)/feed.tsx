@@ -40,6 +40,7 @@ function activityAccent(type: string, colors: ColorPalette) {
     case 'reaction': return { color: colors.pink };
     case 'progress_update': return { color: colors.teal };
     case 'started': return { color: colors.purple };
+    case 'dnf': return { color: colors.muted };
     default: return { color: colors.purple };
   }
 }
@@ -95,6 +96,7 @@ function ActivityCard({ item, last, onUserPress, onBookPress, onLike, onCommentA
       case 'progress_update': return t('feed.activityProgress', { percent: Math.round(item.metadata?.percent || 0) });
       case 'finished': return t('feed.activityFinished');
       case 'started': return t('feed.activityStarted');
+      case 'dnf': return t('feed.activityDnf');
       default: return t('feed.activityDefault');
     }
   };
@@ -147,6 +149,29 @@ function ActivityCard({ item, last, onUserPress, onBookPress, onLike, onCommentA
                   "{item.metadata.comment}"
                 </Text>
                 {item.metadata.comment.length > TRUNCATE_THRESHOLD && (
+                  <TouchableOpacity onPress={() => setNoteExpanded(v => !v)} hitSlop={6}>
+                    <Text style={styles.readMoreText}>
+                      {noteExpanded ? t('book.readLess') : t('book.readMore')}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
+
+      {item.activity_type === 'dnf' ? (
+        <View style={styles.finishedBox}>
+          <Feather name="x-circle" size={16} color={colors.muted} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.finishedText, { color: colors.muted }]}>{t('feed.dnfLabel')}</Text>
+            {item.metadata?.reason ? (
+              <>
+                <Text style={styles.finishedComment} numberOfLines={noteExpanded ? undefined : 3}>
+                  "{item.metadata.reason}"
+                </Text>
+                {item.metadata.reason.length > TRUNCATE_THRESHOLD && (
                   <TouchableOpacity onPress={() => setNoteExpanded(v => !v)} hitSlop={6}>
                     <Text style={styles.readMoreText}>
                       {noteExpanded ? t('book.readLess') : t('book.readMore')}

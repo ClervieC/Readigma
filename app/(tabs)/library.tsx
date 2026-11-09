@@ -1778,7 +1778,12 @@ export default function LibraryScreen() {
     Math.floor((width - SCREEN_PADDING + GRID_GAP) / (COVER_WIDTH + GRID_GAP)),
   );
   const changeStatus = (status: string) => {
-    userBooks.updateBook(selectedBook.book_id, { status }).then(() => {
+    // DNF posts to the feed like finishing does (see userBooks.markDnf).
+    const save =
+      status === "dnf" && selectedBook.status !== "dnf"
+        ? userBooks.markDnf(selectedBook.book_id)
+        : userBooks.updateBook(selectedBook.book_id, { status });
+    save.then(() => {
       setSelectedBook(null);
       loadBooks();
     });

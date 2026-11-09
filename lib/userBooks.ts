@@ -291,6 +291,22 @@ export async function updateBook(
   return data;
 }
 
+// Abandoning a book is a status change like finishing one, so it gets its
+// own feed entry the same way updateBook posts 'finished' — with the
+// reader's optional "why I stopped" in metadata.reason. Upserts rather than
+// updates so it also works from a book page the reader hasn't added yet.
+export async function markDnf(bookId: string, reason?: string) {
+  const userId = await requireUserId();
+  await addBook(bookId, 'dnf');
+  const trimmed = reason?.trim();
+  await supabase.from('activity_feed').insert({
+    user_id: userId,
+    book_id: bookId,
+    activity_type: 'dnf',
+    metadata: trimmed ? { reason: trimmed } : {},
+  });
+}
+
 export async function removeBook(bookId: string) {
   const userId = await requireUserId();
   const { error } = await supabase.from('user_books').delete().eq('user_id', userId).eq('book_id', bookId);

@@ -162,7 +162,7 @@ create table activity_feed (
   id             uuid primary key default gen_random_uuid(),
   user_id        uuid not null references profiles(id) on delete cascade,
   book_id        uuid references books(id) on delete set null,
-  activity_type  varchar(30) not null, -- 'progress_update' | 'reaction' | 'finished'
+  activity_type  varchar(30) not null, -- 'progress_update' | 'reaction' | 'finished' | 'dnf'
   reaction_id    uuid references reading_reactions(id) on delete set null,
   metadata       jsonb,
   created_at     timestamptz not null default now()

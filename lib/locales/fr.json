@@ -262,6 +262,8 @@
     "sendTheory": "Envoyer la théorie"
   },
   "feed": {
+    "activityDnf": "n'a pas terminé",
+    "dnfLabel": "Abandonné (DNF)",
     "title": "Fil",
     "subtitle": "Activités des lecteurs que tu suis",
     "loading": "Chargement...",
@@ -313,6 +315,9 @@
     "addedToDnf": "\"{{title}}\" ajouté comme abandonné"
   },
   "book": {
+    "dnfTitle": "Abandonner ce livre ?",
+    "dnfReasonPlaceholder": "Pourquoi tu as arrêté ? (optionnel)",
+    "dnfConfirmBtn": "Marquer comme DNF",
     "editSuggestion": "Proposer une modification",
     "reportBook": "Signaler ce livre",
     "reportReview": "Signaler cet avis",
@@ -932,6 +937,7 @@
     }
   },
   "notifications": {
+    "dnf": "a abandonné \"{{title}}\"",
     "title": "Notifications",
     "unreadCount_one": "Notifications, {{count}} non lue",
     "unreadCount_other": "Notifications, {{count}} non lues",
